@@ -1,40 +1,68 @@
-# 🌿 ViveroOnline — Marketplace AgTech B2B
+# ViveroOnline.com.co — Frontend MVP
 
-Marketplace B2B para viveristas de la Sabana de Bogotá.
-Conecta oferta y demanda de plantas ornamentales con IA integrada.
+Marketplace de plantas ornamentales para Cundinamarca con IA.
 
 ## Stack
-- **Frontend:** Streamlit Cloud
-- **Base de datos:** Supabase (PostgreSQL)
-- **IA:** Gemini 2.5 Flash (identificación de plantas + 8 agentes LangGraph)
-- **Almacenamiento:** Supabase Storage (imágenes)
+- **Frontend**: Next.js 14 + TypeScript + Tailwind CSS
+- **Backend/DB**: Supabase (PostgreSQL + Auth + Storage + Realtime)
+- **Deploy**: Vercel (automático desde GitHub)
 
-## Funcionalidades MVP
-- Registro de viveristas por municipio
-- Catálogo con identificación de plantas por foto (IA)
-- Marketplace B2B entre viveristas
-- Transacciones con control de stock
-- Chat con agente IA (8 nodos LangGraph)
-- Data Flywheel para métricas de tracción
+## Pantallas incluidas
+| Ruta | Pantalla |
+|---|---|
+| `/` | Landing page |
+| `/marketplace` | Catálogo de plantas (datos reales de Supabase) |
+| `/producto/[id]` | Ficha de producto + Recomendación IA |
+| `/scan` | Identificador IA con cámara |
+| `/carrito` | Carrito + checkout |
+| `/pedido/[id]` | Seguimiento de pedido en tiempo real |
+| `/viverista` | Panel del viverista |
+| `/login` | Auth con GitHub OAuth + email |
 
-## Deploy rápido
+## Setup local
 
-Ver `LAUNCH_CHECKLIST.md` para el paso a paso completo.
-
+### 1. Clona e instala
 ```bash
-# Local
-cp .env.example .env   # completar con tus keys
-pip install -r requirements.txt
-streamlit run app.py
+git clone https://github.com/viveroonlinecomco-code/vivero-online.git
+cd vivero-online
+npm install
 ```
 
-## Estructura
+### 2. Variables de entorno
+Copia `.env.local.example` como `.env.local` y rellena:
+```bash
+cp .env.local.example .env.local
 ```
-app.py          ← UI Streamlit (5 páginas)
-db.py           ← Operaciones Supabase
-agent.py        ← Conexión con Gemini + LangGraph
-graph.py        ← Grafo multi-agente (8 nodos)
-requirements.txt
-schema_supabase.sql          ← Schema principal
-schema_mvp_additions.sql     ← Adiciones para el MVP
+
+Obtén los valores en: **Supabase → Settings → API**
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://rjqnlmnjyfudklihmkym.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=tu_anon_key_aqui
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
+
+### 3. Corre en local
+```bash
+npm run dev
+```
+Abre http://localhost:3000
+
+## Deploy en Vercel
+
+1. En Vercel → tu proyecto → **Settings → Environment Variables**
+2. Agrega las mismas 3 variables de `.env.local`
+3. Cada `git push` a `main` despliega automáticamente
+
+## Auth con GitHub
+
+En **github.com/settings/applications** tu OAuth App debe tener:
+- **Homepage URL**: `https://tu-proyecto.vercel.app`
+- **Authorization callback URL**: `https://rjqnlmnjyfudklihmkym.supabase.co/auth/v1/callback`
+
+## Base de datos
+
+Tablas en Supabase (ya creadas):
+`viveristas`, `viveros`, `catalogo_plantas`, `plantas`, `inventario`,
+`clientes`, `transacciones_b2b`, `eventos_agente`, `pedidos`,
+`pedido_items`, `identificaciones_ia`, `perfiles`

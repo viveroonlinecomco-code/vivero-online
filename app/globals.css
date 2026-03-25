@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --primary: #325926;
+  --bg-light: #f7f7f6;
+}
+
+/* Scrollbar oculto */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* Material Symbols */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+.fill-icon { font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+
+/* Animación scan IA */
+@keyframes scanMove {
+  0%   { top: 8%; }
+  100% { top: 88%; }
+}
+.scan-line {
+  height: 2px;
+  background: linear-gradient(to right, transparent, #325926, transparent);
+  box-shadow: 0 0 15px #325926;
+  position: absolute;
+  width: 100%;
+  animation: scanMove 2s ease-in-out infinite alternate;
+}
+
+/* Spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  width: 32px; height: 32px;
+  border: 3px solid rgba(50,89,38,0.15);
+  border-top-color: #325926;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+/* Toast */
+@keyframes slideUp {
+  from { transform: translateX(-50%) translateY(10px); opacity: 0; }
+  to   { transform: translateX(-50%) translateY(0);    opacity: 1; }
+}
+.toast-enter { animation: slideUp 0.3s ease forwards; }
