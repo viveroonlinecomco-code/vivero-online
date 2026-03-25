@@ -1,27 +1,11 @@
-# ============================================================
-# ViveroOnline — requirements.txt para Streamlit Cloud
-# SDK unificado google-genai: compatible con protobuf >= 6
-# Sin conflicto de dependencias — un solo entorno
-# ============================================================
-
-# Framework UI
-streamlit==1.35.0
-
-# LangGraph (usa protobuf >= 6 internamente)
-langgraph==1.1.0
-langchain-core==1.2.18
-
-# Google Gemini — SDK unificado (NO usar google-generativeai)
-google-genai==1.66.0
-
-# Supabase
-supabase==2.4.6
-postgrest==0.16.6
-
-# Procesamiento de imágenes
-Pillow==10.3.0
-
-# Utilidades
+fastapi==0.111.0
+uvicorn==0.29.0
 python-dotenv==1.2.2
+google-genai==1.66.0
+supabase==2.4.6
+Pillow==10.3.0
 httpx==0.28.1
 pydantic==2.7.1
+python-multipart==0.0.9
+langgraph==1.1.0
+langchain-core==1.2.18
