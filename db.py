@@ -1,29 +1,22 @@
 """
 ViveroOnline — Capa de acceso a Supabase
-========================================
-Todas las operaciones de base de datos en un solo módulo.
-Usa SUPABASE_SERVICE_KEY en el backend — nunca la anon key.
+Versión limpia para Vercel (sin dependencias de Streamlit)
 """
 
 import os
 import uuid
+from functools import lru_cache
 from typing import Any, Dict, List, Optional
 
-import streamlit as st
 from supabase import Client, create_client
 
 
-# ─── CONEXIÓN (singleton cacheado por Streamlit) ─────────────────────────────
-@st.cache_resource
+@lru_cache(maxsize=1)
 def get_supabase() -> Client:
-    try:
-        url = st.secrets["supabase"]["url"]
-        key = st.secrets["supabase"]["service_key"]
-    except Exception:
-        from dotenv import load_dotenv
-        load_dotenv()
-        url = os.environ["SUPABASE_URL"]
-        key = os.environ["SUPABASE_SERVICE_KEY"]
+    url = os.environ.get("SUPABASE_URL", "")
+    key = os.environ.get("SUPABASE_SERVICE_KEY", "")
+    if not url or not key:
+        raise ValueError("SUPABASE_URL y SUPABASE_SERVICE_KEY son requeridos")
     return create_client(url, key)
 
 
@@ -33,7 +26,6 @@ def _sb() -> Client:
 
 # ─── VIVERISTAS ───────────────────────────────────────────────────────────────
 def registrar_viverista(datos: Dict) -> Optional[Dict]:
-    """Crea un nuevo viverista. Devuelve el registro creado o None."""
     try:
         result = _sb().table("viveristas").insert({
             "nombre":        datos["nombre"],
@@ -44,12 +36,11 @@ def registrar_viverista(datos: Dict) -> Optional[Dict]:
         }).execute()
         return result.data[0] if result.data else None
     except Exception as e:
-        st.error(f"Error registrando viverista: {e}")
+        print(f"Error registrando viverista: {e}")
         return None
 
 
 def obtener_viverista_por_email(email: str) -> Optional[Dict]:
-    """Busca un viverista por email."""
     try:
         result = _sb().table("viveristas")\
             .select("*")\
@@ -70,10 +61,7 @@ def agregar_planta_catalogo(
     imagen_bytes: Optional[bytes] = None,
     imagen_nombre: Optional[str] = None,
 ) -> Optional[Dict]:
-    """Agrega una planta al catálogo. Sube imagen a Storage si se provee."""
     imagen_url = None
-
-    # 1. Subir imagen a Supabase Storage
     if imagen_bytes and imagen_nombre:
         try:
             ext = imagen_nombre.rsplit(".", 1)[-1].lower()
@@ -83,14 +71,10 @@ def agregar_planta_catalogo(
                 imagen_bytes,
                 {"content-type": f"image/{ext}", "upsert": "true"},
             )
-            imagen_url = _sb().storage\
-                .from_("plant-images")\
-                .get_public_url(storage_path)
+            imagen_url = _sb().storage.from_("plant-images").get_public_url(storage_path)
         except Exception as e:
-            # Si falla el storage, continuamos sin imagen
-            pass
+            print(f"Storage error: {e}")
 
-    # 2. Insertar en catalogo_plantas
     try:
         result = _sb().table("catalogo_plantas").insert({
             "viverista_id":      viverista_id,
@@ -105,12 +89,11 @@ def agregar_planta_catalogo(
         }).execute()
         return result.data[0] if result.data else None
     except Exception as e:
-        st.error(f"Error guardando planta: {e}")
+        print(f"Error guardando planta: {e}")
         return None
 
 
 def obtener_catalogo(viverista_id: str) -> List[Dict]:
-    """Devuelve todas las plantas del catálogo de un viverista."""
     try:
         result = _sb().table("catalogo_plantas")\
             .select("*")\
@@ -128,45 +111,33 @@ def obtener_catalogo_marketplace(
     municipio: Optional[str] = None,
     precio_max: Optional[float] = None,
 ) -> List[Dict]:
-    """Devuelve catálogo de OTROS viveristas con datos del viverista dueño."""
     try:
-        # Join manual: plantas + viveristas
         query = _sb().table("catalogo_plantas")\
             .select("*, viveristas(nombre, nombre_vivero, municipio, telefono)")\
             .neq("viverista_id", excluir_viverista_id)\
             .gt("stock_unidades", 0)
-
         if precio_max:
             query = query.lte("precio_cop", precio_max)
-
         result = query.order("created_at", desc=True).limit(50).execute()
         plantas = result.data or []
-
-        # Aplanar el join y filtrar
         aplanadas = []
         for p in plantas:
             v_data = p.pop("viveristas", {}) or {}
-            p["nombre_vivero"] = v_data.get("nombre_vivero", "")
-            p["municipio"]     = v_data.get("municipio", "")
+            p["nombre_vivero"]     = v_data.get("nombre_vivero", "")
+            p["municipio"]         = v_data.get("municipio", "")
             p["telefono_vendedor"] = v_data.get("telefono", "")
-
-            # Filtro de búsqueda por texto (cliente-side para simplicidad)
             if buscar:
                 texto = f"{p.get('nombre_comun','')} {p.get('nombre_cientifico','')} {p.get('descripcion','')}".lower()
                 if buscar.lower() not in texto:
                     continue
-            # Filtro de municipio
             if municipio and p.get("municipio") != municipio:
                 continue
-
             aplanadas.append(p)
-
         return aplanadas
-    except Exception as e:
+    except Exception:
         return []
 
 
-# ─── TRANSACCIONES B2B ────────────────────────────────────────────────────────
 def crear_transaccion(
     viverista_id: str,
     comprador_id: str,
@@ -174,7 +145,6 @@ def crear_transaccion(
     cantidad: int,
     precio_unitario: float,
 ) -> Optional[Dict]:
-    """Crea una transacción B2B con estado 'pendiente'."""
     try:
         result = _sb().table("transacciones_b2b").insert({
             "viverista_id":        viverista_id,
@@ -184,55 +154,47 @@ def crear_transaccion(
             "precio_unitario_cop": precio_unitario,
             "estado":              "pendiente",
         }).execute()
-        # Descontar stock
         if result.data:
-            _sb().rpc("fn_descontar_stock", {
-                "p_planta_id": planta_id,
-                "p_cantidad":  cantidad,
-            }).execute()
+            try:
+                _sb().rpc("fn_descontar_stock", {
+                    "p_planta_id": planta_id,
+                    "p_cantidad":  cantidad,
+                }).execute()
+            except Exception:
+                pass
         return result.data[0] if result.data else None
     except Exception as e:
-        st.error(f"Error creando transacción: {e}")
+        print(f"Error creando transacción: {e}")
         return None
 
 
 def obtener_mis_transacciones(viverista_id: str, tipo: str = "ventas") -> List[Dict]:
-    """Devuelve ventas o compras del viverista con nombre de la planta y contraparte."""
     try:
-        if tipo == "ventas":
-            campo_filtro   = "viverista_id"
-            campo_contraparte = "comprador_id"
-        else:
-            campo_filtro   = "comprador_id"
-            campo_contraparte = "viverista_id"
-
+        campo_filtro = "viverista_id" if tipo == "ventas" else "comprador_id"
         result = _sb().table("transacciones_b2b")\
             .select("*, catalogo_plantas(nombre_comun), viveristas!comprador_id(nombre)")\
             .eq(campo_filtro, viverista_id)\
             .order("created_at", desc=True)\
             .limit(50)\
             .execute()
-
         txns = []
         for t in (result.data or []):
             planta_data = t.pop("catalogo_plantas", {}) or {}
             contra_data = t.pop("viveristas", {}) or {}
-            t["nombre_planta"]    = planta_data.get("nombre_comun", "Planta")
+            t["nombre_planta"]      = planta_data.get("nombre_comun", "Planta")
             t["contraparte_nombre"] = contra_data.get("nombre", "—")
-            t["total_cop"] = t.get("cantidad", 0) * t.get("precio_unitario_cop", 0)
+            t["total_cop"]          = t.get("cantidad", 0) * t.get("precio_unitario_cop", 0)
             txns.append(t)
         return txns
     except Exception:
         return []
 
 
-# ─── FLYWHEEL / EVENTOS ───────────────────────────────────────────────────────
 def registrar_evento_flywheel(
     tipo: str,
     viverista_id: Optional[str] = None,
     payload: Optional[Dict] = None,
 ) -> None:
-    """Registra un evento del Data Flywheel. No bloquea si falla."""
     try:
         _sb().table("eventos_agente").insert({
             "tipo":         tipo,
@@ -240,4 +202,12 @@ def registrar_evento_flywheel(
             "payload":      payload or {},
         }).execute()
     except Exception:
-        pass  # Los eventos nunca rompen el flujo principal
+        pass
+
+
+def obtener_kpis() -> Dict:
+    try:
+        result = _sb().from_("v_flywheel_kpis").select("*").execute()
+        return result.data[0] if result.data else {}
+    except Exception:
+        return {}
