@@ -19,9 +19,9 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str
 
     # Twilio
-    twilio_account_sid: str
-    twilio_auth_token: str
-    twilio_verify_service_sid: str
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_verify_service_sid: str = ""
     twilio_whatsapp_from: str = "whatsapp:+14155238886"
 
     # Gemini
