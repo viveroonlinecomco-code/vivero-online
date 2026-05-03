@@ -1,0 +1,354 @@
+<!DOCTYPE html><html class="light" lang="en"><head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<title>Plant Marketplace - Catalog</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet">
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#325926",
+              "background-light": "#f7f7f6",
+              "background-dark": "#171d15",
+            },
+            fontFamily: {
+              "display": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen pb-24">
+<!-- Header Section -->
+<header class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md px-4 pt-4 pb-2">
+<div class="flex items-center justify-between mb-4">
+<div class="flex items-center gap-2">
+<div class="bg-primary/10 p-2 rounded-full">
+<span class="material-symbols-outlined text-primary" style="">potted_plant</span>
+</div>
+<div>
+<p class="text-[10px] uppercase tracking-wider text-slate-500 font-bold" style="">Location</p>
+<div class="flex items-center gap-1">
+<span class="text-sm font-semibold" style="">Cajica</span>
+<span class="material-symbols-outlined text-sm" style="">keyboard_arrow_down</span>
+</div>
+</div>
+</div>
+<button class="w-10 h-10 flex items-center justify-center rounded-full bg-white dark:bg-slate-800 shadow-sm border border-slate-100 dark:border-slate-700" style="">
+<span class="material-symbols-outlined text-slate-600 dark:text-slate-300" style="">notifications</span>
+</button>
+</div>
+<!-- Search Bar -->
+<div class="flex gap-2">
+<div class="flex-1 relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" style="">search</span>
+<input class="w-full h-12 pl-10 pr-4 bg-white dark:bg-slate-800 border-none rounded-xl focus:ring-2 focus:ring-primary/20 text-sm shadow-sm" placeholder="Busca plantas..." type="text" data-vo="search-input">
+</div>
+<button class="w-12 h-12 flex items-center justify-center bg-primary text-white rounded-xl shadow-lg shadow-primary/20" style="">
+<span class="material-symbols-outlined" style="">tune</span>
+</button>
+</div>
+</header>
+<!-- Categories -->
+<div class="flex gap-3 px-4 py-4 overflow-x-auto no-scrollbar">
+<button class="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-full bg-primary px-6 text-white shadow-md shadow-primary/20" style="">
+<span class="text-sm font-semibold" style="">Todo</span>
+</button>
+<button class="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-full bg-white dark:bg-slate-800 px-6 border border-slate-100 dark:border-slate-700" style="">
+<span class="material-symbols-outlined text-lg text-primary" style="">chair</span>
+<span class="text-sm font-medium" style="">Interior</span>
+</button>
+<button class="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-full bg-white dark:bg-slate-800 px-6 border border-slate-100 dark:border-slate-700" style="">
+<span class="material-symbols-outlined text-lg text-primary" style="">park</span>
+<span class="text-sm font-medium" style="">Exterior</span>
+</button>
+<button class="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-full bg-white dark:bg-slate-800 px-6 border border-slate-100 dark:border-slate-700" style="">
+<span class="material-symbols-outlined text-lg text-primary" style="">forest</span>
+<span class="text-sm font-medium" style="">Árboles</span>
+</button>
+<button class="flex h-10 shrink-0 items-center justify-center gap-x-2 rounded-full bg-white dark:bg-slate-800 px-6 border border-slate-100 dark:border-slate-700" style="">
+<span class="material-symbols-outlined text-lg text-primary" style="">local_florist</span>
+<span class="text-sm font-medium" style="">Ornatos</span>
+</button>
+</div>
+<!-- Product List -->
+<main class="px-4 space-y-4">
+<!-- Card 1 -->
+<div class="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden shadow-sm border border-slate-100 dark:border-slate-700">
+<div class="relative h-48 w-full bg-slate-200 bg-center bg-cover" data-alt="Lush green Monstera Deliciosa plant in a white ceramic pot" style="background-image: url(&quot;https://lh3.googleusercontent.com/aida-public/AB6AXuCEPjcrHzdS83YHyCDWseJis6KzWQC1P2KqKy3pBWODuihKcAiLd63_a-A9DyM_hkg53drI1AV-h0E8PmlPRVRJEYY_bnaEY8KfmdG-dY_BOX3nN1Bf22B4ShZ8_4Qht1w-9cC50ba3PaGG4wUqW-w8B3YVo3lvC9JnDBIMf-5Wjadp49fd48QeeGMtOpC25-PPgcmeUR5qjkzEMA40CsYw11-HxwcdwEV-Fkj5b2z21cWD-ZiLV7pj8obKlxoaKGFxVfLbvbWtyA&quot;);">
+<div class="absolute top-3 right-3">
+<button class="w-8 h-8 bg-white/90 backdrop-blur rounded-full flex items-center justify-center shadow-sm" style="">
+<span class="material-symbols-outlined text-slate-900 text-xl" style="">favorite</span>
+</button>
+</div>
+<div class="absolute bottom-3 left-3 bg-white/90 backdrop-blur px-2 py-1 rounded-lg">
+<span class="text-[10px] font-bold text-primary uppercase" style="">Indoor Best Seller</span>
+</div>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start mb-1">
+<h3 class="text-lg font-bold" style="">Monstera Deliciosa</h3>
+<span class="text-lg font-bold text-primary" style="">$32.000</span>
+</div>
+<div class="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-sm mb-3">
+<span class="material-symbols-outlined text-sm" style="">storefront</span>
+<span class="" style="">Verde Boutique</span>
+<span class="w-1 h-1 bg-slate-300 rounded-full"></span>
+<span class="" style="">1.2 km</span>
+</div>
+<div class="flex items-center justify-between pt-3 border-t border-slate-50 dark:border-slate-700/50">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-yellow-400 text-sm fill-1" style="">star</span>
+<span class="text-sm font-bold" style="">4.8</span>
+<span class="text-xs text-slate-400" style="">(124 reseñas)</span>
+</div>
+<button class="bg-primary text-white text-sm font-bold px-4 py-2 rounded-xl" style="">Agregar al Carrito</button>
+</div>
+</div>
+</div>
+<!-- Card 2 -->
+<div class="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden shadow-sm border border-slate-100 dark:border-slate-700">
+<div class="relative h-48 w-full bg-slate-200 bg-center bg-cover" data-alt="Fiddle Leaf Fig plant with large violin-shaped leaves" style="background-image: url(&quot;https://lh3.googleusercontent.com/aida-public/AB6AXuAHnXN-mPaHuFqBve6HnbAL6UqjFOOmFr4NR4ePPB5B8-XLcjgbxU8cLZmmhlKfkURhDpMQC7iaUQ0tGKjsnvB34-Rbe5GB8NJmfrWJrfeSjhi3dLxaS9-GwkJwnnGN7QimpKxIVhzTQ-vMJARvbnauRZHSW89ujJT-v3pHo0bDTSVHdSHut1PvYvgf2jhhEcNK4RS5x2IvR7Lnd4BsBgHRrZHwk9FpK_mmI9bAAhfwEQTya02CzRffiFbqRZJZgeAtYE4_v9KQ0g&quot;);">
+<div class="absolute top-3 right-3">
+<button class="w-8 h-8 bg-white/90 backdrop-blur rounded-full flex items-center justify-center shadow-sm text-slate-400" style="">
+<span class="material-symbols-outlined text-xl" style="">favorite</span>
+</button>
+</div>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start mb-1">
+<h3 class="text-lg font-bold" style="">Fiddle Leaf Fig</h3>
+<span class="text-lg font-bold text-primary" style="">$55.000</span>
+</div>
+<div class="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-sm mb-3">
+<span class="material-symbols-outlined text-sm" style="">storefront</span>
+<span class="" style="">The Green Hub</span>
+<span class="w-1 h-1 bg-slate-300 rounded-full"></span>
+<span class="" style="">2.5 km</span>
+</div>
+<div class="flex items-center justify-between pt-3 border-t border-slate-50 dark:border-slate-700/50">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-yellow-400 text-sm fill-1" style="">star</span>
+<span class="text-sm font-bold" style="">4.6</span>
+<span class="text-xs text-slate-400" style="">(89 reseñas)</span>
+</div>
+<button class="bg-primary text-white text-sm font-bold px-4 py-2 rounded-xl" style="">Agregar al Carrito</button>
+</div>
+</div>
+</div>
+<!-- Card 3 -->
+<div class="bg-white dark:bg-slate-800 rounded-2xl overflow-hidden shadow-sm border border-slate-100 dark:border-slate-700">
+<div class="relative h-48 w-full bg-slate-200 bg-center bg-cover" data-alt="A collection of small aesthetic succulents in terracotta pots" style="background-image: url(&quot;https://lh3.googleusercontent.com/aida-public/AB6AXuBA2FpuSEeWyDFxpANS96gJ_Gqm6LVMHMO1GSCha5-pbPgv3qA8A5p2c6fPi3zt0x9ADXxWFqDLs4o1vBkwTcvhAfh77pi8ex_AtfIRTPVScy-hs3NpqtwB5mnSg_YNzOWWKPBmETRC9u2YZ79IBYb3XXoW0sQpZbmr96RAAH6wC0l-v0MvJWuEByP_vpgzuTGJlMk4Eytzja-_kzqHpDUQurnLudrqj7EJQWGRFcqRPRYbGQxTakTUn8aTYPC_zZEg1hVJUst29w&quot;);">
+<div class="absolute top-3 right-3">
+<button class="w-8 h-8 bg-white/90 backdrop-blur rounded-full flex items-center justify-center shadow-sm" style="">
+<span class="material-symbols-outlined text-slate-900 text-xl" style="">favorite</span>
+</button>
+</div>
+</div>
+<div class="p-4">
+<div class="flex justify-between items-start mb-1">
+<h3 class="text-lg font-bold" style="">Succulent Trio</h3>
+<span class="text-lg font-bold text-primary" style="">$18.000</span>
+</div>
+<div class="flex items-center gap-2 text-slate-500 dark:text-slate-400 text-sm mb-3">
+<span class="material-symbols-outlined text-sm" style="">storefront</span>
+<span class="" style="">Desert Dreams</span>
+<span class="w-1 h-1 bg-slate-300 rounded-full"></span>
+<span class="" style="">0.8 km</span>
+</div>
+<div class="flex items-center justify-between pt-3 border-t border-slate-50 dark:border-slate-700/50">
+<div class="flex items-center gap-1">
+<span class="material-symbols-outlined text-yellow-400 text-sm fill-1" style="">star</span>
+<span class="text-sm font-bold" style="">4.9</span>
+<span class="text-xs text-slate-400" style="">(56 reseñas)</span>
+</div>
+<button class="bg-primary text-white text-sm font-bold px-4 py-2 rounded-xl" style="">Agregar al Carrito</button>
+</div>
+</div>
+</div>
+</main>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 right-0 bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border-t border-slate-100 dark:border-slate-800 px-6 py-3 flex items-center justify-between z-50">
+<a class="flex flex-col items-center gap-1 text-primary" href="#" style="">
+<span class="material-symbols-outlined fill-1" style="">home</span>
+<span class="text-[10px] font-bold uppercase tracking-tighter" style="">Shop</span>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-400" href="#" style="">
+<span class="material-symbols-outlined" style="">explore</span>
+<span class="text-[10px] font-bold uppercase tracking-tighter" style="">Explore</span>
+</a>
+<a class="relative flex flex-col items-center gap-1 text-slate-400" href="#" style="">
+<span class="material-symbols-outlined" style="">shopping_cart</span>
+<span class="text-[10px] font-bold uppercase tracking-tighter" style="">Cart</span>
+<div class="absolute -top-1 -right-1 w-4 h-4 bg-primary text-white text-[8px] flex items-center justify-center rounded-full font-bold" style="">3</div>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-400" href="#" style="">
+<span class="material-symbols-outlined" style="">person</span>
+<span class="text-[10px] font-bold uppercase tracking-tighter" style="">Profile</span>
+</a>
+</nav>
+<style>
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .fill-1 {
+            font-variation-settings: 'FILL' 1;
+        }
+    </style>
+
+<script src="/static/js/vivero.js"></script>
+
+<script>
+if (!VO.requireAuth()) throw new Error('auth');
+
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const me = await VO.me();
+        // Cargar items del marketplace
+        const data = await VO.api('/api/marketplace?limite=20');
+        renderMarketplace(data.items || []);
+
+        // Cablear búsqueda
+        const searchInput = document.querySelector('input[type="search"], input[placeholder*="planta"], input[placeholder*="Busca"]');
+        if (searchInput) {
+            let tm;
+            searchInput.addEventListener('input', (e) => {
+                clearTimeout(tm);
+                tm = setTimeout(async () => {
+                    const q = e.target.value.trim();
+                    const url = q ? `/api/marketplace?q=${encodeURIComponent(q)}` : '/api/marketplace';
+                    const resp = await VO.api(url).catch(() => ({ items: [] }));
+                    renderMarketplace(resp.items || []);
+                }, 400);
+            });
+        }
+    } catch (e) {
+        console.error(e);
+        VO.showToast('Error al cargar marketplace', 'error');
+    }
+});
+
+function renderMarketplace(items) {
+    // Encuentra el contenedor de cards (los 3 productos de ejemplo)
+    const firstCard = document.querySelector('[class*="rounded"]')?.parentElement;
+    if (!firstCard || !items.length) return;
+
+    // Buscar el contenedor padre que agrupa los cards de productos
+    const productContainer = Array.from(document.querySelectorAll('.space-y-4, [class*="space-y"]')).find(el =>
+        el.querySelectorAll('img').length >= 2
+    );
+    if (!productContainer) return;
+
+    // Limpiar y re-renderizar
+    productContainer.innerHTML = items.map(item => `
+        <div class="bg-white dark:bg-gray-800 rounded-lg shadow overflow-hidden cursor-pointer" onclick="window.location.href='/marketplace/producto/${item.inventario_id}'">
+            <div class="h-48 bg-cover bg-center" style="background-image: url('${item.foto_ia_url || 'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?w=400'}')"></div>
+            <div class="p-4">
+                <div class="flex justify-between items-start mb-2">
+                    <div class="flex-1">
+                        <h3 class="font-bold text-base">${item.nombre_comun}</h3>
+                        <p class="text-xs text-gray-500 mt-1">
+                            <span class="material-symbols-outlined text-[10px] align-middle">storefront</span>
+                            ${item.nombre_vivero || '-'}
+                            ${item.distancia_km ? ` · ${item.distancia_km.toFixed(1)} km` : ''}
+                        </p>
+                    </div>
+                    <span class="text-lg font-bold text-primary">${VO.formatCOPFull(item.precio_mayorista)}</span>
+                </div>
+                <div class="flex justify-between items-center mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+                    <span class="text-xs text-gray-500">Stock: ${item.stock || 0}</span>
+                    <button class="bg-primary text-white text-xs font-semibold px-4 py-2 rounded-full">Ver detalle</button>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+</script>
+
+
+<script src="/static/js/vivero.js"></script>
+
+<script>
+(async function() {
+    if (!VO.requireAuth()) return;
+
+    const list = document.querySelector('[data-vo="marketplace-list"]');
+    const searchInput = document.querySelector('[data-vo="search-input"]');
+
+    async function loadItems(q = '') {
+        try {
+            const params = new URLSearchParams();
+            if (q) params.set('q', q);
+            const data = await VO.api('/api/marketplace?' + params.toString());
+            renderList(data.items);
+        } catch (e) {
+            VO.showToast(e.message, 'error');
+        }
+    }
+
+    function renderList(items) {
+        if (!list) return;
+        if (items.length === 0) {
+            list.innerHTML = '<div class="text-center py-12 text-slate-500">No encontramos plantas disponibles.</div>';
+            return;
+        }
+        list.innerHTML = items.map(i => `
+            <a href="/marketplace/producto/${i.inventario_id}"
+               class="block rounded-lg border border-primary/10 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+                <div class="h-48 bg-primary/10 bg-cover bg-center"
+                     style="background-image: url('${i.foto_ia_url || ''}');"></div>
+                <div class="p-4">
+                    <div class="flex items-start justify-between gap-2">
+                        <div>
+                            <p class="font-bold text-lg">${i.nombre_comun}</p>
+                            <p class="text-sm text-slate-500">
+                                <span class="material-symbols-outlined text-xs align-middle">storefront</span>
+                                ${i.nombre_vivero || 'Vivero'}
+                                ${i.distancia_km ? ' · ' + i.distancia_km.toFixed(1) + ' km' : ''}
+                                ${i.municipio ? ' · ' + i.municipio : ''}
+                            </p>
+                        </div>
+                        <div class="text-right">
+                            <p class="text-lg font-bold text-primary">${VO.formatCOPFull(i.precio_mayorista)}</p>
+                            <p class="text-xs text-slate-500">${i.stock} disp.</p>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex justify-end">
+                        <button class="px-4 py-2 bg-primary text-white rounded-full text-sm font-semibold">
+                            Cotizar
+                        </button>
+                    </div>
+                </div>
+            </a>
+        `).join('');
+    }
+
+    await loadItems();
+
+    if (searchInput) {
+        let timer;
+        searchInput.addEventListener('input', (e) => {
+            clearTimeout(timer);
+            timer = setTimeout(() => loadItems(e.target.value), 400);
+        });
+    }
+})();
+</script>
+
+</body></html>

@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Nursery Market Analytics - AI CEO Orchestrator</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#325926",
+                        "background-light": "#f7f7f6",
+                        "background-dark": "#171d15",
+                    },
+                    fontFamily: {
+                        "display": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100">
+<div class="relative flex min-h-screen w-full flex-col overflow-x-hidden">
+<!-- Header -->
+<div class="flex items-center bg-white dark:bg-background-dark p-4 border-b border-primary/10 justify-between sticky top-0 z-50">
+<div class="text-primary flex size-12 shrink-0 items-center justify-center">
+<span class="material-symbols-outlined text-3xl">navigation</span>
+</div>
+<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold leading-tight tracking-tight flex-1">Analítica del Vivero</h2>
+<div class="flex w-12 items-center justify-end">
+<button onclick="VO.logout()" title="Cerrar sesión" class="flex items-center justify-center rounded-full h-10 w-10 bg-primary/10 text-primary">
+<span class="material-symbols-outlined">person</span>
+</button>
+</div>
+</div>
+<!-- Navigation Tabs -->
+<div class="bg-white dark:bg-background-dark border-b border-primary/10">
+<div class="flex px-4 gap-8">
+<a class="flex flex-col items-center justify-center border-b-[3px] border-primary text-primary pb-3 pt-4" href="#">
+<p class="text-sm font-bold tracking-wide">Resumen</p>
+</a>
+<a class="flex flex-col items-center justify-center border-b-[3px] border-transparent text-slate-500 dark:text-slate-400 pb-3 pt-4" href="#">
+<p class="text-sm font-bold tracking-wide">Especies</p>
+</a>
+<a class="flex flex-col items-center justify-center border-b-[3px] border-transparent text-slate-500 dark:text-slate-400 pb-3 pt-4" href="#">
+<p class="text-sm font-bold tracking-wide">Regiones</p>
+</a>
+</div>
+</div>
+<!-- AI CEO Insights Section -->
+<div class="p-4">
+<div class="bg-primary/5 dark:bg-primary/20 rounded-xl p-4 border border-primary/20">
+<div class="flex items-center gap-3 mb-3">
+<div class="bg-primary text-white p-2 rounded-lg">
+<span class="material-symbols-outlined">psychology</span>
+</div>
+<div>
+<h3 class="font-bold text-primary">AI CEO Orchestrator</h3>
+<p class="text-xs text-slate-600 dark:text-slate-400">Inteligencia estratégica para tu vivero</p>
+</div>
+</div>
+<div class="space-y-3">
+<div class="bg-white dark:bg-slate-800 p-3 rounded-lg border border-primary/10 shadow-sm">
+<p class="text-sm leading-relaxed italic">"The demand for <strong>Ficus Lyrata</strong> is projected to rise by 22% next month. Consider shifting propagation resources to Southeast zones."</p>
+</div>
+<div class="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+<button class="whitespace-nowrap bg-primary text-white text-xs px-3 py-2 rounded-full font-semibold">Ajustar Inventario</button>
+<button class="whitespace-nowrap bg-white dark:bg-slate-800 border border-primary/20 text-primary dark:text-primary text-xs px-3 py-2 rounded-full font-semibold">Ver Mapa de Calor</button>
+<button class="whitespace-nowrap bg-white dark:bg-slate-800 border border-primary/20 text-primary dark:text-primary text-xs px-3 py-2 rounded-full font-semibold">Predicción de Mercado</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Key Metrics -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 p-4">
+<div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-800 border border-primary/10 shadow-sm">
+<p class="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider">Demandaa Total</p>
+<p class="text-slate-900 dark:text-white text-2xl font-bold">85.2k</p>
+<div class="flex items-center gap-1 text-emerald-600 font-medium text-sm">
+<span class="material-symbols-outlined text-sm">trending_up</span>
+<span>+5.4%</span>
+</div>
+</div>
+<div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-800 border border-primary/10 shadow-sm">
+<p class="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider">Ticket Promedio</p>
+<p class="text-slate-900 dark:text-white text-2xl font-bold">€42.4</p>
+<div class="flex items-center gap-1 text-emerald-600 font-medium text-sm">
+<span class="material-symbols-outlined text-sm">trending_up</span>
+<span>+2.1%</span>
+</div>
+</div>
+<div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-800 border border-primary/10 shadow-sm">
+<p class="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider">Tasa Crecimiento</p>
+<p class="text-slate-900 dark:text-white text-2xl font-bold">+12%</p>
+<div class="flex items-center gap-1 text-emerald-600 font-medium text-sm">
+<span class="material-symbols-outlined text-sm">arrow_upward</span>
+<span>0.8%</span>
+</div>
+</div>
+<div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-800 border border-primary/10 shadow-sm">
+<p class="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider">Stock Saludable</p>
+<p class="text-slate-900 dark:text-white text-2xl font-bold">94%</p>
+<div class="flex items-center gap-1 text-amber-500 font-medium text-sm">
+<span class="material-symbols-outlined text-sm">warning</span>
+<span>Revisar plagas</span>
+</div>
+</div>
+</div>
+<!-- Charts Section -->
+<div class="px-4 pb-20 space-y-6">
+<!-- Chart 1: Demandaa por Especie -->
+<div class="bg-white dark:bg-slate-800 rounded-xl p-5 border border-primary/10 shadow-sm">
+<div class="flex justify-between items-center mb-6">
+<h3 class="text-lg font-bold text-slate-900 dark:text-white">Demandaa por Especie</h3>
+<span class="material-symbols-outlined text-slate-400">more_vert</span>
+</div>
+<div class="space-y-4">
+<div class="space-y-2">
+<div class="flex justify-between text-sm mb-1">
+<span class="font-medium">Ficus Lyrata</span>
+<span class="text-slate-500 font-bold">42%</span>
+</div>
+<div class="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+<div class="bg-primary h-full rounded-full" style="width: 42%"></div>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between text-sm mb-1">
+<span class="font-medium">Monstera Deliciosa</span>
+<span class="text-slate-500 font-bold">35%</span>
+</div>
+<div class="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+<div class="bg-primary/80 h-full rounded-full" style="width: 35%"></div>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between text-sm mb-1">
+<span class="font-medium">Calathea Ornata</span>
+<span class="text-slate-500 font-bold">28%</span>
+</div>
+<div class="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+<div class="bg-primary/60 h-full rounded-full" style="width: 28%"></div>
+</div>
+</div>
+<div class="space-y-2">
+<div class="flex justify-between text-sm mb-1">
+<span class="font-medium">Sansevieria</span>
+<span class="text-slate-500 font-bold">15%</span>
+</div>
+<div class="w-full bg-slate-100 dark:bg-slate-700 h-2 rounded-full overflow-hidden">
+<div class="bg-primary/40 h-full rounded-full" style="width: 15%"></div>
+</div>
+</div>
+</div>
+</div>
+<!-- Chart 2: Estacionalidad de Ventas -->
+<div class="bg-white dark:bg-slate-800 rounded-xl p-5 border border-primary/10 shadow-sm">
+<div class="flex justify-between items-center mb-6">
+<h3 class="text-lg font-bold text-slate-900 dark:text-white">Estacionalidad de Ventas</h3>
+<div class="flex gap-2">
+<span class="text-[10px] bg-primary/10 text-primary px-2 py-1 rounded font-bold">ANUAL</span>
+</div>
+</div>
+<div class="h-40 flex items-end justify-between gap-1 px-2">
+<div class="flex-1 bg-primary/20 rounded-t-sm h-[30%]"></div>
+<div class="flex-1 bg-primary/20 rounded-t-sm h-[40%]"></div>
+<div class="flex-1 bg-primary/40 rounded-t-sm h-[60%]"></div>
+<div class="flex-1 bg-primary/60 rounded-t-sm h-[80%]"></div>
+<div class="flex-1 bg-primary rounded-t-sm h-[95%]"></div>
+<div class="flex-1 bg-primary/90 rounded-t-sm h-[85%]"></div>
+<div class="flex-1 bg-primary/70 rounded-t-sm h-[65%]"></div>
+<div class="flex-1 bg-primary/40 rounded-t-sm h-[45%]"></div>
+<div class="flex-1 bg-primary/20 rounded-t-sm h-[35%]"></div>
+<div class="flex-1 bg-primary/30 rounded-t-sm h-[50%]"></div>
+<div class="flex-1 bg-primary/50 rounded-t-sm h-[70%]"></div>
+<div class="flex-1 bg-primary/20 rounded-t-sm h-[30%]"></div>
+</div>
+<div class="flex justify-between mt-2 px-1 text-[10px] text-slate-400 font-bold">
+<span>ENE</span>
+<span>ABR</span>
+<span>JUL</span>
+<span>OCT</span>
+<span>DIC</span>
+</div>
+</div>
+<!-- Chart 3: Zonas con Mayor Demandaa (Map Visualization) -->
+<div class="bg-white dark:bg-slate-800 rounded-xl overflow-hidden border border-primary/10 shadow-sm">
+<div class="p-5">
+<h3 class="text-lg font-bold text-slate-900 dark:text-white">Zonas con Mayor Demandaa</h3>
+</div>
+<div class="relative h-48 bg-slate-200 dark:bg-slate-700">
+<img class="w-full h-full object-cover opacity-60 grayscale" data-alt="Market demand heatmap over a city map" data-location="Barcelona" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD3rdnfb-t-tO8o0LmTLwPt9bIB0pGuaprA9fkEFEV17bZavDoyLhUUguZuDSPP3q3CCY9l0iw-fzFpa3KnEqtTQ16h0UPxmKUUOLhc3ANqQ1Q-ZJAOhh5lVYVnFPn4SVse20bxF9Ts5kn6f7LJPccp-T7Ny0_HkHWuQJ_jO_AXt24Y6NpFZJ0uySNBbp2B2DgZNfA9QG_VqlyGvRyzp2H7vf_UUH2gjb94iwTmu_QTbGC3g73T_mPUKppQSIaTLdgvKZLrEn5LPw"/>
+<div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+<div class="w-20 h-20 bg-primary/30 rounded-full animate-pulse blur-xl"></div>
+<div class="w-12 h-12 bg-primary/50 rounded-full animate-pulse blur-lg"></div>
+<div class="w-4 h-4 bg-primary rounded-full ring-4 ring-white shadow-xl"></div>
+</div>
+</div>
+<div class="p-4 bg-primary/5">
+<div class="flex justify-between items-center">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary">location_on</span>
+<span class="text-sm font-bold">Cajicá, Cundinamarca</span>
+</div>
+<span class="text-primary text-xs font-bold">+18% Demanda</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Navigation Bar -->
+<div class="fixed bottom-0 left-0 right-0 border-t border-primary/10 bg-white dark:bg-background-dark px-4 pb-6 pt-2 z-50">
+<div class="flex justify-between max-w-md mx-auto">
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-primary" href="#">
+<span class="material-symbols-outlined fill-1">dashboard</span>
+<p class="text-[10px] font-bold uppercase tracking-tighter">Dashboard</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-slate-400" href="#">
+<span class="material-symbols-outlined">potted_plant</span>
+<p class="text-[10px] font-bold uppercase tracking-tighter">Stock</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-slate-400" href="#">
+<span class="material-symbols-outlined">monitoring</span>
+<p class="text-[10px] font-bold uppercase tracking-tighter">Insights</p>
+</a>
+<a class="flex flex-1 flex-col items-center justify-center gap-1 text-slate-400" href="#">
+<span class="material-symbols-outlined">settings</span>
+<p class="text-[10px] font-bold uppercase tracking-tighter">Settings</p>
+</a>
+</div>
+</div>
+</div>
+
+<script src="/static/js/vivero.js"></script>
+
+<script>
+if (!VO.requireAuth()) throw new Error('auth');
+
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const me = await VO.me();
+        if (me.rol !== 'admin') {
+            VO.showToast('Acceso solo para admin', 'error');
+            setTimeout(() => window.location.href = '/', 1500);
+            return;
+        }
+
+        const kpis = await VO.api('/api/kpis');
+
+        // Actualizar KPI cards principales
+        const updates = [
+            { search: /85\.2k|demanda total/i, value: kpis.gmv_total_cop ? VO.formatCOP(kpis.gmv_total_cop) : '$0' },
+            { search: /€42\.4|ticket/i, value: kpis.ticket_promedio_cop ? VO.formatCOP(kpis.ticket_promedio_cop) : '$0' },
+            { search: /\+12%|crecimiento/i, value: `${kpis.viveristas_activos || 0}` },
+            { search: /94%|stock saludable/i, value: `${kpis.items_disponibles || 0}` },
+        ];
+
+        const kpiNumbers = document.querySelectorAll('p.text-2xl, p.text-3xl, p[class*="text-4xl"]');
+        if (kpiNumbers[0]) kpiNumbers[0].textContent = VO.formatCOP(kpis.gmv_total_cop);
+        if (kpiNumbers[1]) kpiNumbers[1].textContent = VO.formatCOP(kpis.ticket_promedio_cop);
+        if (kpiNumbers[2]) kpiNumbers[2].textContent = `${kpis.viveristas_activos || 0}`;
+        if (kpiNumbers[3]) kpiNumbers[3].textContent = `${kpis.items_disponibles || 0}`;
+
+        console.log('KPIs cargados:', kpis);
+    } catch (e) {
+        console.error(e);
+        VO.showToast('Error al cargar KPIs', 'error');
+    }
+});
+</script>
+
+
+<script src="/static/js/vivero.js"></script>
+
+<script>
+(async function() {
+    if (!VO.requireAuth()) return;
+
+    try {
+        const k = await VO.api('/api/kpis');
+
+        // KPIs principales
+        const gmv = document.querySelector('[data-vo="gmv"]');
+        if (gmv) gmv.textContent = VO.formatCOP(k.gmv_total_cop);
+
+        const ticket = document.querySelector('[data-vo="ticket-promedio"]');
+        if (ticket) ticket.textContent = VO.formatCOPFull(k.ticket_promedio_cop);
+
+        const viveros = document.querySelector('[data-vo="viveros-activos"]');
+        if (viveros) viveros.textContent = k.viveristas_activos;
+
+        const items = document.querySelector('[data-vo="items-disponibles"]');
+        if (items) items.textContent = k.items_disponibles.toLocaleString('es-CO');
+
+        // Top viveristas
+        const topList = document.querySelector('[data-vo="top-viveristas"]');
+        if (topList && k.top_viveristas) {
+            topList.innerHTML = k.top_viveristas.slice(0, 5).map(v => `
+                <div class="flex items-center justify-between py-2 border-b border-primary/10 last:border-0">
+                    <div>
+                        <p class="font-semibold text-sm">${v.nombre_vivero}</p>
+                        <p class="text-xs text-slate-500">${v.ciudad || ''}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="font-bold text-primary text-sm">${VO.formatCOPFull(v.gmv_90d_cop)}</p>
+                        <p class="text-xs text-slate-500">${v.ventas_90d} ventas</p>
+                    </div>
+                </div>
+            `).join('') || '<p class="text-slate-500 text-sm">Sin datos aún</p>';
+        }
+    } catch (e) {
+        VO.showToast(e.message, 'error');
+    }
+})();
+</script>
+
+</body></html>

@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+
+<html lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#325926",
+                        "background-light": "#f7f7f6",
+                        "background-dark": "#171d15",
+                    },
+                    fontFamily: {
+                        "display": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<title>Mi Vivero - Dashboard</title>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen pb-24">
+<!-- Header Section -->
+<header class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-primary/10">
+<div class="flex items-center p-4 justify-between max-w-lg mx-auto w-full">
+<div class="text-primary flex size-10 shrink-0 items-center">
+<span class="material-symbols-outlined text-3xl">psychology_alt</span>
+</div>
+<h1 class="text-slate-900 dark:text-slate-100 text-xl font-bold leading-tight tracking-tight flex-1 ml-3">Mi Vivero</h1>
+<div class="flex w-12 items-center justify-end">
+<button onclick="VO.logout()" title="Cerrar sesión" class="flex items-center justify-center rounded-full h-10 w-10 bg-primary/10 text-primary">
+<span class="material-symbols-outlined">account_circle</span>
+</button>
+</div>
+</div>
+</header>
+<main class="max-w-lg mx-auto w-full px-4 pt-6 space-y-6">
+<!-- Stats Grid -->
+<section class="grid grid-cols-2 gap-4">
+<div class="flex flex-col gap-2 rounded-xl p-5 border border-primary/10 bg-white dark:bg-slate-900 shadow-sm">
+<p class="text-slate-500 dark:text-slate-400 text-sm font-medium">Inventario Total</p>
+<p class="text-slate-900 dark:text-slate-100 text-2xl font-bold"><span data-vo="inventario-total">0</span></p>
+<div class="flex items-center gap-1 text-emerald-600 text-sm font-semibold">
+<span class="material-symbols-outlined text-sm">trending_up</span>
+<span>+5%</span>
+</div>
+</div>
+<div class="flex flex-col gap-2 rounded-xl p-5 border border-primary/10 bg-white dark:bg-slate-900 shadow-sm">
+<p class="text-slate-500 dark:text-slate-400 text-sm font-medium">Ventas del Mes</p>
+<p class="text-slate-900 dark:text-slate-100 text-2xl font-bold"><span data-vo="ventas-mes">$0</span></p>
+<div class="flex items-center gap-1 text-emerald-600 text-sm font-semibold">
+<span class="material-symbols-outlined text-sm">trending_up</span>
+<span>+12%</span>
+</div>
+</div>
+</section>
+<!-- Demand Prediction Card -->
+<section class="space-y-3">
+<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold">Predicción de Demanda</h2>
+<div class="flex flex-col overflow-hidden rounded-xl border border-primary/10 bg-white dark:bg-slate-900 shadow-sm">
+<div class="w-full bg-primary/5 h-48 relative flex items-center justify-center overflow-hidden">
+<!-- Placeholder for Chart -->
+<div class="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_50%_50%,_var(--tw-gradient-stops))] from-primary via-transparent to-transparent"></div>
+<div class="flex items-end gap-2 h-32 px-4 w-full justify-around">
+<div class="w-8 bg-primary/40 rounded-t-md h-1/2"></div>
+<div class="w-8 bg-primary/60 rounded-t-md h-3/4"></div>
+<div class="w-8 bg-primary rounded-t-md h-full"></div>
+<div class="w-8 bg-primary/50 rounded-t-md h-2/3"></div>
+<div class="w-8 bg-primary/30 rounded-t-md h-1/3"></div>
+</div>
+</div>
+<div class="p-4">
+<p class="text-slate-900 dark:text-slate-100 font-bold">Tendencias de Mayo</p>
+<p class="text-slate-500 dark:text-slate-400 text-sm">Alta demanda proyectada para plantas suculentas y de sombra debido al cambio de estación.</p>
+</div>
+</div>
+</section>
+<!-- Inventory List with AI Suggestions -->
+<section class="space-y-3">
+<div class="flex items-center justify-between">
+<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold">Precios sugeridos por IA</h2>
+<button class="text-primary text-sm font-semibold">Ver todo</button>
+</div>
+<div class="space-y-3">
+<!-- Plant Item 1 -->
+<div class="flex items-center gap-4 p-3 rounded-xl bg-white dark:bg-slate-900 border border-primary/5 shadow-sm">
+<div class="size-16 rounded-lg overflow-hidden shrink-0">
+<img class="w-full h-full object-cover" data-alt="Close up of a vibrant green monstera deliciosa leaf" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCotjnZ6yz_eZCxazT_6yALZKTdjBdp77n9I7M_WJT95JaO5HYb8HL-JioA7-OYeeJs88Y80btBruaHvPf8YyzFgX-ugNHCdtXBQf3Hk_RKURz2yFFQaBCEHQyMQVrITc1v_JiW5OFsJqGHiKNZNcxvE_A7c7IA-7XE8AwdgB4PdGotNQHR6HGcThGArEEVCtkNB5rVo4SyQO1Zce8hlTRR0ZDbgt8VzSsPqFdleP1rbL6zNKKgi7zZhPajtATShMdq0FHV1xiKBw"/>
+</div>
+<div class="flex-1">
+<h3 class="font-semibold text-slate-900 dark:text-slate-100">Monstera Deliciosa</h3>
+<p class="text-xs text-slate-500 dark:text-slate-400">Stock: 12 unidades</p>
+</div>
+<div class="text-right">
+<p class="text-primary font-bold">$35.000</p>
+<div class="flex items-center justify-end gap-1 text-[10px] text-emerald-600 font-medium">
+<span class="material-symbols-outlined text-xs">auto_awesome</span>
+<span>IA Sugiere +$5.000</span>
+</div>
+</div>
+</div>
+<!-- Plant Item 2 -->
+<div class="flex items-center gap-4 p-3 rounded-xl bg-white dark:bg-slate-900 border border-primary/5 shadow-sm">
+<div class="size-16 rounded-lg overflow-hidden shrink-0">
+<img class="w-full h-full object-cover" data-alt="Small succulent plant in a ceramic pot" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCPA0qngf9KcINCynE6QvnivNzdjKr0Ti-62zJKgD8Sk9Z6_U6k6tSmkKvYIRWzwIrRRiaLTbgmIriFw3VZg_qNd4t_Iy7yzyl4OfzCM0s7X7APSZx9t2e2qtJyeG-ak9fKajs13DsYBBxO0AN21f9lieVo680Pkw1dWakR9aXFOS0pgnMuGJvk92E_H541iHlhDIBwyXD_nSYLQIKDK6JNxw2OqdJTfHJkpcU8oUBXD3Y4zH80pQnHf0iBEsLxmCooWmiecvOTCA"/>
+</div>
+<div class="flex-1">
+<h3 class="font-semibold text-slate-900 dark:text-slate-100">Echeveria Elegans</h3>
+<p class="text-xs text-slate-500 dark:text-slate-400">Stock: 45 unidades</p>
+</div>
+<div class="text-right">
+<p class="text-primary font-bold">$8.000</p>
+<div class="flex items-center justify-end gap-1 text-[10px] text-slate-500 font-medium">
+<span class="material-symbols-outlined text-xs">auto_awesome</span>
+<span>Precio Óptimo</span>
+</div>
+</div>
+</div>
+<!-- Plant Item 3 -->
+<div class="flex items-center gap-4 p-3 rounded-xl bg-white dark:bg-slate-900 border border-primary/5 shadow-sm">
+<div class="size-16 rounded-lg overflow-hidden shrink-0">
+<img class="w-full h-full object-cover" data-alt="Sansevieria plant with long sharp leaves" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDQlZXvDL4xb_WGJi4IFx96mR75yxSo_1h-SzTBZcmSAPCAssrCLQXupUH0ek8lOwOADzpW50EE9bflnsDUxTpLmji3PO4JQYvusB8qc2EkLw2t3MgwzcIEh4cJSUVxLed8DjfyP6-2aoh5RNyZIEbGNMF0IhAlQYVieWQUIqXmV5W4z9xVfoecjMj7X3RUbr4weaTNMZXMMZYMptV4Lpji9uysqAxaXdI49aKhHF0SOQZ9L7MVfpKOJQE4Fe1sqEfzW1U2_IxeZA"/>
+</div>
+<div class="flex-1">
+<h3 class="font-semibold text-slate-900 dark:text-slate-100">Sansevieria</h3>
+<p class="text-xs text-slate-500 dark:text-slate-400">Stock: 8 unidades</p>
+</div>
+<div class="text-right">
+<p class="text-primary font-bold">$22.000</p>
+<div class="flex items-center justify-end gap-1 text-[10px] text-red-500 font-medium">
+<span class="material-symbols-outlined text-xs">auto_awesome</span>
+<span>IA Sugiere -$2.000</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Floating Action Button -->
+<button class="fixed bottom-24 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/40 hover:scale-105 active:scale-95 transition-transform z-50">
+<span class="material-symbols-outlined text-3xl">photo_camera</span>
+</button>
+<!-- Bottom Navigation Bar -->
+<nav class="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-950 border-t border-primary/10 px-4 pb-6 pt-2 z-40">
+<div class="max-w-lg mx-auto flex justify-around">
+<a class="flex flex-col items-center gap-1 text-primary" href="#">
+<span class="material-symbols-outlined">grid_view</span>
+<p class="text-[10px] font-bold">Inicio</p>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500" href="#">
+<span class="material-symbols-outlined">potted_plant</span>
+<p class="text-[10px] font-medium">Inventario</p>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500" href="#">
+<span class="material-symbols-outlined">bar_chart_4_bars</span>
+<p class="text-[10px] font-medium">Ventas</p>
+</a>
+<a class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500" href="#">
+<span class="material-symbols-outlined">smart_toy</span>
+<p class="text-[10px] font-medium">IA Asist</p>
+</a>
+</div>
+</nav>
+
+<script src="/static/js/vivero.js"></script>
+
+<script>
+if (!VO.requireAuth()) throw new Error('auth');
+
+document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const me = await VO.me();
+        if (me.rol !== 'viverista' && me.rol !== 'admin') {
+            window.location.href = me.rol === 'comprador' ? '/marketplace' : '/';
+            return;
+        }
+
+        // Cargar catálogo y transacciones para KPIs
+        const [catalogo, txns] = await Promise.all([
+            VO.api('/api/catalogo').catch(() => ({ items: [], total: 0 })),
+            VO.api('/api/transacciones').catch(() => ({ items: [] })),
+        ]);
+
+        // KPI 1: Inventario total (suma de stock)
+        const totalStock = (catalogo.items || []).reduce((s, i) => s + (i.stock || 0), 0);
+        // KPI 2: Ventas del mes (suma precio_total de transacciones del mes actual)
+        const now = new Date();
+        const ventasMes = (txns.items || []).filter(t => {
+            const d = new Date(t.fecha_transaccion);
+            return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+        }).reduce((s, t) => s + (t.precio_total || 0), 0);
+
+        // Reemplazar los números en las tarjetas KPI
+        const kpiNumbers = document.querySelectorAll('p.text-4xl.font-bold, p[class*="text-4xl"]');
+        if (kpiNumbers[0]) kpiNumbers[0].textContent = totalStock.toLocaleString('es-CO');
+        if (kpiNumbers[1]) kpiNumbers[1].textContent = VO.formatCOPFull(ventasMes);
+
+        // "Precios sugeridos por IA": primeros 3 items del inventario
+        const precioCards = document.querySelectorAll('.space-y-3 > div, [class*="rounded-"]');
+        // TODO: Reemplazar los cards hardcodeados con catálogo real
+        console.log('Catálogo cargado:', catalogo.items.length, 'items');
+    } catch (e) {
+        console.error('Error cargando dashboard:', e);
+        VO.showToast('Error al cargar datos', 'error');
+    }
+});
+
+// Cablear FAB de cámara → /viverista/identificar
+document.addEventListener('DOMContentLoaded', () => {
+    const fab = document.querySelector('button[class*="rounded-full"][class*="w-14"], a[href*="identificar"]');
+    document.querySelectorAll('button').forEach(btn => {
+        if (btn.querySelector('.material-symbols-outlined')?.textContent === 'photo_camera' ||
+            btn.querySelector('.material-symbols-outlined')?.textContent === 'add_a_photo') {
+            btn.onclick = () => window.location.href = '/viverista/identificar';
+        }
+    });
+});
+</script>
+
+
+<script src="/static/js/vivero.js"></script>
+
+<script>
+(async function() {
+    if (!VO.requireAuth()) return;
+
+    try {
+        // Cargar inventario propio
+        const cat = await VO.api('/api/catalogo');
+        const inventoryTotal = cat.items.reduce((s, i) => s + (i.stock || 0), 0);
+        const tot = document.querySelector('[data-vo="inventario-total"]');
+        if (tot) tot.textContent = inventoryTotal.toLocaleString('es-CO');
+
+        // Cargar transacciones del mes
+        const txn = await VO.api('/api/transacciones');
+        const mesActual = new Date().toISOString().substring(0, 7);
+        const ventasMes = txn.items
+            .filter(t => (t.fecha_transaccion || '').startsWith(mesActual))
+            .filter(t => ['confirmada','pagada','completada'].includes(t.estado))
+            .reduce((s, t) => s + (t.precio_total || 0), 0);
+        const vm = document.querySelector('[data-vo="ventas-mes"]');
+        if (vm) vm.textContent = VO.formatCOPFull(ventasMes);
+
+        // Render de items del inventario en la sección "Precios sugeridos"
+        const inventarioList = document.querySelector('[data-vo="lista-inventario"]');
+        if (inventarioList) {
+            if (cat.items.length === 0) {
+                inventarioList.innerHTML = `
+                    <div class="text-center py-8 text-slate-500">
+                        <p class="mb-4">Aún no tienes plantas en tu inventario.</p>
+                        <a href="/viverista/identificar" class="inline-flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-full font-semibold">
+                            <span class="material-symbols-outlined">add_a_photo</span>
+                            Agrega tu primera planta con IA
+                        </a>
+                    </div>`;
+            } else {
+                inventarioList.innerHTML = cat.items.slice(0, 5).map(i => `
+                    <a href="#" class="flex items-center gap-4 p-4 bg-white dark:bg-slate-900 rounded-lg border border-primary/10 shadow-sm">
+                        <div class="w-14 h-14 rounded-lg bg-primary/10 bg-cover bg-center flex-shrink-0"
+                             style="background-image: url('${i.foto_ia_url || ''}');"></div>
+                        <div class="flex-1 min-w-0">
+                            <p class="font-semibold truncate">${i.nombre_comun}</p>
+                            <p class="text-xs text-slate-500">Stock: ${i.stock} ${i.unidad_medida}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-bold text-primary">${VO.formatCOPFull(i.precio_mayorista)}</p>
+                        </div>
+                    </a>
+                `).join('');
+            }
+        }
+    } catch (e) {
+        console.error(e);
+        VO.showToast('Error cargando datos: ' + e.message, 'error');
+    }
+})();
+</script>
+
+</body></html>

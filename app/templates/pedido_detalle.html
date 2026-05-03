@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Seguimiento de Pedido - Plant Logistics</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#325926",
+                        "background-light": "#f7f7f6",
+                        "background-dark": "#171d15",
+                    },
+                    fontFamily: {
+                        "display": ["Inter"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 font-display">
+<div class="relative flex h-auto min-h-screen w-full max-w-md mx-auto flex-col bg-background-light dark:bg-background-dark overflow-x-hidden">
+<!-- Header -->
+<div class="flex items-center bg-white dark:bg-background-dark p-4 pb-2 justify-between sticky top-0 z-50">
+<div class="text-primary flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-primary/10 cursor-pointer">
+<span class="material-symbols-outlined">arrow_back</span>
+</div>
+<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center">Detalles del Envío</h2>
+<div class="flex w-10 items-center justify-end">
+<button class="flex size-10 cursor-pointer items-center justify-center rounded-full bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined">chat_bubble</span>
+</button>
+</div>
+</div>
+<!-- Map Section -->
+<div class="flex px-4 py-3">
+<div class="w-full bg-slate-200 dark:bg-slate-800 bg-center bg-no-repeat aspect-[16/10] bg-cover rounded-xl object-cover border-2 border-white dark:border-slate-700 shadow-sm overflow-hidden" data-alt="Interactive map showing the delivery route from nursery to customer" data-location="Cajicá" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuCtFFy7lg8u0A1glAWyaXPoxDPXlT32zXugdU0tHdgMYytibYG24O9vzHvphdfbCTEA1GkAFxekb-5YPK_IZHwUmnjxbfrSmnonoz01VRWXN2r0cAizfAZ2qaZcsjdTy70BqkHE11qSwLPKguo4NAlPZJDF-po50BeU5ULM75pwIODuKldqVZO2Mcq0eRY_2hnj0MaAtj-7fgLW9_P4r5f-3TItJYW-iycC1wwX2HeUYblBPKJvH3F1MViDu8Ts7mmtKjbD9_sD9w");'>
+<!-- Floating Map Elements -->
+<div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+<div class="relative w-full h-full p-8">
+<div class="absolute top-1/4 left-1/4 bg-primary text-white p-2 rounded-full shadow-lg">
+<span class="material-symbols-outlined text-sm">potted_plant</span>
+</div>
+<div class="absolute bottom-1/3 right-1/4 bg-white text-primary p-2 rounded-full shadow-lg border-2 border-primary">
+<span class="material-symbols-outlined text-sm">local_shipping</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Order Progress Bar -->
+<div class="flex flex-col gap-3 p-4 bg-white dark:bg-background-dark/50 mx-4 rounded-xl shadow-sm mb-4">
+<div class="flex gap-6 justify-between items-center">
+<p class="text-slate-900 dark:text-slate-100 text-base font-bold leading-normal">El repartidor está cerca</p>
+<p class="text-primary text-sm font-bold leading-normal">82%</p>
+</div>
+<div class="rounded-full bg-primary/10 h-3 overflow-hidden">
+<div class="h-full rounded-full bg-primary" style="width: 82%;"></div>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary text-sm">schedule</span>
+<p class="text-slate-500 dark:text-slate-400 text-sm font-medium leading-normal">Llegada estimada: 8 min</p>
+</div>
+</div>
+<!-- Status Title -->
+<h2 class="text-slate-900 dark:text-slate-100 tracking-tight text-2xl font-bold leading-tight px-6 pb-4 pt-2">Tu pedido está en camino</h2>
+<!-- Timeline -->
+<div class="grid grid-cols-[48px_1fr] gap-x-2 px-6">
+<!-- Step 1 -->
+<div class="flex flex-col items-center">
+<div class="flex size-8 items-center justify-center rounded-full bg-primary text-white">
+<span class="material-symbols-outlined text-[20px]">check_circle</span>
+</div>
+<div class="w-[2px] bg-primary h-12"></div>
+</div>
+<div class="flex flex-1 flex-col pb-6">
+<p class="text-slate-900 dark:text-slate-100 text-base font-semibold leading-normal">Pedido Confirmado</p>
+<p class="text-slate-500 dark:text-slate-400 text-sm font-normal">Recibido a las 09:45 AM</p>
+</div>
+<!-- Step 2 -->
+<div class="flex flex-col items-center">
+<div class="flex size-8 items-center justify-center rounded-full bg-primary text-white ring-4 ring-primary/20">
+<span class="material-symbols-outlined text-[20px]">local_shipping</span>
+</div>
+<div class="w-[2px] bg-slate-200 dark:bg-slate-700 h-12"></div>
+</div>
+<div class="flex flex-1 flex-col pb-6">
+<p class="text-slate-900 dark:text-slate-100 text-base font-semibold leading-normal">En Camino</p>
+<p class="text-primary text-sm font-medium">El repartidor ya recogió tus plantas</p>
+</div>
+<!-- Step 3 -->
+<div class="flex flex-col items-center">
+<div class="flex size-8 items-center justify-center rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400">
+<span class="material-symbols-outlined text-[20px]">package_2</span>
+</div>
+</div>
+<div class="flex flex-1 flex-col pb-4">
+<p class="text-slate-400 dark:text-slate-500 text-base font-semibold leading-normal">Entregado</p>
+<p class="text-slate-400 dark:text-slate-500 text-sm font-normal">Esperado hoy a las 11:30 AM</p>
+</div>
+</div>
+<!-- Driver Info -->
+<div class="mx-4 mt-4 p-4 rounded-xl bg-primary/5 border border-primary/10 flex items-center gap-4">
+<div class="size-14 rounded-full bg-slate-200 overflow-hidden shrink-0 border-2 border-white shadow-sm" data-alt="Profile picture of delivery driver" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDDM189Zw1YH6EXp4TIjIFLL1UsPlrxLJCWIKHXTXAOxewxYwK9uugXABPu1cXdNY8emBQR4OjjfhUpmxFTo3rpODMHV2zUU0D7UFWw78kzQfBhA7HwcjxllRifeq0kiNMbvLszUYN4UOHrQwwTnL4_WTsmHejZIZav4pFK_yd7yCb_3EWrlPCB3jP-vzlon51u67IiQmeVlCCjixtL8lIfGVCvJ5NQJaRkJ-Ca6IQxHaFA9e2Is8-kuDjruXa1hTVLHsZuOTRMdg');">
+</div>
+<div class="flex-1">
+<p class="text-slate-900 dark:text-slate-100 font-bold text-base">Carlos Rodríguez</p>
+<div class="flex items-center gap-1 text-slate-500 dark:text-slate-400 text-sm">
+<span class="material-symbols-outlined text-sm text-yellow-500">star</span>
+<span>4.9 (120 entregas)</span>
+</div>
+</div>
+<button class="size-10 rounded-full bg-primary text-white flex items-center justify-center shadow-lg shadow-primary/20">
+<span class="material-symbols-outlined">call</span>
+</button>
+</div>
+<!-- Plant List & Nursery Info -->
+<div class="p-6">
+<div class="flex items-center justify-between mb-4">
+<h3 class="text-slate-900 dark:text-slate-100 font-bold text-lg">Resumen de compra</h3>
+<span class="text-primary text-sm font-bold">Vivero El Olivo</span>
+</div>
+<div class="space-y-4">
+<!-- Item 1 -->
+<div class="flex items-center gap-4">
+<div class="size-16 rounded-lg bg-slate-100 dark:bg-slate-800 shrink-0" data-alt="Photo of a Monstera Deliciosa plant" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBVHL4qORMuvo_pe8nHXBLCh_jq0y_lAB7c2rPJSEucyne8H7w_cAv2Lg7NY0sNeorWRwbUtrEePDjfbkM65jiHCVVBQmke856rL5VOCXbFwzjOurLJ1Awlu7A_eoiPUnZDVPZCjccNzvH22D56MJgmxCSDpOVoENHKaT1PImNBZuMLZLJrrpwvOW63wBt6u4Gr1ti3GI3Crdol4huePAy6CTnMWFOkCeV8Hma8nb6O8LWqIu5gpqBkvrkSByVhXV74NZQltP_H2g');"></div>
+<div class="flex-1">
+<p class="text-slate-900 dark:text-slate-100 font-medium">Monstera Deliciosa</p>
+<p class="text-slate-500 dark:text-slate-400 text-sm">Grande • 1 unidad</p>
+</div>
+<p class="font-bold text-slate-900 dark:text-slate-100">$450.000</p>
+</div>
+<!-- Item 2 -->
+<div class="flex items-center gap-4">
+<div class="size-16 rounded-lg bg-slate-100 dark:bg-slate-800 shrink-0" data-alt="Photo of a Sansevieria plant" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCx1i1YAzK83J2zfzpdHisTvFErK7cZzpJASrQk8dnyld2cCvAJouo6SH_eR-Uok4FO9KMaTIIJ4rSxJa6esHKjAO3LtUE-Y44wG7lAx_HBqlKsydPWXFME9PfFItkHpX50mfCjjMkeTWP5VtwDWHUcvCBPwlzcWvK_Ffah-6fW9OPhWOhKQB-dCVC6gWgDLTV0wGlK06FQPMzpKf6eXLKCLoymxRqIHYbO5UZbrTCZewVJWiCrCekT9gyBgxryayJufUpY6eRRuA');"></div>
+<div class="flex-1">
+<p class="text-slate-900 dark:text-slate-100 font-medium">Sansevieria Trifasciata</p>
+<p class="text-slate-500 dark:text-slate-400 text-sm">Mediana • 2 unidades</p>
+</div>
+<p class="font-bold text-slate-900 dark:text-slate-100">$580.000</p>
+</div>
+</div>
+<!-- Total -->
+<div class="mt-6 pt-6 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center">
+<span class="text-slate-500 dark:text-slate-400 font-medium">Total Pagado</span>
+<span class="text-2xl font-black text-primary">$1.030.000</span>
+</div>
+</div>
+<!-- Bottom Action -->
+<div class="p-4 mb-8">
+<button class="w-full bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
+<span class="material-symbols-outlined">help_outline</span>
+                ¿Necesitas ayuda con tu pedido?
+            </button>
+</div>
+</div>
+
+<script src="/static/js/vivero.js"></script>
+
+<script>
+if (!VO.requireAuth()) throw new Error('auth');
+
+document.addEventListener('DOMContentLoaded', async () => {
+    // Por ahora muestra los datos de demo; se cableará con /api/transacciones/{id}
+    try {
+        const data = await VO.api('/api/transacciones');
+        console.log('Transacciones:', data.items?.length);
+    } catch (e) {
+        console.error(e);
+    }
+});
+</script>
+
+
+<script src="/static/js/vivero.js"></script>
+
+<script>
+(async function() {
+    if (!VO.requireAuth()) return;
+    const id = window.location.pathname.split('/').pop();
+    // Endpoint detalle por transacción queda como mejora futura
+    // Por ahora el template sirve su estado mock
+})();
+</script>
+
+</body></html>

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<script id="tailwind-config">
+    tailwind.config = {
+        darkMode: "class",
+        theme: {
+            extend: {
+                colors: {
+                    "primary": "#325926",
+                    "background-light": "#f7f7f6",
+                    "background-dark": "#171d15",
+                },
+                fontFamily: { "display": ["Inter", "sans-serif"] },
+                borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+            },
+        },
+    }
+</script>
+<title>Verificar · ViveroOnline</title>
+<style>
+    body { min-height: max(884px, 100dvh); }
+    .otp-input {
+        width: 3rem;
+        height: 3.75rem;
+        text-align: center;
+        font-size: 1.5rem;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+    @media (max-width: 380px) {
+        .otp-input { width: 2.5rem; height: 3.25rem; font-size: 1.25rem; }
+    }
+</style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100">
+
+<div class="flex flex-col min-h-screen max-w-md mx-auto px-6 py-8">
+
+    <!-- Back button -->
+    <div class="flex items-center mb-8">
+        <a href="/auth/ingresar" class="material-symbols-outlined text-slate-700 dark:text-slate-300 p-2 -ml-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition">arrow_back</a>
+    </div>
+
+    <!-- Hero -->
+    <div class="flex-1">
+        <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6">
+            <span class="material-symbols-outlined text-primary text-3xl">sms</span>
+        </div>
+
+        <h1 class="text-3xl font-black leading-tight tracking-tight mb-3">
+            Verifica tu<br>
+            <span class="text-primary">WhatsApp</span>
+        </h1>
+        <p class="text-slate-600 dark:text-slate-400 text-base mb-2">
+            Ingresa el código de 6 dígitos que enviamos a
+        </p>
+        <p id="phone-display" class="font-bold mb-10">+57 ···</p>
+
+        <!-- OTP inputs -->
+        <form id="otp-form" class="space-y-6">
+            <div class="flex justify-between gap-2" id="otp-container">
+                <input class="otp-input bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition" type="text" inputmode="numeric" maxlength="1" data-idx="0" autocomplete="one-time-code">
+                <input class="otp-input bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition" type="text" inputmode="numeric" maxlength="1" data-idx="1">
+                <input class="otp-input bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition" type="text" inputmode="numeric" maxlength="1" data-idx="2">
+                <input class="otp-input bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition" type="text" inputmode="numeric" maxlength="1" data-idx="3">
+                <input class="otp-input bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition" type="text" inputmode="numeric" maxlength="1" data-idx="4">
+                <input class="otp-input bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition" type="text" inputmode="numeric" maxlength="1" data-idx="5">
+            </div>
+
+            <div id="error-box" class="hidden rounded-DEFAULT bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3"></div>
+
+            <button
+                type="submit"
+                id="verify-btn"
+                class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-primary/20 transition disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+                <span id="btn-text">Verificar</span>
+                <span id="btn-spinner" class="hidden material-symbols-outlined animate-spin">progress_activity</span>
+            </button>
+        </form>
+
+        <!-- Resend -->
+        <div class="mt-6 text-center text-sm">
+            <span class="text-slate-500 dark:text-slate-500">¿No recibiste el código? </span>
+            <button id="resend-btn" type="button" class="text-primary font-semibold hover:underline disabled:text-slate-400 disabled:no-underline">
+                Reenviar <span id="timer"></span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+const whatsapp = sessionStorage.getItem('vivero_whatsapp');
+if (!whatsapp) window.location.href = '/auth/ingresar';
+
+document.getElementById('phone-display').textContent = whatsapp || '';
+
+const inputs = [...document.querySelectorAll('.otp-input')];
+const errorBox = document.getElementById('error-box');
+const btn = document.getElementById('verify-btn');
+const btnText = document.getElementById('btn-text');
+const btnSpinner = document.getElementById('btn-spinner');
+const form = document.getElementById('otp-form');
+const resendBtn = document.getElementById('resend-btn');
+const timerSpan = document.getElementById('timer');
+
+function showError(msg) {
+    errorBox.textContent = msg;
+    errorBox.classList.remove('hidden');
+}
+function hideError() { errorBox.classList.add('hidden'); }
+
+function setLoading(loading) {
+    btn.disabled = loading;
+    btnText.textContent = loading ? 'Verificando...' : 'Verificar';
+    btnSpinner.classList.toggle('hidden', !loading);
+}
+
+// Auto-advance + backspace navigation
+inputs.forEach((inp, i) => {
+    inp.addEventListener('input', (e) => {
+        const v = e.target.value.replace(/\D/g, '').slice(0,1);
+        e.target.value = v;
+        if (v && i < inputs.length - 1) inputs[i+1].focus();
+
+        // Auto-submit when all 6 digits are entered
+        const code = inputs.map(x => x.value).join('');
+        if (code.length === 6) form.dispatchEvent(new Event('submit'));
+    });
+
+    inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Backspace' && !e.target.value && i > 0) {
+            inputs[i-1].focus();
+        }
+    });
+
+    inp.addEventListener('paste', (e) => {
+        e.preventDefault();
+        const paste = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '').slice(0, 6);
+        paste.split('').forEach((d, idx) => { if (inputs[idx]) inputs[idx].value = d; });
+        if (paste.length === 6) form.dispatchEvent(new Event('submit'));
+        else inputs[Math.min(paste.length, 5)].focus();
+    });
+});
+
+inputs[0].focus();
+
+form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    hideError();
+
+    const code = inputs.map(x => x.value).join('');
+    if (code.length !== 6) {
+        showError('Ingresa los 6 dígitos.');
+        return;
+    }
+
+    setLoading(true);
+
+    try {
+        const res = await fetch('/api/auth/otp/verify', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ whatsapp, code }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Código inválido.');
+
+        // Guardar tokens
+        localStorage.setItem('vivero_access_token', data.access_token);
+        localStorage.setItem('vivero_refresh_token', data.refresh_token);
+        sessionStorage.removeItem('vivero_whatsapp');
+
+        // Redirigir según si es nuevo usuario o no
+        if (data.needs_onboarding) {
+            window.location.href = '/auth/onboarding';
+        } else if (data.rol === 'viverista') {
+            window.location.href = '/viverista';
+        } else if (data.rol === 'comprador') {
+            window.location.href = '/marketplace';
+        } else if (data.rol === 'admin') {
+            window.location.href = '/admin';
+        } else {
+            window.location.href = '/';
+        }
+    } catch (err) {
+        showError(err.message);
+        setLoading(false);
+        inputs.forEach(i => i.value = '');
+        inputs[0].focus();
+    }
+});
+
+// Resend timer (30s cooldown)
+let cooldown = 30;
+function tick() {
+    if (cooldown > 0) {
+        resendBtn.disabled = true;
+        timerSpan.textContent = `(${cooldown}s)`;
+        cooldown--;
+        setTimeout(tick, 1000);
+    } else {
+        resendBtn.disabled = false;
+        timerSpan.textContent = '';
+    }
+}
+tick();
+
+resendBtn.addEventListener('click', async () => {
+    try {
+        await fetch('/api/auth/otp/send', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ whatsapp }),
+        });
+        cooldown = 30;
+        tick();
+    } catch (err) {
+        showError('No se pudo reenviar el código.');
+    }
+});
+</script>
+<script src="/static/js/vivero.js"></script>
+</body>
+</html>
