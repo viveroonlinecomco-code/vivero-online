@@ -24,7 +24,7 @@ class TwilioOtpService:
         try:
             v = self._client.verify.v2.services(self._service_sid).verifications.create(
                 to=whatsapp,
-                channel="whatsapp",
+                channel="sms",
             )
             return v.status == "pending", v.status
         except TwilioRestException as e:
