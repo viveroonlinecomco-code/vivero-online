@@ -87,36 +87,62 @@ async def verify_otp(whatsapp: str, code: str) -> dict:
 
 
 def _get_or_create_user(client, email: str, whatsapp: str) -> tuple[str, bool]:
-    """Retorna (user_id, is_new)."""
-    # Busca por email - paginado para soportar > 50 usuarios
-    try:
-        page = 1
-        while page < 50:
-            result = client.auth.admin.list_users(page=page, per_page=50)
-            users_list = result if isinstance(result, list) else (result.users if hasattr(result, 'users') else [])
-            if not users_list:
-                break
-            for u in users_list:
-                if u.email == email or (hasattr(u, 'phone') and u.phone and whatsapp.lstrip('+') in u.phone):
-                    return u.id, False
-            if len(users_list) < 50:
-                break
-            page += 1
-    except Exception as e:
-        import logging
-        logging.warning(f"Error buscando usuario: {e}")
+    """Retorna (user_id, is_new). Busca usuario existente vía SQL directo."""
+    import logging
 
-    # Crea
-    created = client.auth.admin.create_user({
-        "email": email,
-        "email_confirm": True,
-        "phone": whatsapp,
-        "user_metadata": {"whatsapp_numero": whatsapp},
-        "app_metadata": {"whatsapp_numero": whatsapp, "provider": "whatsapp_otp"},
-    })
-    if not created or not created.user:
-        raise HTTPException(500, detail="No se pudo crear el usuario")
-    return created.user.id, True
+    # Busca usuario existente por email vía SQL directo (más rápido que list_users)
+    try:
+        # Usa la API REST de Supabase directamente para query auth.users
+        from app.config import get_settings
+        import httpx
+        s = get_settings()
+        headers = {
+            "apikey": s.supabase_service_key,
+            "Authorization": f"Bearer {s.supabase_service_key}",
+        }
+        # Endpoint admin para listar usuarios filtrados
+        resp = httpx.get(
+            f"{s.supabase_url}/auth/v1/admin/users",
+            headers=headers,
+            params={"email": email},
+            timeout=10.0,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            users = data.get("users") if isinstance(data, dict) else data
+            if users:
+                for u in users:
+                    if u.get("email") == email:
+                        return u.get("id"), False
+    except Exception as e:
+        logging.warning(f"Error buscando usuario por email: {e}")
+
+    # Si no se encontró, crea uno nuevo
+    try:
+        created = client.auth.admin.create_user({
+            "email": email,
+            "email_confirm": True,
+            "phone": whatsapp,
+            "user_metadata": {"whatsapp_numero": whatsapp},
+            "app_metadata": {"whatsapp_numero": whatsapp, "provider": "whatsapp_otp"},
+        })
+        if not created or not created.user:
+            raise HTTPException(500, detail="No se pudo crear el usuario")
+        return created.user.id, True
+    except Exception as e:
+        # Si la creación falla porque el usuario ya existe, intentar buscarlo por SQL
+        logging.warning(f"Error en create_user: {e}")
+        # Re-buscar por SQL
+        try:
+            from app.services.supabase import admin
+            db = admin()
+            # Consulta directa a auth.users vía rpc o select
+            result = db.from_("auth.users").select("id").eq("email", email).limit(1).execute()
+            if result.data:
+                return result.data[0]["id"], False
+        except Exception:
+            pass
+        raise HTTPException(500, detail=f"No se pudo crear ni encontrar el usuario: {e}")
 
 
 def _generate_session(client, email: str) -> dict:
