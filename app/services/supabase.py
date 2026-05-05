@@ -41,6 +41,6 @@ def decode_jwt(token: str) -> dict[str, Any]:
     return jwt.decode(
         token,
         s.supabase_jwt_secret,
-        algorithms=["HS256"],
+        algorithms=["HS256", "ES256", "RS256"],
         audience="authenticated",
     )
