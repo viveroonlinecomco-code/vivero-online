@@ -87,15 +87,24 @@ async def verify_otp(whatsapp: str, code: str) -> dict:
 
 
 def _get_or_create_user(client, email: str, whatsapp: str) -> tuple[str, bool]:
-    """Retorna (user_id, is_new)."""
-    # Busca por email
-    try:
-        existing = client.auth.admin.list_users()
-        for u in existing:
-            if u.email == email:
-                return u.id, False
-    except Exception:
-        pass
+       """Retorna (user_id, is_new)."""
+       # Busca por email - paginado para soportar > 50 usuarios
+       try:
+           page = 1
+           while page < 50:  # max 50 páginas = 2500 usuarios
+               result = client.auth.admin.list_users(page=page, per_page=50)
+               users_list = result if isinstance(result, list) else (result.users if hasattr(result, 'users') else [])
+               if not users_list:
+                   break
+               for u in users_list:
+                   if u.email == email or (hasattr(u, 'phone') and u.phone and whatsapp.lstrip('+') in u.phone):
+                       return u.id, False
+               if len(users_list) < 50:
+                   break
+               page += 1
+       except Exception as e:
+           import logging
+           logging.warning(f"Error buscando usuario: {e}")
 
     # Crea
     created = client.auth.admin.create_user({
