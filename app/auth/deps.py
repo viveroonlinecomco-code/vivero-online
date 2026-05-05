@@ -49,7 +49,12 @@ async def require_user(
 
     return UserContext(
         user_id=payload["sub"],
-        whatsapp=payload.get("whatsapp_numero", ""),
+        whatsapp=(
+               payload.get("whatsapp_numero")
+               or (payload.get("app_metadata") or {}).get("whatsapp_numero")
+               or (payload.get("user_metadata") or {}).get("whatsapp_numero")
+               or payload.get("phone", "")
+           ),
         rol=payload.get("rol"),
         vivero_id=payload.get("vivero_id"),
         cliente_id=payload.get("cliente_id"),
