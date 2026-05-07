@@ -265,18 +265,5 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 <script src="/static/js/vivero.js"></script>
 
-<script>
-(async function() {
-    if (!VO.requireAuth()) return;
-
-    try {
-        const me = await VO.me();
-        const nameEl = document.querySelector('[data-vo="nombre"]');
-        if (nameEl) nameEl.textContent = me.whatsapp || 'Bienvenido';
-    } catch (e) {
-        console.error(e);
-    }
-})();
-</script>
 
 </body></html>
