@@ -219,19 +219,43 @@
 <script>
 if (!VO.requireAuth()) throw new Error('auth');
 
+// Etiquetas legibles para tipo_cliente (metadata, NO rol)
+const TIPO_CLIENTE_LABEL = {
+    paisajista: 'Paisajista',
+    constructora: 'Constructora',
+    conjunto: 'Conjunto residencial',
+    empresa: 'Empresa',
+    otro: 'Comprador',
+};
+
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         const me = await VO.me();
+
+        // Guardia de rol: solo comprador o admin acceden aquí
         if (me.rol !== 'comprador' && me.rol !== 'admin') {
             window.location.href = me.rol === 'viverista' ? '/viverista' : '/';
             return;
         }
 
-        // Actualizar nombre de bienvenida
+        // Truco UI: saludo dinámico según subtipo (tipo_cliente)
+        const subtipo = TIPO_CLIENTE_LABEL[me.tipo_cliente] || 'Comprador';
+        const saludo = me.nombre_display
+            ? me.nombre_display
+            : `Bienvenido, ${subtipo}`;
+
         const bienvenida = Array.from(document.querySelectorAll('p, h2, h3')).find(el =>
             /david silva|arq\./i.test(el.textContent)
         );
-        if (bienvenida) bienvenida.textContent = me.nombre_display || me.whatsapp || 'Comprador';
+        if (bienvenida) bienvenida.textContent = saludo;
+
+        // Etiqueta superior pequeña ("Bienvenido" -> el subtipo)
+        const etiquetaTop = Array.from(document.querySelectorAll('p')).find(el =>
+            /^bienvenido$/i.test((el.textContent || '').trim())
+        );
+        if (etiquetaTop && me.tipo_cliente) {
+            etiquetaTop.textContent = subtipo.toUpperCase();
+        }
     } catch (e) {
         console.error(e);
     }
