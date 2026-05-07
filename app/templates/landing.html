@@ -255,7 +255,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const me = await VO.me();
         // Reemplazar botones de "Viveros" y "Compradores" por uno de "Ir a mi panel"
         const dest = me.rol === 'viverista' ? '/viverista'
-                   : me.rol === 'comprador' ? '/marketplace'
+                   : me.rol === 'comprador' ? '/comprador'
                    : me.rol === 'admin' ? '/admin' : '/auth/onboarding';
         const ctas = document.querySelectorAll('a[href="/auth/ingresar"], a[href="#"], button');
         // Alternativa simple: añadir banner arriba
