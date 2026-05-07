@@ -67,9 +67,12 @@ async def app_producto(inventario_id: int):
     return _tpl("marketplace_detalle.html")
 
 
-@router.get("/paisajista", response_class=HTMLResponse)
-async def app_paisajista():
-    return _tpl("paisajista_dashboard.html")
+# Dashboard único del comprador. El subtipo (paisajista, constructora, conjunto,
+# empresa, otro) vive en `clientes.tipo_cliente` y se usa solo como metadata
+# para personalizar el saludo y segmentar — NO como rol RLS.
+@router.get("/comprador", response_class=HTMLResponse)
+async def app_comprador():
+    return _tpl("comprador_dashboard.html")
 
 
 @router.get("/pedido/{transaccion_id}", response_class=HTMLResponse)
