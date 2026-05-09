@@ -62,7 +62,7 @@
 | POST | `/api/pagos/iniciar` | user | Crea sesión ePayco |
 | POST | `/api/pagos/confirmacion` | (firma ePayco) | Webhook resultado |
 | GET  | `/api/pagos/estado/{id}` | user | Polling estado |
-| GET  | `~~`/api/public/flywheel`~~ | — | KPIs anonimizados *(removido en v0.3)* |
+| GET  | ~~`/api/public/flywheel`~~ | — | KPIs anonimizados *(removido en v0.3)* |
 | GET  | `/api/public/health` | — | Health |
 | GET  | `/inversores` | — | Dashboard público |
 | GET  | `/pagos/resultado` | — | Página post-pago |
