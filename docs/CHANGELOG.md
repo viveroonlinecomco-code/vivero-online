@@ -62,7 +62,7 @@
 | POST | `/api/pagos/iniciar` | user | Crea sesión ePayco |
 | POST | `/api/pagos/confirmacion` | (firma ePayco) | Webhook resultado |
 | GET  | `/api/pagos/estado/{id}` | user | Polling estado |
-| GET  | `/api/public/flywheel` | — | KPIs anonimizados |
+| GET  | ~~`/api/public/flywheel`~~ | — | KPIs anonimizados *(removido en v0.3)* |
 | GET  | `/api/public/health` | — | Health |
 | GET  | `/inversores` | — | Dashboard público |
 | GET  | `/pagos/resultado` | — | Página post-pago |
@@ -86,7 +86,7 @@ EPAYCO_P_KEY            (secret)
 
 ---
 
-## v0.3.0 — 2026-04-27
+## v0.3.0 — 2026-04-28
 
 ### 🔐 Dashboard Inversor con código de acceso
 
