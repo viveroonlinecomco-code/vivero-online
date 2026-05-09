@@ -157,11 +157,10 @@ Se consumen en `/admin` vía `GET /api/kpis`.
 
 ## 🔜 Roadmap
 
-- Wompi pagos (PSE + tarjetas)
-- YOLO-11 preprocessing antes de Gemini Vision
-- Webhook Twilio → respuesta del agente por WhatsApp
-- Dashboard inversor público (datos anonimizados)
-- PWA con push
+- Modelo YOLO custom entrenado en plantas ornamentales colombianas
+- Notificaciones WhatsApp post-venta (cotización aprobada, pago confirmado, despacho)
+- Página `/inversores` con mapa de demanda por municipio (mapbox o leaflet)
+- PWA con push notifications
 
 ---
 
