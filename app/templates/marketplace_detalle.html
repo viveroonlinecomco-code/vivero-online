@@ -125,4 +125,290 @@
                     <p class="text-xs text-slate-500 mt-1">El contacto directo (WhatsApp y teléfono) requiere cuenta.</p>
                     <a href="/auth/ingresar" class="inline-flex items-center gap-1 text-primary font-bold text-sm mt-2 hover:underline">
                         Iniciar Sesión
-                        <span class="material-symbols-outlined text-base">arrow
+                        <span class="material-symbols-outlined text-base">arrow_forward</span>
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- Información botánica -->
+        <section data-vo="seccion-botanica" class="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
+            <h3 class="font-bold text-sm text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1">
+                <span class="material-symbols-outlined text-base text-primary">eco</span>
+                Información botánica
+            </h3>
+            <div data-vo="familia-row" class="hidden items-center justify-between py-2 border-b border-slate-100 dark:border-slate-700">
+                <span class="text-sm text-slate-500">Familia</span>
+                <span data-vo="familia" class="text-sm font-semibold"></span>
+            </div>
+            <div data-vo="clima-row" class="hidden items-center justify-between py-2 border-b border-slate-100 dark:border-slate-700">
+                <span class="text-sm text-slate-500">Clima ideal</span>
+                <span data-vo="clima" class="text-sm font-semibold"></span>
+            </div>
+            <div data-vo="reqs-row" class="hidden mt-3 p-4 bg-primary/5 dark:bg-primary/10 rounded-lg">
+                <p class="text-xs font-bold text-primary uppercase mb-1 flex items-center gap-1">
+                    <span class="material-symbols-outlined text-sm">auto_awesome</span>
+                    Cuidados
+                </p>
+                <p data-vo="reqs" class="text-sm text-slate-700 dark:text-slate-300 leading-relaxed"></p>
+            </div>
+        </section>
+
+        <!-- Notas del vivero -->
+        <section data-vo="seccion-notas" class="hidden bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
+            <h3 class="font-bold text-sm text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1">
+                <span class="material-symbols-outlined text-base text-primary">notes</span>
+                Notas del vivero
+            </h3>
+            <p data-vo="notas" class="text-sm text-slate-700 dark:text-slate-300 leading-relaxed"></p>
+        </section>
+
+    </div>
+
+    <!-- Not found state -->
+    <div data-vo="state-notfound" class="hidden text-center py-16">
+        <span class="material-symbols-outlined text-6xl text-slate-300 dark:text-slate-700">search_off</span>
+        <p class="text-slate-500 dark:text-slate-400 mt-4 text-lg">No encontramos esta planta.</p>
+        <p class="text-slate-400 text-sm mt-1">Puede haberse vendido o retirado del catálogo.</p>
+        <a href="/marketplace" class="mt-4 inline-flex items-center gap-2 px-5 py-2 bg-primary text-white rounded-full font-bold text-sm">
+            <span class="material-symbols-outlined text-base">arrow_back</span>
+            Volver al marketplace
+        </a>
+    </div>
+
+    <!-- Error state -->
+    <div data-vo="state-error" class="hidden text-center py-16">
+        <span class="material-symbols-outlined text-6xl text-red-300">error_outline</span>
+        <p class="text-slate-500 dark:text-slate-400 mt-4 text-lg">No pudimos cargar este producto.</p>
+        <button onclick="window.location.reload()" class="mt-4 inline-flex items-center gap-2 px-5 py-2 bg-primary text-white rounded-full font-bold text-sm">
+            <span class="material-symbols-outlined text-base">refresh</span>
+            Reintentar
+        </button>
+    </div>
+
+</main>
+
+<!-- Sticky bottom CTA -->
+<div data-vo="cta-bar" class="hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-background-dark/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 p-4 z-50">
+    <div class="max-w-3xl mx-auto">
+        <button data-vo="cta-cotizar" class="hidden w-full bg-primary text-white py-4 rounded-full font-bold text-lg items-center justify-center gap-2 hover:opacity-90 transition-opacity">
+            <span class="material-symbols-outlined">request_quote</span>
+            Solicitar Cotización
+        </button>
+        <a data-vo="cta-login" href="/auth/ingresar" class="hidden w-full bg-primary text-white py-4 rounded-full font-bold text-lg items-center justify-center gap-2 hover:opacity-90 transition-opacity">
+            <span class="material-symbols-outlined">lock_open</span>
+            Iniciá sesión para cotizar
+        </a>
+        <div data-vo="cta-otro-rol" class="hidden w-full text-center py-3 text-sm text-slate-500">
+            Solo los compradores pueden cotizar productos.
+        </div>
+    </div>
+</div>
+
+<script src="/static/js/vivero.js"></script>
+<script>
+(async function init() {
+    const $ = (sel) => document.querySelector(sel);
+
+    // ─── Inventario_id de la URL ───
+    const match = window.location.pathname.match(/\/marketplace\/producto\/(\d+)/);
+    if (!match) {
+        $('[data-vo="state-loading"]').classList.add('hidden');
+        $('[data-vo="state-notfound"]').classList.remove('hidden');
+        return;
+    }
+    const inventarioId = match[1];
+
+    // ─── Detectar sesión ───
+    let me = null;
+    if (VO.getToken && VO.getToken()) {
+        try { me = await VO.me(); } catch { me = null; }
+    }
+
+    // ─── Header dinámico ───
+    const headerAction = $('[data-vo="header-action"]');
+    if (me) {
+        const panelPath = me.rol === 'viverista' ? '/viverista'
+                       : me.rol === 'comprador' ? '/comprador'
+                       : me.rol === 'admin' ? '/admin'
+                       : '/';
+        headerAction.href = panelPath;
+        headerAction.innerHTML = '<span class="material-symbols-outlined text-base">dashboard</span> Mi panel';
+    }
+
+    // ─── State machine ───
+    const states = ['loading', 'content', 'notfound', 'error'];
+    function setState(s) {
+        states.forEach(st => {
+            const el = $(`[data-vo="state-${st}"]`);
+            if (el) el.classList.add('hidden');
+        });
+        const target = $(`[data-vo="state-${s}"]`);
+        if (target) target.classList.remove('hidden');
+    }
+
+    // ─── Fetch (auth-aware) ───
+    let item;
+    try {
+        if (me) {
+            const data = await VO.api(`/api/marketplace/item/${inventarioId}`);
+            item = data.item;
+        } else {
+            const resp = await fetch(`/api/public/marketplace/item/${inventarioId}`);
+            if (resp.status === 404) { setState('notfound'); return; }
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            const data = await resp.json();
+            item = data.item;
+        }
+    } catch (e) {
+        console.error('Error detalle:', e);
+        const msg = String(e.message || '');
+        if (msg.includes('404') || msg.includes('no encontrado')) setState('notfound');
+        else setState('error');
+        return;
+    }
+    if (!item) { setState('notfound'); return; }
+
+    // ─── Render ───
+    const planta = item.plantas || {};
+    const vivero = item.viveros || {};
+
+    // Foto (background-image con JSON.stringify para sanitizar)
+    if (item.foto_ia_url) {
+        $('[data-vo="foto"]').style.backgroundImage = `url(${JSON.stringify(item.foto_ia_url)})`;
+    } else {
+        $('[data-vo="foto-fallback"]').classList.remove('hidden');
+        $('[data-vo="foto-fallback"]').classList.add('flex');
+    }
+
+    // Nombre + científico
+    $('[data-vo="nombre"]').textContent = planta.nombre_comun || 'Planta';
+    if (planta.nombre_cientifico) {
+        $('[data-vo="cientifico"]').textContent = planta.nombre_cientifico;
+    } else {
+        $('[data-vo="cientifico"]').classList.add('hidden');
+    }
+
+    // Precio
+    $('[data-vo="precio"]').textContent = VO.formatCOPFull(item.precio_mayorista || 0);
+    if (item.precio_detal) {
+        const det = $('[data-vo="precio-detal"]');
+        det.textContent = `Detal: ${VO.formatCOPFull(item.precio_detal)}`;
+        det.classList.remove('hidden');
+    }
+
+    // Stock + altura
+    const stock = item.stock || 0;
+    $('[data-vo="stock-info"]').textContent = stock > 0 ? `${stock} disponibles` : 'Sin stock';
+    if (item.altura_cm) {
+        $('[data-vo="altura-info"]').textContent = `· ${item.altura_cm} cm de altura`;
+    }
+
+    // Vivero
+    $('[data-vo="vivero-nombre"]').textContent = vivero.nombre_vivero || 'Vivero';
+    $('[data-vo="vivero-ciudad"]').textContent = vivero.ciudad ? `📍 ${vivero.ciudad}` : '';
+
+    // Contactos según sesión
+    if (me) {
+        const contactoBox = $('[data-vo="contacto-autenticado"]');
+        contactoBox.classList.remove('hidden');
+        contactoBox.classList.add('flex');
+
+        if (vivero.whatsapp_numero) {
+            const ws = $('[data-vo="contacto-whatsapp"]');
+            const wsNum = String(vivero.whatsapp_numero).replace(/\D/g, '');
+            ws.href = `https://wa.me/${wsNum}?text=${encodeURIComponent(`Hola, vi tu publicación de ${planta.nombre_comun || 'una planta'} en ViveroOnline.com.co`)}`;
+            ws.classList.remove('hidden');
+            ws.classList.add('inline-flex');
+        }
+        if (vivero.telefono) {
+            const tel = $('[data-vo="contacto-telefono"]');
+            tel.href = `tel:${vivero.telefono}`;
+            tel.classList.remove('hidden');
+            tel.classList.add('inline-flex');
+        }
+        if (vivero.latitud && vivero.longitud) {
+            const mapa = $('[data-vo="vivero-mapa"]');
+            mapa.href = `https://www.google.com/maps/search/?api=1&query=${vivero.latitud},${vivero.longitud}`;
+            mapa.classList.remove('hidden');
+            mapa.classList.add('inline-flex');
+        }
+    } else {
+        const lock = $('[data-vo="contacto-anonimo"]');
+        lock.classList.remove('hidden');
+        lock.classList.add('flex');
+    }
+
+    // Botánica
+    if (planta.familia_botanica) {
+        const r = $('[data-vo="familia-row"]'); r.classList.remove('hidden'); r.classList.add('flex');
+        $('[data-vo="familia"]').textContent = planta.familia_botanica;
+    }
+    if (planta.clima_ideal) {
+        const r = $('[data-vo="clima-row"]'); r.classList.remove('hidden'); r.classList.add('flex');
+        $('[data-vo="clima"]').textContent = planta.clima_ideal;
+    }
+    if (planta.requerimientos_ia) {
+        $('[data-vo="reqs-row"]').classList.remove('hidden');
+        $('[data-vo="reqs"]').textContent = planta.requerimientos_ia;
+    }
+    if (!planta.familia_botanica && !planta.clima_ideal && !planta.requerimientos_ia) {
+        $('[data-vo="seccion-botanica"]').classList.add('hidden');
+    }
+
+    // Notas
+    if (item.notas) {
+        $('[data-vo="seccion-notas"]').classList.remove('hidden');
+        $('[data-vo="notas"]').textContent = item.notas;
+    }
+
+    // Doc title
+    if (planta.nombre_comun) {
+        document.title = `${planta.nombre_comun} · ViveroOnline.com.co`;
+    }
+
+    // ─── CTA según rol ───
+    $('[data-vo="cta-bar"]').classList.remove('hidden');
+
+    if (!me) {
+        const btn = $('[data-vo="cta-login"]');
+        btn.classList.remove('hidden');
+        btn.classList.add('inline-flex');
+    } else if (me.rol === 'comprador') {
+        const btn = $('[data-vo="cta-cotizar"]');
+        btn.classList.remove('hidden');
+        btn.classList.add('inline-flex');
+        btn.addEventListener('click', async () => {
+            const cantidad = prompt(`¿Cuántas unidades de ${planta.nombre_comun || 'esta planta'} necesitás?`, '10');
+            if (!cantidad) return;
+            const n = parseInt(cantidad);
+            if (isNaN(n) || n < 1) { VO.showToast('Cantidad inválida', 'error'); return; }
+            if (stock > 0 && n > stock) {
+                if (!confirm(`Solo hay ${stock} disponibles. ¿Pedir ${stock}?`)) return;
+            }
+            try {
+                btn.disabled = true;
+                btn.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span> Creando...';
+                const resp = await VO.api('/api/marketplace/cotizacion', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        items: [{ inventario_id: parseInt(inventarioId), cantidad: Math.min(n, stock || n) }],
+                    }),
+                });
+                VO.showToast(`Cotización #${resp.cotizacion_id} creada por ${VO.formatCOPFull(resp.total_cop)}`, 'success');
+                setTimeout(() => window.location.href = '/comprador', 1500);
+            } catch (e) {
+                VO.showToast(e.message || 'Error al cotizar', 'error');
+                btn.disabled = false;
+                btn.innerHTML = '<span class="material-symbols-outlined">request_quote</span> Solicitar Cotización';
+            }
+        });
+    } else {
+        $('[data-vo="cta-otro-rol"]').classList.remove('hidden');
+    }
+
+    setState('content');
+})();
+</script>
+</body>
+</html>
