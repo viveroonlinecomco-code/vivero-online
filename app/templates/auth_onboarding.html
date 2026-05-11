@@ -114,6 +114,22 @@
     <div id="step-profile" class="hidden flex-1">
         <button type="button" id="back-btn" class="material-symbols-outlined text-slate-700 dark:text-slate-300 p-2 -ml-2 mb-4 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition">arrow_back</button>
 
+        <!-- Banner de rol elegido (NUEVO) -->
+        <div id="role-banner" class="mb-6 p-4 bg-primary/5 dark:bg-primary/10 border-2 border-primary/20 rounded-lg flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+                <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <span id="role-banner-icon" class="material-symbols-outlined text-primary">forest</span>
+                </div>
+                <div class="min-w-0">
+                    <p class="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Te estás registrando como</p>
+                    <p id="role-banner-name" class="font-bold text-base truncate">Viverista</p>
+                </div>
+            </div>
+            <button type="button" id="change-role-btn" class="text-xs font-bold text-primary hover:underline whitespace-nowrap px-2 py-1 rounded">
+                Cambiar
+            </button>
+        </div>
+
         <h1 class="text-3xl font-black leading-tight tracking-tight mb-3">
             Cuéntanos<br>
             <span class="text-primary" id="profile-heading">de tu vivero</span>
@@ -252,8 +268,25 @@
 </div>
 
 <script>
+// ─── 1. Capturar rol intencionado del URL ANTES de cualquier redirect ───
+// Esto sobrevive el flujo OTP: el usuario hace click "Soy Viverista" en landing,
+// llega acá sin token, lo guardamos en localStorage, lo redirigimos a /auth/ingresar,
+// hace OTP, vuelve acá, y leemos el rol del localStorage.
+const VALID_ROLES = ['viverista', 'comprador'];
+const urlParams = new URLSearchParams(window.location.search);
+const urlRol = urlParams.get('rol');
+if (urlRol && VALID_ROLES.includes(urlRol)) {
+    localStorage.setItem('vivero_intended_rol', urlRol);
+}
+
+// ─── 2. Verificar auth (puede redirigir si no hay token) ───
 const token = localStorage.getItem('vivero_access_token');
 if (!token) window.location.href = '/auth/ingresar';
+
+// ─── 3. Determinar rol intencionado (URL tiene precedencia, luego localStorage) ───
+const intendedRol = (urlRol && VALID_ROLES.includes(urlRol))
+    ? urlRol
+    : localStorage.getItem('vivero_intended_rol');
 
 let selectedRole = null;
 const continueBtn = document.getElementById('continue-btn');
@@ -268,13 +301,14 @@ roleCards.forEach(card => {
     });
 });
 
-continueBtn.addEventListener('click', () => {
-    // Paso 1 -> Paso 2
+// ─── 4. Funciones de navegación entre steps ───
+function goToStep2() {
     document.getElementById('step-role').classList.add('hidden');
     document.getElementById('step-profile').classList.remove('hidden');
     document.getElementById('dot-2').classList.remove('bg-slate-200', 'dark:bg-slate-700');
     document.getElementById('dot-2').classList.add('bg-primary');
 
+    // Configurar form según rol
     if (selectedRole === 'viverista') {
         document.getElementById('profile-heading').textContent = 'de tu vivero';
         document.getElementById('grp-vivero').classList.remove('hidden');
@@ -286,15 +320,49 @@ continueBtn.addEventListener('click', () => {
         document.getElementById('grp-empresa').classList.remove('hidden');
         document.getElementById('f-nombre-vivero').required = false;
     }
-});
 
-document.getElementById('back-btn').addEventListener('click', () => {
+    // Actualizar banner con rol actual
+    const bannerName = document.getElementById('role-banner-name');
+    const bannerIcon = document.getElementById('role-banner-icon');
+    if (selectedRole === 'viverista') {
+        bannerName.textContent = 'Viverista';
+        bannerIcon.textContent = 'forest';
+    } else {
+        bannerName.textContent = 'Comprador B2B';
+        bannerIcon.textContent = 'architecture';
+    }
+
+    // Scroll arriba en mobile
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function backToStep1() {
     document.getElementById('step-profile').classList.add('hidden');
     document.getElementById('step-role').classList.remove('hidden');
     document.getElementById('dot-2').classList.add('bg-slate-200', 'dark:bg-slate-700');
     document.getElementById('dot-2').classList.remove('bg-primary');
-});
+    // Limpiar el intended rol para que no se vuelva a auto-saltar al volver atrás
+    history.replaceState(null, '', '/auth/onboarding');
+    localStorage.removeItem('vivero_intended_rol');
+}
 
+continueBtn.addEventListener('click', goToStep2);
+document.getElementById('back-btn').addEventListener('click', backToStep1);
+document.getElementById('change-role-btn').addEventListener('click', backToStep1);
+
+// ─── 5. Auto-skip a Step 2 si el rol viene del URL o localStorage ───
+if (intendedRol && VALID_ROLES.includes(intendedRol)) {
+    selectedRole = intendedRol;
+    const card = document.querySelector(`[data-role="${intendedRol}"]`);
+    if (card) {
+        roleCards.forEach(c => c.dataset.selected = 'false');
+        card.dataset.selected = 'true';
+        continueBtn.disabled = false;
+        goToStep2();
+    }
+}
+
+// ─── 6. Submit del form ───
 const form = document.getElementById('profile-form');
 const errorBox = document.getElementById('error-box');
 const btn = document.getElementById('submit-btn');
@@ -316,6 +384,11 @@ function setLoading(loading) {
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
     hideError();
+
+    if (!selectedRole) {
+        showError('Por favor seleccioná un rol antes de continuar.');
+        return;
+    }
 
     const payload = {
         rol: selectedRole,
@@ -345,6 +418,9 @@ form.addEventListener('submit', async (e) => {
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'No se pudo completar el registro.');
+
+        // Limpiar el rol intencionado: el onboarding terminó
+        localStorage.removeItem('vivero_intended_rol');
 
         // Redirigir según rol
         if (selectedRole === 'viverista') {
