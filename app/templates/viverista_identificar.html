@@ -63,7 +63,7 @@
 <!-- IDLE: placeholder antes de subir foto -->
 <div data-vo="viewfinder-placeholder" class="absolute inset-0 flex flex-col items-center justify-center text-center px-6 text-slate-500">
 <span class="material-symbols-outlined text-6xl text-primary/40 mb-3">photo_camera</span>
-<p class="font-semibold text-slate-700 dark:text-slate-200 mb-1">Tomá o subí una foto de la planta</p>
+<p data-vo="placeholder-text" class="font-semibold text-slate-700 dark:text-slate-200 mb-1">Tomá o subí una foto de la planta</p>
 <p class="text-sm">La IA va a identificar la especie y sugerir un precio.</p>
 </div>
 
@@ -81,7 +81,7 @@
 <div class="scan-line"></div>
 </div>
 
-<!-- Floating Controls: galería + cámara + flash -->
+<!-- Floating Controls: galería (solo mobile) + cámara/upload + reset -->
 <div class="absolute bottom-6 left-0 right-0 flex items-center justify-center gap-6 px-4">
 <button data-vo="gallery-btn" title="Subir desde galería" class="flex shrink-0 items-center justify-center rounded-full size-12 bg-black/40 text-white backdrop-blur-sm border border-white/20 hover:bg-black/60 transition-colors">
 <span class="material-symbols-outlined">image</span>
@@ -89,7 +89,7 @@
 <button data-vo="camera-btn" title="Tomar foto con cámara" class="flex shrink-0 items-center justify-center rounded-full size-20 bg-primary text-white border-4 border-white/30 shadow-lg active:scale-95 transition-transform hover:bg-primary/90">
 <span class="material-symbols-outlined !text-4xl">photo_camera</span>
 </button>
-<button data-vo="reset-btn" title="Empezar de nuevo" class="flex shrink-0 items-center justify-center rounded-full size-12 bg-black/40 text-white backdrop-blur-sm border border-white/20 hover:bg-black/60 transition-colors">
+<button data-vo="reset-btn" title="Empezar de nuevo" class="hidden shrink-0 items-center justify-center rounded-full size-12 bg-black/40 text-white backdrop-blur-sm border border-white/20 hover:bg-black/60 transition-colors">
 <span class="material-symbols-outlined">refresh</span>
 </button>
 </div>
@@ -103,7 +103,7 @@
 <!-- IDLE: instrucciones cuando aún no hay foto -->
 <div data-vo="analysis-idle" class="flex flex-col items-center text-center py-6 px-2">
 <p class="font-semibold text-slate-800 dark:text-slate-100 mb-2">Listo para identificar</p>
-<p class="text-sm text-slate-500 max-w-xs">Tocá el botón de cámara para tomar una foto, o el de galería para subir una existente. Identificamos la planta en ~3 segundos.</p>
+<p data-vo="analysis-idle-hint" class="text-sm text-slate-500 max-w-xs">Tocá el botón de cámara para tomar una foto, o el de galería para subir una existente. Identificamos la planta en ~3 segundos.</p>
 </div>
 
 <!-- ANALYZING: progreso del análisis (oculto al inicio) -->
@@ -188,7 +188,11 @@ if (!VO.requireAuth()) throw new Error('auth');
 // State machine: IDLE → ANALYZING → READY (con ERROR opcional volviendo a IDLE)
 // ============================================================================
 let estado = 'IDLE';
-let analisisActual = null; // guardado al recibir resultado del API
+let analisisActual = null;
+let analisisToken = 0; // contador para invalidar resultados stale si el user resetea mid-fetch
+
+// Detección de device: desktop = puntero fino (mouse) y soporta hover real
+const isDesktop = window.matchMedia('(hover: hover) and (pointer: fine)').matches;
 
 document.addEventListener('DOMContentLoaded', async () => {
     try {
@@ -208,14 +212,37 @@ document.addEventListener('DOMContentLoaded', async () => {
         const generarBtn = $('[data-vo="generar-btn"]');
         const fileGallery = $('[data-vo="file-input-gallery"]');
         const fileCamera = $('[data-vo="file-input-camera"]');
+        const placeholderText = $('[data-vo="placeholder-text"]');
+        const analysisIdleHint = $('[data-vo="analysis-idle-hint"]');
 
-        // Cableado de botones
-        if (galleryBtn) galleryBtn.addEventListener('click', () => fileGallery?.click());
-        if (cameraBtn) cameraBtn.addEventListener('click', () => fileCamera?.click());
+        // ─── UX adaptativa: desktop vs mobile ───
+        if (isDesktop) {
+            // Desktop: capture="environment" se ignora, así que no tiene sentido tener 2 botones.
+            // Ocultamos el botón de galería y convertimos el de cámara en un "Subir foto" claro.
+            if (galleryBtn) galleryBtn.classList.add('hidden');
+
+            if (cameraBtn) {
+                const icon = cameraBtn.querySelector('.material-symbols-outlined');
+                if (icon) icon.textContent = 'upload';
+                cameraBtn.title = 'Subir foto desde tu computadora';
+                cameraBtn.addEventListener('click', () => fileGallery?.click());
+            }
+
+            if (placeholderText) placeholderText.textContent = 'Subí una foto de la planta';
+            if (analysisIdleHint) analysisIdleHint.textContent = 'Click en el botón verde para subir una foto desde tu computadora. Identificamos la planta en ~3 segundos.';
+        } else {
+            // Mobile: dos botones (galería + cámara con capture)
+            if (galleryBtn) galleryBtn.addEventListener('click', () => fileGallery?.click());
+            if (cameraBtn) cameraBtn.addEventListener('click', () => fileCamera?.click());
+        }
+
         if (resetBtn) resetBtn.addEventListener('click', resetUI);
         if (generarBtn) generarBtn.addEventListener('click', guardarEnInventario);
         if (fileGallery) fileGallery.addEventListener('change', onFileSelected);
         if (fileCamera) fileCamera.addEventListener('change', onFileSelected);
+
+        // Forzar el estado inicial correcto (oculta reset btn, asegura visibilidad consistente)
+        setEstado('IDLE');
 
     } catch (e) {
         console.error('Error inicializando identificar:', e);
@@ -231,8 +258,10 @@ function setEstado(nuevo) {
     const idle = document.querySelector('[data-vo="analysis-idle"]');
     const progress = document.querySelector('[data-vo="analysis-progress"]');
     const result = document.querySelector('[data-vo="analysis-result"]');
+    const galleryBtn = document.querySelector('[data-vo="gallery-btn"]');
+    const cameraBtn = document.querySelector('[data-vo="camera-btn"]');
+    const resetBtn = document.querySelector('[data-vo="reset-btn"]');
 
-    // Toggle visibility por estado
     if (nuevo === 'IDLE') {
         if (placeholder) placeholder.classList.remove('hidden');
         if (image) image.classList.add('hidden');
@@ -240,6 +269,10 @@ function setEstado(nuevo) {
         if (idle) idle.classList.remove('hidden');
         if (progress) { progress.classList.add('hidden'); progress.classList.remove('flex'); }
         if (result) result.classList.add('hidden');
+        // Controles: upload visible, reset oculto (no hay nada que resetear)
+        if (cameraBtn) { cameraBtn.classList.remove('hidden'); cameraBtn.classList.add('flex'); }
+        if (galleryBtn && !isDesktop) { galleryBtn.classList.remove('hidden'); galleryBtn.classList.add('flex'); }
+        if (resetBtn) { resetBtn.classList.add('hidden'); resetBtn.classList.remove('flex'); }
     } else if (nuevo === 'ANALYZING') {
         if (placeholder) placeholder.classList.add('hidden');
         if (image) image.classList.remove('hidden');
@@ -247,6 +280,10 @@ function setEstado(nuevo) {
         if (idle) idle.classList.add('hidden');
         if (progress) { progress.classList.remove('hidden'); progress.classList.add('flex'); }
         if (result) result.classList.add('hidden');
+        // Controles: upload oculto durante análisis, reset visible (sirve para cancelar)
+        if (cameraBtn) { cameraBtn.classList.add('hidden'); cameraBtn.classList.remove('flex'); }
+        if (galleryBtn) { galleryBtn.classList.add('hidden'); galleryBtn.classList.remove('flex'); }
+        if (resetBtn) { resetBtn.classList.remove('hidden'); resetBtn.classList.add('flex'); }
     } else if (nuevo === 'READY') {
         if (placeholder) placeholder.classList.add('hidden');
         if (image) image.classList.remove('hidden');
@@ -254,17 +291,32 @@ function setEstado(nuevo) {
         if (idle) idle.classList.add('hidden');
         if (progress) { progress.classList.add('hidden'); progress.classList.remove('flex'); }
         if (result) result.classList.remove('hidden');
+        // Controles: upload oculto (ya hay resultado), reset visible (empezar de nuevo)
+        if (cameraBtn) { cameraBtn.classList.add('hidden'); cameraBtn.classList.remove('flex'); }
+        if (galleryBtn) { galleryBtn.classList.add('hidden'); galleryBtn.classList.remove('flex'); }
+        if (resetBtn) { resetBtn.classList.remove('hidden'); resetBtn.classList.add('flex'); }
     }
 }
 
 function resetUI() {
+    // Invalidar cualquier fetch in-flight para que su resultado no nos pise el reset
+    analisisToken++;
     analisisActual = null;
+
     const image = document.querySelector('[data-vo="viewfinder-image"]');
+    const fileGallery = document.querySelector('[data-vo="file-input-gallery"]');
+    const fileCamera = document.querySelector('[data-vo="file-input-camera"]');
+
     if (image) image.removeAttribute('src');
+    // Limpiar value de los inputs así el user puede re-subir la MISMA foto si quiere
+    if (fileGallery) fileGallery.value = '';
+    if (fileCamera) fileCamera.value = '';
+
     setEstado('IDLE');
 }
 
 async function onFileSelected(e) {
+    const myToken = ++analisisToken;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -297,6 +349,9 @@ async function onFileSelected(e) {
         });
         clearInterval(tick);
 
+        // Si el usuario clickeó reset durante el fetch, ignorar este resultado
+        if (myToken !== analisisToken) return;
+
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Error al identificar');
 
@@ -311,10 +366,14 @@ async function onFileSelected(e) {
         };
 
         // Pequeño delay para que se vea el 100% antes de cambiar de estado
-        setTimeout(() => renderResultado(analisisActual), 300);
+        setTimeout(() => {
+            // Re-check: el user pudo resetear durante el delay
+            if (myToken === analisisToken) renderResultado(analisisActual);
+        }, 300);
 
     } catch (err) {
         clearInterval(tick);
+        if (myToken !== analisisToken) return;
         console.error('Error analizando imagen:', err);
         VO.showToast(err.message || 'Error al identificar la planta', 'error');
         resetUI();
