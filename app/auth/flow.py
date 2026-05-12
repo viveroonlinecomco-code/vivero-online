@@ -9,14 +9,22 @@ Estrategia (porque Supabase Auth no tiene WhatsApp nativo):
    o admin.create_user + impersonate.
 4. El JWT resultante ya contiene `whatsapp_numero` en sus claims (vía el
    hook `custom_access_token_hook` que ya está instalado en la BD - migración 14).
+5. Al completar onboarding, refrescamos `app_metadata` en Supabase Auth para
+   que el rol se propague a futuros tokens (defense-in-depth: complementa el
+   fallback DB en /api/auth/me).
 """
 from __future__ import annotations
+
+import logging
 
 from fastapi import HTTPException, status
 
 from app.schemas.auth import OnboardingRequest
 from app.services.supabase import admin
 from app.services.twilio_otp import get_otp_service
+
+
+logger = logging.getLogger(__name__)
 
 
 def _synthetic_email(whatsapp: str) -> str:
@@ -88,8 +96,6 @@ async def verify_otp(whatsapp: str, code: str) -> dict:
 
 def _get_or_create_user(client, email: str, whatsapp: str) -> tuple[str, bool]:
     """Retorna (user_id, is_new). Busca usuario existente vía SQL directo."""
-    import logging
-
     # Busca usuario existente por email vía SQL directo (más rápido que list_users)
     try:
         # Usa la API REST de Supabase directamente para query auth.users
@@ -115,7 +121,7 @@ def _get_or_create_user(client, email: str, whatsapp: str) -> tuple[str, bool]:
                     if u.get("email") == email:
                         return u.get("id"), False
     except Exception as e:
-        logging.warning(f"Error buscando usuario por email: {e}")
+        logger.warning(f"Error buscando usuario por email: {e}")
 
     # Si no se encontró, crea uno nuevo
     try:
@@ -131,7 +137,7 @@ def _get_or_create_user(client, email: str, whatsapp: str) -> tuple[str, bool]:
         return created.user.id, True
     except Exception as e:
         # Si la creación falla porque el usuario ya existe, intentar buscarlo por SQL
-        logging.warning(f"Error en create_user: {e}")
+        logger.warning(f"Error en create_user: {e}")
         # Re-buscar por SQL
         try:
             from app.services.supabase import admin
@@ -182,10 +188,51 @@ def _generate_session(client, email: str) -> dict:
     }
 
 
+# ─────────────────── APP_METADATA REFRESH ───────────────────
+
+def _refresh_app_metadata(client, user_id: str, fields: dict) -> None:
+    """Mergea `fields` en el app_metadata del usuario en Supabase Auth.
+
+    Esto propaga el rol y los IDs (vivero_id / cliente_id) al JWT en futuros
+    refresh de token. NO afecta al token actual del usuario (ese se generó
+    pre-onboarding y no tiene rol) — para eso está el fallback DB en /me.
+
+    Si la API de Supabase falla, NO se interrumpe el onboarding: el perfil
+    ya quedó creado en la tabla `perfiles` y el endpoint /api/auth/me usa
+    esa fuente prioritariamente.
+    """
+    try:
+        # 1. Fetch app_metadata actual para no clobberear campos existentes
+        current = client.auth.admin.get_user_by_id(user_id)
+        existing = {}
+        if current and getattr(current, "user", None):
+            existing = current.user.app_metadata or {}
+
+        # 2. Merge: existing keys + new fields (fields ganan en conflictos)
+        merged = {**existing, **fields}
+
+        # 3. Update
+        client.auth.admin.update_user_by_id(user_id, {"app_metadata": merged})
+        logger.info(
+            "app_metadata actualizado para %s: rol=%s",
+            user_id, fields.get("rol"),
+        )
+    except Exception as e:
+        logger.warning(
+            "No se pudo actualizar app_metadata para %s: %s. "
+            "Fallback DB en /api/auth/me sigue funcionando.",
+            user_id, e,
+        )
+
+
 # ─────────────────── ONBOARDING ───────────────────
 
 async def complete_onboarding(user_id: str, whatsapp: str, data: OnboardingRequest) -> dict:
-    """Crea perfil + (viveros | clientes) según el rol elegido."""
+    """Crea perfil + (viveros | clientes) según el rol elegido.
+
+    Además refresca el `app_metadata` del usuario en Supabase Auth para que
+    el rol se propague al JWT en futuros refresh de token (defense-in-depth).
+    """
     client = admin()
 
     if data.rol == "viverista":
@@ -214,6 +261,13 @@ async def complete_onboarding(user_id: str, whatsapp: str, data: OnboardingReque
             "onboarding_ok": True,
         }).execute()
 
+        # Propagar rol al JWT (futuros tokens)
+        _refresh_app_metadata(client, user_id, {
+            "rol": "viverista",
+            "vivero_id": vivero_id,
+            "whatsapp_numero": whatsapp,
+        })
+
         return {"ok": True, "rol": "viverista", "vivero_id": vivero_id}
 
     # Comprador - OJO: columnas reales son nombre_empresa, ciudad, nombre_representante
@@ -238,5 +292,12 @@ async def complete_onboarding(user_id: str, whatsapp: str, data: OnboardingReque
         "nombre_display": data.nombre,
         "onboarding_ok": True,
     }).execute()
+
+    # Propagar rol al JWT (futuros tokens)
+    _refresh_app_metadata(client, user_id, {
+        "rol": "comprador",
+        "cliente_id": cliente_id,
+        "whatsapp_numero": whatsapp,
+    })
 
     return {"ok": True, "rol": "comprador", "cliente_id": cliente_id}
