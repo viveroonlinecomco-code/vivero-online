@@ -1,8 +1,10 @@
 """Rutas del catálogo del viverista.
 
-- GET  /api/catalogo           → lista inventario propio
-- POST /api/catalogo/identificar → sube foto, IA la identifica (no guarda aún)
-- POST /api/catalogo/guardar   → confirma y guarda en inventario
+- GET    /api/catalogo                       → lista inventario propio
+- POST   /api/catalogo/identificar           → sube foto, IA la identifica
+- POST   /api/catalogo/guardar               → confirma y guarda en inventario
+- PATCH  /api/catalogo/inventario/{id}       → actualiza stock / precio / estado
+- DELETE /api/catalogo/inventario/{id}       → elimina item del inventario
 """
 from __future__ import annotations
 import io
@@ -10,6 +12,7 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel, Field
 from PIL import Image
 
 from app.auth.deps import UserContext, require_viverista
@@ -189,3 +192,124 @@ async def guardar_inventario(
         "inventario_id": inv_resp.data[0]["inventario_id"],
         "planta_id": planta_id,
     }
+
+
+# ─────────────────── ACTUALIZAR INVENTARIO ───────────────────
+
+ESTADOS_INVENTARIO = ("disponible", "agotado", "reservado", "en_crecimiento")
+
+
+class ActualizarInventarioRequest(BaseModel):
+    """Campos editables de un item del inventario (todos opcionales)."""
+    stock: Optional[int] = Field(default=None, ge=0)
+    precio_mayorista: Optional[float] = Field(default=None, ge=0)
+    precio_detal: Optional[float] = Field(default=None, ge=0)
+    estado_planta: Optional[str] = Field(default=None)
+    notas: Optional[str] = Field(default=None, max_length=1000)
+
+
+@router.patch("/inventario/{inventario_id}")
+async def actualizar_inventario(
+    inventario_id: int,
+    req: ActualizarInventarioRequest,
+    user: UserContext = Depends(require_viverista),
+):
+    """Actualiza campos de un item del inventario.
+
+    Solo el viverista dueño puede modificarlo (chequeo explícito de ownership
+    + RLS de Postgres como defense-in-depth).
+    """
+    if not user.vivero_id:
+        raise HTTPException(400, detail="Tu perfil no está vinculado a un vivero")
+
+    # Validar estado_planta si fue enviado
+    if req.estado_planta is not None and req.estado_planta not in ESTADOS_INVENTARIO:
+        raise HTTPException(
+            400,
+            detail=f"Estado inválido. Válidos: {', '.join(ESTADOS_INVENTARIO)}",
+        )
+
+    db = admin()
+
+    # Verificar que el item pertenece al vivero del usuario
+    existing = db.table("inventario").select("vivero_id").eq(
+        "inventario_id", inventario_id
+    ).limit(1).execute()
+    if not existing.data:
+        raise HTTPException(404, detail="Item no encontrado")
+    if existing.data[0]["vivero_id"] != user.vivero_id:
+        raise HTTPException(403, detail="Este item no pertenece a tu vivero")
+
+    # Construir payload solo con campos no-None (evita pisar valores con null)
+    payload: dict = {}
+    if req.stock is not None:
+        payload["stock"] = req.stock
+    if req.precio_mayorista is not None:
+        payload["precio_mayorista"] = req.precio_mayorista
+    if req.precio_detal is not None:
+        payload["precio_detal"] = req.precio_detal
+    if req.estado_planta is not None:
+        payload["estado_planta"] = req.estado_planta
+    if req.notas is not None:
+        payload["notas"] = req.notas.strip() or None
+
+    if not payload:
+        raise HTTPException(400, detail="No hay campos para actualizar")
+
+    resp = db.table("inventario").update(payload).eq(
+        "inventario_id", inventario_id
+    ).execute()
+
+    if not resp.data:
+        raise HTTPException(500, detail="No se pudo actualizar el inventario")
+
+    return {
+        "ok": True,
+        "inventario_id": inventario_id,
+        "actualizado": payload,
+    }
+
+
+# ─────────────────── ELIMINAR INVENTARIO ───────────────────
+
+@router.delete("/inventario/{inventario_id}")
+async def eliminar_inventario(
+    inventario_id: int,
+    user: UserContext = Depends(require_viverista),
+):
+    """Elimina un item del inventario.
+
+    Si el item tiene cotizaciones o transacciones asociadas, el DELETE
+    falla por FK constraint. En ese caso se sugiere cambiar el estado a
+    'agotado' en lugar de borrar (preserva integridad histórica).
+    """
+    if not user.vivero_id:
+        raise HTTPException(400, detail="Tu perfil no está vinculado a un vivero")
+
+    db = admin()
+
+    # Verificar ownership
+    existing = db.table("inventario").select("vivero_id").eq(
+        "inventario_id", inventario_id
+    ).limit(1).execute()
+    if not existing.data:
+        raise HTTPException(404, detail="Item no encontrado")
+    if existing.data[0]["vivero_id"] != user.vivero_id:
+        raise HTTPException(403, detail="Este item no pertenece a tu vivero")
+
+    try:
+        db.table("inventario").delete().eq("inventario_id", inventario_id).execute()
+    except Exception as e:
+        msg = str(e).lower()
+        if "foreign" in msg or "violates" in msg or "referenced" in msg:
+            raise HTTPException(
+                409,
+                detail=(
+                    "No se puede eliminar: este item tiene cotizaciones o "
+                    "transacciones asociadas. Cambiá el estado a 'agotado' "
+                    "en su lugar para mantenerlo fuera del marketplace."
+                ),
+            )
+        raise HTTPException(500, detail=f"Error al eliminar: {str(e)[:200]}")
+
+    return {"ok": True, "inventario_id": inventario_id, "eliminado": True}
