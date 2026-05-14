@@ -5,10 +5,13 @@ Ahora se movió a /api/inversores/flywheel y requiere cookie de invitación.
 
 Endpoints vigentes:
 - GET /api/public/health
+- GET /api/public/stats                      → métricas seguras para landing
 - GET /api/public/marketplace                → vitrina pública (lista)
 - GET /api/public/marketplace/item/{inv_id}  → vitrina pública (detalle)
 """
 from __future__ import annotations
+
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
@@ -16,12 +19,70 @@ from fastapi import APIRouter, HTTPException, Query
 from app.services.supabase import admin
 
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/public", tags=["public"])
 
 
 @router.get("/health")
 async def public_health():
     return {"ok": True, "service": "public-api", "ready": True}
+
+
+# ─────────────────── STATS PARA LANDING ───────────────────
+
+@router.get("/stats")
+async def public_stats():
+    """Estadísticas SEGURAS para mostrar en el landing page sin auth.
+
+    Devuelve solo métricas no-sensibles:
+    - viveros_registrados: cuántos viveros hay en la plataforma
+    - items_disponibles: cuántos items de inventario están a la venta
+    - municipios: lista de ciudades cubiertas + count
+    - etapa: indicador de fase del producto (constante "beta" por ahora)
+
+    NO devuelve: GMV, transacciones, ingresos, datos sensibles.
+    Esas métricas viven en /api/inversores/flywheel (cookie de invitación).
+
+    Si falla la consulta a la DB, devuelve valores cero (no rompe el landing).
+    """
+    fallback = {
+        "ok": False,
+        "viveros_registrados": 0,
+        "items_disponibles": 0,
+        "municipios": [],
+        "municipios_count": 0,
+        "etapa": "beta",
+    }
+
+    try:
+        db = admin()
+
+        # 1. Métricas pre-calculadas de la view pública
+        flywheel_resp = db.table("v_public_flywheel").select(
+            "viveros_registrados, items_disponibles"
+        ).limit(1).execute()
+        flywheel = (flywheel_resp.data or [{}])[0]
+
+        # 2. Lista de municipios cubiertos (ciudades únicas con viveros activos)
+        viveros_resp = db.table("viveros").select("ciudad").eq("estado", "activo").execute()
+        municipios = sorted({
+            (v.get("ciudad") or "").strip()
+            for v in (viveros_resp.data or [])
+            if v.get("ciudad") and v.get("ciudad").strip()
+        })
+
+        return {
+            "ok": True,
+            "viveros_registrados": int(flywheel.get("viveros_registrados") or 0),
+            "items_disponibles": int(flywheel.get("items_disponibles") or 0),
+            "municipios": municipios,
+            "municipios_count": len(municipios),
+            "etapa": "beta",
+        }
+    except Exception as e:
+        logger.warning(f"/api/public/stats falló, devolviendo fallback: {e}")
+        return fallback
 
 
 # ─────────────────── VITRINA PÚBLICA: LISTADO ───────────────────
