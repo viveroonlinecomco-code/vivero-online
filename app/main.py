@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import get_settings
 from app.routes import auth as auth_routes
 from app.routes import catalogo as catalogo_routes
+from app.routes import viveros as viveros_routes
 from app.routes import marketplace as marketplace_routes
 from app.routes import transacciones as transacciones_routes
 from app.routes import chat as chat_routes
@@ -70,6 +71,7 @@ async def health():
 # API endpoints
 app.include_router(auth_routes.router)
 app.include_router(catalogo_routes.router)
+app.include_router(viveros_routes.router)
 app.include_router(marketplace_routes.router)
 app.include_router(transacciones_routes.router)
 app.include_router(chat_routes.router)
