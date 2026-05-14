@@ -66,7 +66,7 @@
     <!-- Content rendered by JS -->
     <div data-vo="state-content" class="hidden space-y-6">
 
-        <!-- Foto principal -->
+        <!-- Foto principal de la planta -->
         <div data-vo="foto" class="aspect-square w-full rounded-xl overflow-hidden bg-primary/10 bg-cover bg-center relative">
             <div data-vo="foto-fallback" class="hidden absolute inset-0 flex items-center justify-center">
                 <span class="material-symbols-outlined text-7xl text-primary/30">eco</span>
@@ -92,17 +92,36 @@
             </div>
         </section>
 
-        <!-- Vivero -->
+        <!-- Vivero (con historia + foto + dirección si existen) -->
         <section class="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
             <h3 class="font-bold text-sm text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1">
                 <span class="material-symbols-outlined text-base text-primary">storefront</span>
                 Vivero
             </h3>
+
+            <!-- Foto del vivero (solo se muestra si existe foto_url) -->
+            <div data-vo="vivero-foto" class="hidden w-full h-40 rounded-lg bg-cover bg-center mb-4"></div>
+
             <p data-vo="vivero-nombre" class="text-lg font-bold"></p>
-            <p data-vo="vivero-ciudad" class="text-sm text-slate-500 mb-4"></p>
+            <p data-vo="vivero-ciudad" class="text-sm text-slate-500"></p>
+
+            <!-- Dirección (solo se muestra si existe direccion) -->
+            <p data-vo="vivero-direccion" class="hidden text-sm text-slate-500 mt-1 items-center gap-1">
+                <span class="material-symbols-outlined text-base">place</span>
+                <span data-vo="vivero-direccion-text"></span>
+            </p>
+
+            <!-- Historia del vivero (solo se muestra si existe historia) -->
+            <div data-vo="vivero-historia-row" class="hidden mt-4 p-4 bg-primary/5 dark:bg-primary/10 rounded-lg">
+                <p class="text-xs font-bold text-primary uppercase mb-2 flex items-center gap-1">
+                    <span class="material-symbols-outlined text-sm">menu_book</span>
+                    Sobre este vivero
+                </p>
+                <p data-vo="vivero-historia" class="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line"></p>
+            </div>
 
             <!-- Contactos (solo autenticados) -->
-            <div data-vo="contacto-autenticado" class="hidden flex-wrap gap-2">
+            <div data-vo="contacto-autenticado" class="hidden flex-wrap gap-2 mt-4">
                 <a data-vo="contacto-whatsapp" href="#" target="_blank" rel="noopener noreferrer" class="hidden items-center gap-1 bg-emerald-500 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-emerald-600 transition-colors">
                     <span class="material-symbols-outlined text-base">chat</span>
                     WhatsApp
@@ -118,7 +137,7 @@
             </div>
 
             <!-- Contacto bloqueado (anónimos) -->
-            <div data-vo="contacto-anonimo" class="hidden bg-primary/5 dark:bg-primary/10 rounded-lg p-4 items-start gap-3">
+            <div data-vo="contacto-anonimo" class="hidden bg-primary/5 dark:bg-primary/10 rounded-lg p-4 items-start gap-3 mt-4">
                 <span class="material-symbols-outlined text-primary text-2xl">lock</span>
                 <div class="flex-1">
                     <p class="text-sm font-semibold">Iniciá sesión para contactar al vivero</p>
@@ -273,7 +292,7 @@
     const planta = item.plantas || {};
     const vivero = item.viveros || {};
 
-    // Foto (background-image con JSON.stringify para sanitizar)
+    // Foto de la planta (background-image con JSON.stringify para sanitizar)
     if (item.foto_ia_url) {
         $('[data-vo="foto"]').style.backgroundImage = `url(${JSON.stringify(item.foto_ia_url)})`;
     } else {
@@ -304,9 +323,30 @@
         $('[data-vo="altura-info"]').textContent = `· ${item.altura_cm} cm de altura`;
     }
 
-    // Vivero
+    // Vivero — nombre + ciudad
     $('[data-vo="vivero-nombre"]').textContent = vivero.nombre_vivero || 'Vivero';
     $('[data-vo="vivero-ciudad"]').textContent = vivero.ciudad ? `📍 ${vivero.ciudad}` : '';
+
+    // Foto del vivero (NEW)
+    if (vivero.foto_url) {
+        const fotoVivero = $('[data-vo="vivero-foto"]');
+        fotoVivero.style.backgroundImage = `url(${JSON.stringify(vivero.foto_url)})`;
+        fotoVivero.classList.remove('hidden');
+    }
+
+    // Dirección del vivero (NEW)
+    if (vivero.direccion) {
+        $('[data-vo="vivero-direccion-text"]').textContent = vivero.direccion;
+        const dir = $('[data-vo="vivero-direccion"]');
+        dir.classList.remove('hidden');
+        dir.classList.add('flex');
+    }
+
+    // Historia del vivero (NEW)
+    if (vivero.historia) {
+        $('[data-vo="vivero-historia-row"]').classList.remove('hidden');
+        $('[data-vo="vivero-historia"]').textContent = vivero.historia;
+    }
 
     // Contactos según sesión
     if (me) {
