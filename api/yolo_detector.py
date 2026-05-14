@@ -1,6 +1,26 @@
 """
-ViveroOnline — Detector de Plantas con YOLO-11
-===============================================
+[DEPRECATED] ViveroOnline — Detector de Plantas con YOLO-11 vía Ultralytics HUB
+==============================================================================
+
+⚠️  NO USAR. Implementación dormida.
+
+La implementación ACTIVA de YOLO vive en `app/services/yolo.py`
+(importada por `app/routes/catalogo.py`). Si necesitás tocar la
+detección de plantas, hacelo allá — NO acá.
+
+Este archivo quedó como deuda técnica de una arquitectura anterior
+que usaba Ultralytics HUB (cloud API). Se conserva por dos razones:
+  1. Histórica: documenta el approach cloud-API por si en el futuro
+     se decide volver a él (p.ej., para offload de cómputo).
+  2. Referencia: el flujo de bounding box + recorte con margen del
+     10% sigue siendo válido como patrón si se reescribe.
+
+Borrar en el próximo PR que toque la lógica de YOLO (upgrade de
+modelo, nuevas clases de detección, cambios en crop_plant, etc).
+
+────────────────────────────────────────────────────────────────────
+Documentación original (para referencia):
+
 Usa la API de Ultralytics HUB (cloud) para detección — sin instalar PyTorch.
 YOLO-11 detecta y recorta la planta antes de pasarla a Gemini Vision.
 
