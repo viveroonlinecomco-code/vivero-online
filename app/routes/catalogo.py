@@ -155,7 +155,11 @@ async def guardar_inventario(
     req: GuardarInventarioRequest,
     user: UserContext = Depends(require_viverista),
 ):
-    """Crea planta si no existe + crea item de inventario."""
+    """Crea planta si no existe + crea item de inventario.
+
+    Si el viverista intenta subir la misma planta + altura que ya tiene en su
+    inventario, devuelve 409 con mensaje útil (en vez del error crudo de Postgres).
+    """
     if not user.vivero_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un vivero")
 
@@ -171,21 +175,45 @@ async def guardar_inventario(
         }).execute()
         planta_id = planta_resp.data[0]["planta_id"]
 
-    # 2. Crear item de inventario
-    inv_resp = db.table("inventario").insert({
-        "vivero_id": user.vivero_id,
-        "planta_id": planta_id,
-        "altura_cm": req.altura_cm,
-        "precio_mayorista": req.precio_mayorista,
-        "precio_detal": req.precio_detal,
-        "stock": req.stock,
-        "unidad_medida": req.unidad_medida,
-        "foto_ia_url": req.foto_url,
-        "confianza_yolo": req.confianza_yolo,
-        "estado_planta": "disponible",
-        "origen_carga": "ia_viverista",
-        "notas": req.notas,
-    }).execute()
+    # 2. Crear item de inventario (con manejo amigable de duplicate key)
+    try:
+        inv_resp = db.table("inventario").insert({
+            "vivero_id": user.vivero_id,
+            "planta_id": planta_id,
+            "altura_cm": req.altura_cm,
+            "precio_mayorista": req.precio_mayorista,
+            "precio_detal": req.precio_detal,
+            "stock": req.stock,
+            "unidad_medida": req.unidad_medida,
+            "foto_ia_url": req.foto_url,
+            "confianza_yolo": req.confianza_yolo,
+            "estado_planta": "disponible",
+            "origen_carga": "ia_viverista",
+            "notas": req.notas,
+        }).execute()
+    except Exception as e:
+        msg = str(e).lower()
+        # Postgres unique_violation = 23505
+        # Constraint relevante: inventario_vivero_planta_altura_unique (vivero_id, planta_id, altura_cm)
+        if (
+            "23505" in msg
+            or "duplicate key" in msg
+            or "unique constraint" in msg
+            or "inventario_vivero_planta_altura" in msg
+        ):
+            nombre = req.nombre_comun or "esta planta"
+            altura = req.altura_cm
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Ya tenés \"{nombre}\" de {altura} cm en tu inventario. "
+                    f"Para subir otra variante cambiá la altura (ej: {altura + 10} cm). "
+                    f"Si querés actualizar stock o precio, editá el item existente "
+                    f"con el botón ✏️ desde 'Mi Inventario'."
+                ),
+            )
+        # Cualquier otro error → 500 con mensaje truncado para no leakear detalles
+        raise HTTPException(500, detail=f"Error al guardar el inventario: {str(e)[:200]}")
 
     return {
         "ok": True,
