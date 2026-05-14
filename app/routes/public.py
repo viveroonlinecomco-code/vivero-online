@@ -181,7 +181,7 @@ async def detalle_item_publico(inventario_id: int):
     """Detalle público de un item del marketplace. SIN auth.
 
     Devuelve datos botánicos + precio + stock + vivero (nombre, ciudad, coords,
-    historia, foto del vivero, dirección general).
+    historia, foto principal, galería de fotos, dirección general).
 
     NO devuelve teléfono ni WhatsApp del vivero — para eso hay que loguearse.
     """
@@ -190,7 +190,7 @@ async def detalle_item_publico(inventario_id: int):
         "inventario_id, planta_id, altura_cm, precio_mayorista, precio_detal, "
         "stock, unidad_medida, estado_planta, foto_ia_url, notas, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico, familia_botanica, requerimientos_ia, clima_ideal), "
-        "viveros(nombre_vivero, ciudad, latitud, longitud, historia, foto_url, direccion)"
+        "viveros(nombre_vivero, ciudad, latitud, longitud, historia, foto_url, fotos_galeria, direccion)"
     ).eq("inventario_id", inventario_id).limit(1).execute()
 
     if not resp.data:
