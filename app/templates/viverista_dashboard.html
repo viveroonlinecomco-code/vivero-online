@@ -87,7 +87,7 @@
 </div>
 </section>
 
-<!-- Perfil del vivero -->
+<!-- Perfil del vivero — foto principal + galería + historia + dirección -->
 <section class="space-y-3">
 <div class="flex items-center justify-between">
 <h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold">Perfil de mi vivero</h2>
@@ -95,8 +95,9 @@
 </div>
 <div class="bg-white dark:bg-slate-900 rounded-xl border border-primary/10 shadow-sm p-5 space-y-4">
 
+<!-- Foto principal del vivero (portada) -->
 <div class="space-y-2">
-<label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Foto principal del vivero</label>
+<label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Foto principal (portada)</label>
 <div class="relative">
 <div data-vo="foto-preview" class="w-full h-40 rounded-lg bg-primary/5 bg-cover bg-center flex items-center justify-center border-2 border-dashed border-primary/20 overflow-hidden">
 <span data-vo="foto-placeholder" class="material-symbols-outlined text-primary/40 text-5xl">add_a_photo</span>
@@ -106,7 +107,19 @@
 </div>
 <input type="file" data-vo="foto-input" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer" title="Subir foto del vivero"/>
 </div>
-<p class="text-xs text-slate-500">Click en la imagen para subir. Máx 10MB. Aparece en tu vitrina pública del marketplace.</p>
+<p class="text-xs text-slate-500">Click en la imagen para subir. Máx 10MB. Es la portada de tu vivero en el marketplace.</p>
+</div>
+
+<!-- Galería de fotos adicionales (max 3) -->
+<div class="space-y-2">
+<label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Galería (hasta 3 fotos adicionales)</label>
+<div data-vo="galeria-container" class="grid grid-cols-3 gap-2">
+<!-- Slots renderizados dinámicamente por JS -->
+<div class="aspect-square rounded-lg bg-primary/5 animate-pulse"></div>
+<div class="aspect-square rounded-lg bg-primary/5 animate-pulse"></div>
+<div class="aspect-square rounded-lg bg-primary/5 animate-pulse"></div>
+</div>
+<p class="text-xs text-slate-500">Compartí fotos del invernadero, plantas, equipo de trabajo, etc.</p>
 </div>
 
 <div class="space-y-2">
@@ -156,7 +169,7 @@
 </div>
 </nav>
 
-<!-- Modal Editar Inventario — slide-up en mobile, centrado en desktop -->
+<!-- Modal Editar Inventario -->
 <div data-vo="modal-editar" class="hidden fixed inset-0 bg-black/50 z-50 items-end sm:items-center justify-center p-0 sm:p-4">
 <div class="bg-white dark:bg-slate-900 rounded-t-xl sm:rounded-xl max-w-md w-full max-h-[92vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
 
@@ -275,7 +288,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>`;
             } else {
                 list.innerHTML = (cat.items || []).slice(0, 20).map(i => {
-                    // Etiqueta visual del estado (color según valor)
                     const estadoColors = {
                         'disponible': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
                         'agotado': 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
@@ -284,7 +296,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     };
                     const estado = i.estado_planta || 'disponible';
                     const estadoCls = estadoColors[estado] || estadoColors.disponible;
-                    // Pasar el item completo serializado en un data-attr para el modal
                     const itemJSON = encodeURIComponent(JSON.stringify({
                         inventario_id: i.inventario_id,
                         nombre_comun: i.nombre_comun,
@@ -321,7 +332,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // ──────────────────────────────────────────────────
-        // Modal Editar Inventario — wire-up de eventos
+        // Modal Editar Inventario
         // ──────────────────────────────────────────────────
 
         const modal = document.querySelector('[data-vo="modal-editar"]');
@@ -365,7 +376,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             currentItem = null;
         }
 
-        // Click en cualquier botón ✏️ de la lista de inventario
         document.querySelectorAll('[data-vo="editar-item"]').forEach(btn => {
             btn.addEventListener('click', (ev) => {
                 ev.preventDefault();
@@ -380,7 +390,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         });
 
-        // Cerrar modal — botón X, Cancelar o click en backdrop
         if (btnCerrar) btnCerrar.addEventListener('click', closeModal);
         if (btnCancelar) btnCancelar.addEventListener('click', closeModal);
         if (modal) {
@@ -389,49 +398,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // Guardar cambios — PATCH /api/catalogo/inventario/{id}
         if (btnGuardar) {
             btnGuardar.addEventListener('click', async () => {
                 if (!currentItem) return;
-
                 const stock = parseInt(modalStock.value);
                 const precio = parseFloat(modalPrecio.value);
                 const estado = modalEstado.value;
-
-                if (isNaN(stock) || stock < 0) {
-                    VO.showToast('Stock inválido (mínimo 0)', 'error');
-                    return;
-                }
-                if (isNaN(precio) || precio < 0) {
-                    VO.showToast('Precio inválido (mínimo 0)', 'error');
-                    return;
-                }
-
+                if (isNaN(stock) || stock < 0) { VO.showToast('Stock inválido (mínimo 0)', 'error'); return; }
+                if (isNaN(precio) || precio < 0) { VO.showToast('Precio inválido (mínimo 0)', 'error'); return; }
                 btnGuardar.disabled = true;
                 const originalHTML = btnGuardar.innerHTML;
                 btnGuardar.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span><span>Guardando…</span>';
-
                 try {
                     const token = VO.getToken();
                     const res = await fetch(`/api/catalogo/inventario/${currentItem.inventario_id}`, {
                         method: 'PATCH',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            stock: stock,
-                            precio_mayorista: precio,
-                            estado_planta: estado,
-                        }),
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ stock: stock, precio_mayorista: precio, estado_planta: estado }),
                     });
-                    if (!res.ok) {
-                        const err = await res.json().catch(() => ({}));
-                        throw new Error(err.detail || 'Error al guardar');
-                    }
+                    if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Error al guardar'); }
                     VO.showToast('Inventario actualizado ✓', 'success');
                     closeModal();
-                    // Recargar para mostrar valores actualizados
                     setTimeout(() => window.location.reload(), 600);
                 } catch (e) {
                     console.error('Error actualizando inventario:', e);
@@ -442,30 +429,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // Eliminar item — DELETE /api/catalogo/inventario/{id}
         if (btnEliminar) {
             btnEliminar.addEventListener('click', async () => {
                 if (!currentItem) return;
-
                 const nombre = currentItem.nombre_comun || 'esta planta';
-                if (!confirm(`¿Eliminar "${nombre}" de tu inventario?\n\nEsta acción no se puede deshacer.`)) {
-                    return;
-                }
-
+                if (!confirm(`¿Eliminar "${nombre}" de tu inventario?\n\nEsta acción no se puede deshacer.`)) return;
                 btnEliminar.disabled = true;
                 const originalHTML = btnEliminar.innerHTML;
                 btnEliminar.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span><span>Eliminando…</span>';
-
                 try {
                     const token = VO.getToken();
                     const res = await fetch(`/api/catalogo/inventario/${currentItem.inventario_id}`, {
                         method: 'DELETE',
                         headers: { 'Authorization': `Bearer ${token}` },
                     });
-                    if (!res.ok) {
-                        const err = await res.json().catch(() => ({}));
-                        throw new Error(err.detail || 'Error al eliminar');
-                    }
+                    if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Error al eliminar'); }
                     VO.showToast('Item eliminado del inventario', 'success');
                     closeModal();
                     setTimeout(() => window.location.reload(), 600);
@@ -479,7 +457,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // ──────────────────────────────────────────────────
-        // Sección "Perfil de mi vivero" — load + save + upload
+        // Perfil del vivero — foto + galería + historia + dirección
         // ──────────────────────────────────────────────────
 
         const historiaInput = document.querySelector('[data-vo="historia-input"]');
@@ -491,6 +469,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const fotoInput = document.querySelector('[data-vo="foto-input"]');
         const btnGuardarPerfil = document.querySelector('[data-vo="guardar-perfil"]');
 
+        // Pre-cargar historia + dirección + foto principal
         if (perfil) {
             if (historiaInput) {
                 historiaInput.value = perfil.historia || '';
@@ -509,6 +488,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
+        // Subir foto principal (portada)
         if (fotoInput) {
             fotoInput.addEventListener('change', async (ev) => {
                 const file = ev.target.files[0];
@@ -537,17 +517,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                         headers: { 'Authorization': `Bearer ${token}` },
                         body: formData,
                     });
-                    if (!res.ok) {
-                        const err = await res.json().catch(() => ({}));
-                        throw new Error(err.detail || 'Error al subir foto');
-                    }
+                    if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Error al subir foto'); }
                     const result = await res.json();
                     if (fotoPreview && result.foto_url) {
                         fotoPreview.style.backgroundImage = `url('${result.foto_url}')`;
                     }
-                    VO.showToast('Foto del vivero subida ✓', 'success');
+                    VO.showToast('Foto principal subida ✓', 'success');
                 } catch (e) {
-                    console.error('Error subiendo foto del vivero:', e);
+                    console.error('Error subiendo foto principal:', e);
                     VO.showToast(e.message || 'No se pudo subir la foto', 'error');
                     try {
                         const refreshed = await VO.api('/api/viveros/me');
@@ -567,29 +544,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
+        // Guardar historia + dirección
         if (btnGuardarPerfil) {
             btnGuardarPerfil.addEventListener('click', async () => {
                 const historia = historiaInput ? historiaInput.value : null;
                 const direccion = direccionInput ? direccionInput.value : null;
-
                 btnGuardarPerfil.disabled = true;
                 const originalHTML = btnGuardarPerfil.innerHTML;
                 btnGuardarPerfil.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span><span>Guardando…</span>';
-
                 try {
                     const token = VO.getToken();
                     const res = await fetch('/api/viveros/me', {
                         method: 'PATCH',
-                        headers: {
-                            'Authorization': `Bearer ${token}`,
-                            'Content-Type': 'application/json',
-                        },
+                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({ historia, direccion }),
                     });
-                    if (!res.ok) {
-                        const err = await res.json().catch(() => ({}));
-                        throw new Error(err.detail || 'Error al guardar');
-                    }
+                    if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Error al guardar'); }
                     VO.showToast('Perfil del vivero actualizado ✓', 'success');
                 } catch (e) {
                     console.error('Error guardando perfil:', e);
@@ -600,6 +570,114 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
             });
         }
+
+        // ──────────────────────────────────────────────────
+        // Galería de fotos adicionales (max 3)
+        // ──────────────────────────────────────────────────
+
+        const MAX_GALERIA = 3;
+        const galeriaContainer = document.querySelector('[data-vo="galeria-container"]');
+
+        function renderGaleria(fotos) {
+            if (!galeriaContainer) return;
+            const fotosArr = Array.isArray(fotos) ? fotos : [];
+            galeriaContainer.innerHTML = '';
+
+            // Renderizar fotos existentes
+            fotosArr.forEach((url, idx) => {
+                const div = document.createElement('div');
+                div.className = 'relative aspect-square rounded-lg bg-cover bg-center overflow-hidden';
+                div.style.backgroundImage = `url(${JSON.stringify(url)})`;
+                const btn = document.createElement('button');
+                btn.className = 'absolute top-1 right-1 w-7 h-7 bg-red-500/90 text-white rounded-full flex items-center justify-center shadow-md hover:bg-red-600 transition disabled:opacity-50';
+                btn.setAttribute('data-index', String(idx));
+                btn.title = 'Eliminar foto';
+                btn.innerHTML = '<span class="material-symbols-outlined text-base">close</span>';
+                btn.addEventListener('click', () => handleDeleteGaleria(idx, btn));
+                div.appendChild(btn);
+                galeriaContainer.appendChild(div);
+            });
+
+            // Renderizar slots vacíos
+            const empty = MAX_GALERIA - fotosArr.length;
+            for (let i = 0; i < empty; i++) {
+                const label = document.createElement('label');
+                label.className = 'relative aspect-square rounded-lg bg-primary/5 border-2 border-dashed border-primary/20 flex items-center justify-center cursor-pointer hover:bg-primary/10 transition overflow-hidden';
+                label.innerHTML = `
+                    <span class="material-symbols-outlined text-primary/40 text-3xl">add_a_photo</span>
+                    <div data-vo="galeria-spinner" class="hidden absolute inset-0 bg-black/40 items-center justify-center">
+                        <span class="material-symbols-outlined animate-spin text-white text-2xl">progress_activity</span>
+                    </div>
+                `;
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.className = 'absolute inset-0 opacity-0 cursor-pointer';
+                input.addEventListener('change', (ev) => handleUploadGaleria(ev, label));
+                label.appendChild(input);
+                galeriaContainer.appendChild(label);
+            }
+        }
+
+        async function handleUploadGaleria(ev, labelEl) {
+            const file = ev.target.files[0];
+            if (!file) return;
+            if (file.size > 10 * 1024 * 1024) {
+                VO.showToast('Imagen muy grande. Máx 10MB.', 'error');
+                ev.target.value = '';
+                return;
+            }
+            const spinner = labelEl ? labelEl.querySelector('[data-vo="galeria-spinner"]') : null;
+            if (spinner) {
+                spinner.classList.remove('hidden');
+                spinner.classList.add('flex');
+            }
+            try {
+                const formData = new FormData();
+                formData.append('imagen', file);
+                const token = VO.getToken();
+                const res = await fetch('/api/viveros/me/fotos', {
+                    method: 'POST',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                    body: formData,
+                });
+                if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Error al subir foto'); }
+                const result = await res.json();
+                VO.showToast('Foto agregada a la galería ✓', 'success');
+                renderGaleria(result.fotos_galeria || []);
+            } catch (e) {
+                console.error('Error subiendo foto galería:', e);
+                VO.showToast(e.message || 'No se pudo subir la foto', 'error');
+                if (spinner) {
+                    spinner.classList.add('hidden');
+                    spinner.classList.remove('flex');
+                }
+                ev.target.value = '';
+            }
+        }
+
+        async function handleDeleteGaleria(index, btnEl) {
+            if (!confirm('¿Eliminar esta foto de la galería?')) return;
+            if (btnEl) btnEl.disabled = true;
+            try {
+                const token = VO.getToken();
+                const res = await fetch(`/api/viveros/me/fotos?index=${index}`, {
+                    method: 'DELETE',
+                    headers: { 'Authorization': `Bearer ${token}` },
+                });
+                if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Error al eliminar foto'); }
+                const result = await res.json();
+                VO.showToast('Foto eliminada de la galería', 'success');
+                renderGaleria(result.fotos_galeria || []);
+            } catch (e) {
+                console.error('Error eliminando foto galería:', e);
+                VO.showToast(e.message || 'No se pudo eliminar', 'error');
+                if (btnEl) btnEl.disabled = false;
+            }
+        }
+
+        // Render inicial de la galería
+        renderGaleria(perfil ? (perfil.fotos_galeria || []) : []);
 
     } catch (e) {
         console.error('Error cargando dashboard viverista:', e);
