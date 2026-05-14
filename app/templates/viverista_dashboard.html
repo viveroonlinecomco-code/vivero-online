@@ -86,6 +86,51 @@
 </div>
 </div>
 </section>
+
+<!-- Perfil del vivero — historia + foto principal + dirección. Aparece en marketplace_detalle para los compradores. -->
+<section class="space-y-3">
+<div class="flex items-center justify-between">
+<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold">Perfil de mi vivero</h2>
+<span class="text-xs text-slate-400">Visible en el marketplace</span>
+</div>
+<div class="bg-white dark:bg-slate-900 rounded-xl border border-primary/10 shadow-sm p-5 space-y-4">
+
+<!-- Foto principal del vivero — click en la imagen para subir nueva -->
+<div class="space-y-2">
+<label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Foto principal del vivero</label>
+<div class="relative">
+<div data-vo="foto-preview" class="w-full h-40 rounded-lg bg-primary/5 bg-cover bg-center flex items-center justify-center border-2 border-dashed border-primary/20 overflow-hidden">
+<span data-vo="foto-placeholder" class="material-symbols-outlined text-primary/40 text-5xl">add_a_photo</span>
+<div data-vo="foto-spinner" class="hidden absolute inset-0 bg-black/40 flex items-center justify-center">
+<span class="material-symbols-outlined animate-spin text-white text-4xl">progress_activity</span>
+</div>
+</div>
+<input type="file" data-vo="foto-input" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer" title="Subir foto del vivero"/>
+</div>
+<p class="text-xs text-slate-500">Click en la imagen para subir. Máx 10MB. Aparece en tu vitrina pública del marketplace.</p>
+</div>
+
+<!-- Historia del vivero -->
+<div class="space-y-2">
+<label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Historia del vivero</label>
+<textarea data-vo="historia-input" rows="5" maxlength="2000" placeholder="Contale a tus compradores quién sos, hace cuántos años producís, en qué especies te especializás, qué prácticas usás (orgánico, hidropónico, etc)..." class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"></textarea>
+<p class="text-xs text-slate-500 text-right"><span data-vo="historia-charcount">0</span>/2000 caracteres</p>
+</div>
+
+<!-- Dirección -->
+<div class="space-y-2">
+<label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Dirección</label>
+<input type="text" data-vo="direccion-input" maxlength="500" placeholder="Ej: Vereda Canelón, Km 2 vía Cajicá-Tabio" class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"/>
+<p class="text-xs text-slate-500">Visible para compradores. Útil para coordinar entregas.</p>
+</div>
+
+<!-- Botón guardar -->
+<button data-vo="guardar-perfil" class="w-full py-3 bg-primary text-white rounded-full font-semibold hover:bg-primary/90 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+<span class="material-symbols-outlined">save</span>
+<span>Guardar perfil</span>
+</button>
+</div>
+</section>
 </main>
 <!-- Floating Action Button — la cámara abre el flujo de identificación con IA -->
 <button data-vo="fab-camara" class="fixed bottom-24 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/40 hover:scale-105 active:scale-95 transition-transform z-50">
@@ -141,10 +186,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // Cargar catálogo y transacciones para KPIs y lista
-        const [cat, txn] = await Promise.all([
+        // Cargar catálogo, transacciones y perfil del vivero en paralelo
+        const [cat, txn, perfil] = await Promise.all([
             VO.api('/api/catalogo').catch(() => ({ items: [] })),
             VO.api('/api/transacciones').catch(() => ({ items: [] })),
+            VO.api('/api/viveros/me').catch(() => null),
         ]);
 
         // KPI 1 — Inventario total (suma de stock de todos los items)
@@ -163,33 +209,171 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Lista de inventario — empty state honesto si está vacío, render real si hay items
         const list = document.querySelector('[data-vo="lista-inventario"]');
-        if (!list) return;
-        if ((cat.items || []).length === 0) {
-            list.innerHTML = `
-                <div class="text-center py-8 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-                    <span class="material-symbols-outlined text-slate-400 text-4xl mb-2">potted_plant</span>
-                    <p class="font-semibold text-slate-700 dark:text-slate-200 mb-1">Aún no tienes plantas en tu inventario</p>
-                    <p class="text-sm text-slate-500 mb-4 max-w-xs mx-auto px-4">Tomá una foto de la planta y la IA arma la ficha por vos.</p>
-                    <a href="/viverista/identificar" class="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-full font-semibold hover:bg-primary/90 transition-colors">
-                        <span class="material-symbols-outlined">add_a_photo</span>
-                        Agregar primera planta
+        if (list) {
+            if ((cat.items || []).length === 0) {
+                list.innerHTML = `
+                    <div class="text-center py-8 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+                        <span class="material-symbols-outlined text-slate-400 text-4xl mb-2">potted_plant</span>
+                        <p class="font-semibold text-slate-700 dark:text-slate-200 mb-1">Aún no tienes plantas en tu inventario</p>
+                        <p class="text-sm text-slate-500 mb-4 max-w-xs mx-auto px-4">Tomá una foto de la planta y la IA arma la ficha por vos.</p>
+                        <a href="/viverista/identificar" class="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-full font-semibold hover:bg-primary/90 transition-colors">
+                            <span class="material-symbols-outlined">add_a_photo</span>
+                            Agregar primera planta
+                        </a>
+                    </div>`;
+            } else {
+                list.innerHTML = (cat.items || []).slice(0, 8).map(i => `
+                    <a href="/viverista/identificar" class="flex items-center gap-4 p-4 bg-white dark:bg-slate-900 rounded-lg border border-primary/10 shadow-sm">
+                        <div class="w-14 h-14 rounded-lg bg-primary/10 bg-cover bg-center flex-shrink-0"
+                             style="background-image: url('${i.foto_ia_url || ''}');"></div>
+                        <div class="flex-1 min-w-0">
+                            <p class="font-semibold truncate">${i.nombre_comun || 'Sin nombre'}</p>
+                            <p class="text-xs text-slate-500">Stock: ${i.stock || 0} ${i.unidad_medida || ''}</p>
+                        </div>
+                        <div class="text-right">
+                            <p class="font-bold text-primary">${VO.formatCOPFull(i.precio_mayorista || 0)}</p>
+                        </div>
                     </a>
-                </div>`;
-            return;
+                `).join('');
+            }
         }
-        list.innerHTML = (cat.items || []).slice(0, 8).map(i => `
-            <a href="/viverista/identificar" class="flex items-center gap-4 p-4 bg-white dark:bg-slate-900 rounded-lg border border-primary/10 shadow-sm">
-                <div class="w-14 h-14 rounded-lg bg-primary/10 bg-cover bg-center flex-shrink-0"
-                     style="background-image: url('${i.foto_ia_url || ''}');"></div>
-                <div class="flex-1 min-w-0">
-                    <p class="font-semibold truncate">${i.nombre_comun || 'Sin nombre'}</p>
-                    <p class="text-xs text-slate-500">Stock: ${i.stock || 0} ${i.unidad_medida || ''}</p>
-                </div>
-                <div class="text-right">
-                    <p class="font-bold text-primary">${VO.formatCOPFull(i.precio_mayorista || 0)}</p>
-                </div>
-            </a>
-        `).join('');
+
+        // ──────────────────────────────────────────────────
+        // Sección "Perfil de mi vivero" — load + save + upload
+        // ──────────────────────────────────────────────────
+
+        const historiaInput = document.querySelector('[data-vo="historia-input"]');
+        const direccionInput = document.querySelector('[data-vo="direccion-input"]');
+        const charcount = document.querySelector('[data-vo="historia-charcount"]');
+        const fotoPreview = document.querySelector('[data-vo="foto-preview"]');
+        const fotoPlaceholder = document.querySelector('[data-vo="foto-placeholder"]');
+        const fotoSpinner = document.querySelector('[data-vo="foto-spinner"]');
+        const fotoInput = document.querySelector('[data-vo="foto-input"]');
+        const btnGuardar = document.querySelector('[data-vo="guardar-perfil"]');
+
+        // Pre-fill con datos existentes del perfil
+        if (perfil) {
+            if (historiaInput) {
+                historiaInput.value = perfil.historia || '';
+                if (charcount) charcount.textContent = (perfil.historia || '').length;
+            }
+            if (direccionInput) {
+                direccionInput.value = perfil.direccion || '';
+            }
+            if (fotoPreview && perfil.foto_url) {
+                fotoPreview.style.backgroundImage = `url('${perfil.foto_url}')`;
+                if (fotoPlaceholder) fotoPlaceholder.style.display = 'none';
+            }
+        }
+
+        // Contador de caracteres en historia
+        if (historiaInput && charcount) {
+            historiaInput.addEventListener('input', () => {
+                charcount.textContent = historiaInput.value.length;
+            });
+        }
+
+        // Subida de foto — multipart/form-data manual (VO.api es JSON-only)
+        if (fotoInput) {
+            fotoInput.addEventListener('change', async (ev) => {
+                const file = ev.target.files[0];
+                if (!file) return;
+
+                // Validar tamaño en cliente para feedback inmediato
+                if (file.size > 10 * 1024 * 1024) {
+                    VO.showToast('Imagen muy grande. Máx 10MB.', 'error');
+                    fotoInput.value = '';
+                    return;
+                }
+
+                // Preview local instantáneo (no esperar al server)
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    if (fotoPreview) {
+                        fotoPreview.style.backgroundImage = `url('${e.target.result}')`;
+                        if (fotoPlaceholder) fotoPlaceholder.style.display = 'none';
+                    }
+                };
+                reader.readAsDataURL(file);
+
+                // Mostrar spinner durante upload
+                if (fotoSpinner) fotoSpinner.classList.remove('hidden');
+
+                try {
+                    const formData = new FormData();
+                    formData.append('imagen', file);
+                    const token = VO.getToken();
+                    const res = await fetch('/api/viveros/me/foto', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                        body: formData,
+                    });
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.detail || 'Error al subir foto');
+                    }
+                    const result = await res.json();
+                    if (fotoPreview && result.foto_url) {
+                        fotoPreview.style.backgroundImage = `url('${result.foto_url}')`;
+                    }
+                    VO.showToast('Foto del vivero subida ✓', 'success');
+                } catch (e) {
+                    console.error('Error subiendo foto del vivero:', e);
+                    VO.showToast(e.message || 'No se pudo subir la foto', 'error');
+                    // Revertir preview si falla — recargar el perfil real del server
+                    try {
+                        const refreshed = await VO.api('/api/viveros/me');
+                        if (fotoPreview) {
+                            if (refreshed.foto_url) {
+                                fotoPreview.style.backgroundImage = `url('${refreshed.foto_url}')`;
+                            } else {
+                                fotoPreview.style.backgroundImage = '';
+                                if (fotoPlaceholder) fotoPlaceholder.style.display = '';
+                            }
+                        }
+                    } catch (_) {}
+                } finally {
+                    if (fotoSpinner) fotoSpinner.classList.add('hidden');
+                    fotoInput.value = '';  // permite re-seleccionar el mismo archivo
+                }
+            });
+        }
+
+        // Guardar historia + dirección — PATCH JSON manual (igual razón que arriba)
+        if (btnGuardar) {
+            btnGuardar.addEventListener('click', async () => {
+                const historia = historiaInput ? historiaInput.value : null;
+                const direccion = direccionInput ? direccionInput.value : null;
+
+                btnGuardar.disabled = true;
+                const originalHTML = btnGuardar.innerHTML;
+                btnGuardar.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span><span>Guardando…</span>';
+
+                try {
+                    const token = VO.getToken();
+                    const res = await fetch('/api/viveros/me', {
+                        method: 'PATCH',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ historia, direccion }),
+                    });
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.detail || 'Error al guardar');
+                    }
+                    VO.showToast('Perfil del vivero actualizado ✓', 'success');
+                } catch (e) {
+                    console.error('Error guardando perfil:', e);
+                    VO.showToast(e.message || 'No se pudo guardar', 'error');
+                } finally {
+                    btnGuardar.disabled = false;
+                    btnGuardar.innerHTML = originalHTML;
+                }
+            });
+        }
+
     } catch (e) {
         console.error('Error cargando dashboard viverista:', e);
         if (typeof VO.showToast === 'function') {
