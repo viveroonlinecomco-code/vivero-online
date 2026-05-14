@@ -60,7 +60,7 @@
 <p class="text-slate-400 text-xs">Confirmadas y pagadas</p>
 </div>
 </section>
-<!-- Predicción de Demanda — coming soon honesto: el agente Demand_Predictor existe pero no genera UI todavía -->
+<!-- Predicción de Demanda -->
 <section class="space-y-3">
 <h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold">Predicción de Demanda</h2>
 <div class="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-6">
@@ -73,7 +73,7 @@
 </div>
 </div>
 </section>
-<!-- Mi Inventario — el JS llena este contenedor con data real (o empty state si está vacío) -->
+<!-- Mi Inventario — cards editables al tocar el botón ✏️ -->
 <section class="space-y-3">
 <div class="flex items-center justify-between">
 <h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold">Mi Inventario</h2>
@@ -87,7 +87,7 @@
 </div>
 </section>
 
-<!-- Perfil del vivero — historia + foto principal + dirección. Aparece en marketplace_detalle para los compradores. -->
+<!-- Perfil del vivero -->
 <section class="space-y-3">
 <div class="flex items-center justify-between">
 <h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold">Perfil de mi vivero</h2>
@@ -95,7 +95,6 @@
 </div>
 <div class="bg-white dark:bg-slate-900 rounded-xl border border-primary/10 shadow-sm p-5 space-y-4">
 
-<!-- Foto principal del vivero — click en la imagen para subir nueva -->
 <div class="space-y-2">
 <label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Foto principal del vivero</label>
 <div class="relative">
@@ -110,21 +109,18 @@
 <p class="text-xs text-slate-500">Click en la imagen para subir. Máx 10MB. Aparece en tu vitrina pública del marketplace.</p>
 </div>
 
-<!-- Historia del vivero -->
 <div class="space-y-2">
 <label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Historia del vivero</label>
 <textarea data-vo="historia-input" rows="5" maxlength="2000" placeholder="Contale a tus compradores quién sos, hace cuántos años producís, en qué especies te especializás, qué prácticas usás (orgánico, hidropónico, etc)..." class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"></textarea>
 <p class="text-xs text-slate-500 text-right"><span data-vo="historia-charcount">0</span>/2000 caracteres</p>
 </div>
 
-<!-- Dirección -->
 <div class="space-y-2">
 <label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Dirección</label>
 <input type="text" data-vo="direccion-input" maxlength="500" placeholder="Ej: Vereda Canelón, Km 2 vía Cajicá-Tabio" class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"/>
 <p class="text-xs text-slate-500">Visible para compradores. Útil para coordinar entregas.</p>
 </div>
 
-<!-- Botón guardar -->
 <button data-vo="guardar-perfil" class="w-full py-3 bg-primary text-white rounded-full font-semibold hover:bg-primary/90 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
 <span class="material-symbols-outlined">save</span>
 <span>Guardar perfil</span>
@@ -132,11 +128,13 @@
 </div>
 </section>
 </main>
-<!-- Floating Action Button — la cámara abre el flujo de identificación con IA -->
-<button data-vo="fab-camara" class="fixed bottom-24 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/40 hover:scale-105 active:scale-95 transition-transform z-50">
+
+<!-- Floating Action Button -->
+<button data-vo="fab-camara" class="fixed bottom-24 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/40 hover:scale-105 active:scale-95 transition-transform z-40">
 <span class="material-symbols-outlined text-3xl">photo_camera</span>
 </button>
-<!-- Bottom Navigation Bar — todos los enlaces apuntan a rutas reales -->
+
+<!-- Bottom Navigation Bar -->
 <nav class="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-950 border-t border-primary/10 px-4 pb-6 pt-2 z-40">
 <div class="max-w-lg mx-auto flex justify-around">
 <a class="flex flex-col items-center gap-1 text-primary" href="/viverista">
@@ -158,6 +156,61 @@
 </div>
 </nav>
 
+<!-- Modal Editar Inventario — slide-up en mobile, centrado en desktop -->
+<div data-vo="modal-editar" class="hidden fixed inset-0 bg-black/50 z-50 items-end sm:items-center justify-center p-0 sm:p-4">
+<div class="bg-white dark:bg-slate-900 rounded-t-xl sm:rounded-xl max-w-md w-full max-h-[92vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
+
+<div class="flex items-center justify-between">
+<h3 class="text-lg font-bold">Editar planta</h3>
+<button data-vo="modal-cerrar" class="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-full w-8 h-8 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+<span class="material-symbols-outlined">close</span>
+</button>
+</div>
+
+<div class="flex items-center gap-3">
+<div data-vo="modal-foto" class="w-16 h-16 rounded-lg bg-primary/10 bg-cover bg-center flex-shrink-0"></div>
+<div class="flex-1 min-w-0">
+<p data-vo="modal-nombre" class="font-semibold truncate"></p>
+<p data-vo="modal-altura" class="text-xs text-slate-500"></p>
+</div>
+</div>
+
+<div class="space-y-3">
+<div>
+<label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">Stock disponible</label>
+<input type="number" min="0" data-vo="modal-stock" class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"/>
+</div>
+<div>
+<label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">Precio mayorista (COP)</label>
+<input type="number" min="0" step="100" data-vo="modal-precio" class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"/>
+</div>
+<div>
+<label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">Estado</label>
+<select data-vo="modal-estado" class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+<option value="disponible">Disponible (visible en marketplace)</option>
+<option value="agotado">Agotado (oculto temporalmente)</option>
+<option value="reservado">Reservado</option>
+<option value="en_crecimiento">En crecimiento</option>
+</select>
+</div>
+</div>
+
+<div class="flex gap-2 pt-2">
+<button data-vo="modal-cancelar" class="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-full font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 transition">Cancelar</button>
+<button data-vo="modal-guardar" class="flex-1 py-3 bg-primary text-white rounded-full font-semibold hover:bg-primary/90 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1">
+<span class="material-symbols-outlined text-base">save</span>
+<span>Guardar</span>
+</button>
+</div>
+
+<button data-vo="modal-eliminar" class="w-full py-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-sm font-medium flex items-center justify-center gap-1 transition disabled:opacity-50 disabled:cursor-not-allowed">
+<span class="material-symbols-outlined text-base">delete</span>
+<span>Eliminar item del inventario</span>
+</button>
+
+</div>
+</div>
+
 <script src="/static/js/vivero.js"></script>
 
 <script>
@@ -173,11 +226,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
-        // Cablear FAB de cámara con doble verificación de rol (defense in depth)
+        // Cablear FAB de cámara con doble verificación de rol
         const fab = document.querySelector('[data-vo="fab-camara"]');
         if (fab) {
             fab.addEventListener('click', () => {
-                // Re-verificación antes de navegar al flujo de identificación
                 if (me.rol !== 'viverista' && me.rol !== 'admin') {
                     VO.showToast('Solo viveristas pueden identificar plantas', 'error');
                     return;
@@ -193,12 +245,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             VO.api('/api/viveros/me').catch(() => null),
         ]);
 
-        // KPI 1 — Inventario total (suma de stock de todos los items)
+        // KPI 1 — Inventario total
         const inventoryTotal = (cat.items || []).reduce((s, i) => s + (i.stock || 0), 0);
         const tot = document.querySelector('[data-vo="inventario-total"]');
         if (tot) tot.textContent = inventoryTotal.toLocaleString('es-CO');
 
-        // KPI 2 — Ventas del mes (solo transacciones confirmadas/pagadas/completadas)
+        // KPI 2 — Ventas del mes
         const mesActual = new Date().toISOString().substring(0, 7);
         const ventasMes = (txn.items || [])
             .filter(t => (t.fecha_transaccion || '').startsWith(mesActual))
@@ -207,7 +259,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const vm = document.querySelector('[data-vo="ventas-mes"]');
         if (vm) vm.textContent = VO.formatCOPFull(ventasMes);
 
-        // Lista de inventario — empty state honesto si está vacío, render real si hay items
+        // Lista de inventario con botón ✏️ por card
         const list = document.querySelector('[data-vo="lista-inventario"]');
         if (list) {
             if ((cat.items || []).length === 0) {
@@ -222,20 +274,208 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </a>
                     </div>`;
             } else {
-                list.innerHTML = (cat.items || []).slice(0, 8).map(i => `
-                    <a href="/viverista/identificar" class="flex items-center gap-4 p-4 bg-white dark:bg-slate-900 rounded-lg border border-primary/10 shadow-sm">
-                        <div class="w-14 h-14 rounded-lg bg-primary/10 bg-cover bg-center flex-shrink-0"
-                             style="background-image: url('${i.foto_ia_url || ''}');"></div>
-                        <div class="flex-1 min-w-0">
-                            <p class="font-semibold truncate">${i.nombre_comun || 'Sin nombre'}</p>
-                            <p class="text-xs text-slate-500">Stock: ${i.stock || 0} ${i.unidad_medida || ''}</p>
+                list.innerHTML = (cat.items || []).slice(0, 20).map(i => {
+                    // Etiqueta visual del estado (color según valor)
+                    const estadoColors = {
+                        'disponible': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+                        'agotado': 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+                        'reservado': 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+                        'en_crecimiento': 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
+                    };
+                    const estado = i.estado_planta || 'disponible';
+                    const estadoCls = estadoColors[estado] || estadoColors.disponible;
+                    // Pasar el item completo serializado en un data-attr para el modal
+                    const itemJSON = encodeURIComponent(JSON.stringify({
+                        inventario_id: i.inventario_id,
+                        nombre_comun: i.nombre_comun,
+                        nombre_cientifico: i.nombre_cientifico,
+                        stock: i.stock || 0,
+                        precio_mayorista: i.precio_mayorista || 0,
+                        precio_detal: i.precio_detal || null,
+                        estado_planta: estado,
+                        altura_cm: i.altura_cm || 0,
+                        unidad_medida: i.unidad_medida || 'unidad',
+                        foto_ia_url: i.foto_ia_url || '',
+                    }));
+                    return `
+                        <div class="flex items-center gap-4 p-4 bg-white dark:bg-slate-900 rounded-lg border border-primary/10 shadow-sm">
+                            <div class="w-14 h-14 rounded-lg bg-primary/10 bg-cover bg-center flex-shrink-0"
+                                 style="background-image: url('${i.foto_ia_url || ''}');"></div>
+                            <div class="flex-1 min-w-0">
+                                <p class="font-semibold truncate">${i.nombre_comun || 'Sin nombre'}</p>
+                                <div class="flex items-center gap-2 mt-1 flex-wrap">
+                                    <span class="text-xs text-slate-500">Stock: ${i.stock || 0} ${i.unidad_medida || ''}</span>
+                                    <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider ${estadoCls}">${estado}</span>
+                                </div>
+                            </div>
+                            <div class="flex flex-col items-end gap-1.5 shrink-0">
+                                <p class="font-bold text-primary text-sm whitespace-nowrap">${VO.formatCOPFull(i.precio_mayorista || 0)}</p>
+                                <button data-vo="editar-item" data-item="${itemJSON}" class="text-primary hover:bg-primary/10 rounded-full w-9 h-9 flex items-center justify-center transition" title="Editar">
+                                    <span class="material-symbols-outlined text-lg">edit</span>
+                                </button>
+                            </div>
                         </div>
-                        <div class="text-right">
-                            <p class="font-bold text-primary">${VO.formatCOPFull(i.precio_mayorista || 0)}</p>
-                        </div>
-                    </a>
-                `).join('');
+                    `;
+                }).join('');
             }
+        }
+
+        // ──────────────────────────────────────────────────
+        // Modal Editar Inventario — wire-up de eventos
+        // ──────────────────────────────────────────────────
+
+        const modal = document.querySelector('[data-vo="modal-editar"]');
+        const modalNombre = document.querySelector('[data-vo="modal-nombre"]');
+        const modalAltura = document.querySelector('[data-vo="modal-altura"]');
+        const modalFoto = document.querySelector('[data-vo="modal-foto"]');
+        const modalStock = document.querySelector('[data-vo="modal-stock"]');
+        const modalPrecio = document.querySelector('[data-vo="modal-precio"]');
+        const modalEstado = document.querySelector('[data-vo="modal-estado"]');
+        const btnGuardar = document.querySelector('[data-vo="modal-guardar"]');
+        const btnEliminar = document.querySelector('[data-vo="modal-eliminar"]');
+        const btnCerrar = document.querySelector('[data-vo="modal-cerrar"]');
+        const btnCancelar = document.querySelector('[data-vo="modal-cancelar"]');
+
+        let currentItem = null;
+
+        function openModal(item) {
+            currentItem = item;
+            if (modalNombre) modalNombre.textContent = item.nombre_comun || 'Planta';
+            if (modalAltura) {
+                modalAltura.textContent = item.altura_cm
+                    ? `${item.altura_cm} cm de altura`
+                    : (item.nombre_cientifico || '');
+            }
+            if (modalFoto) {
+                modalFoto.style.backgroundImage = item.foto_ia_url
+                    ? `url(${JSON.stringify(item.foto_ia_url)})` : '';
+            }
+            if (modalStock) modalStock.value = item.stock || 0;
+            if (modalPrecio) modalPrecio.value = item.precio_mayorista || 0;
+            if (modalEstado) modalEstado.value = item.estado_planta || 'disponible';
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.style.overflow = '';
+            currentItem = null;
+        }
+
+        // Click en cualquier botón ✏️ de la lista de inventario
+        document.querySelectorAll('[data-vo="editar-item"]').forEach(btn => {
+            btn.addEventListener('click', (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+                try {
+                    const item = JSON.parse(decodeURIComponent(btn.dataset.item));
+                    openModal(item);
+                } catch (e) {
+                    console.error('Error parsing item data:', e);
+                    VO.showToast('No se pudo abrir el editor', 'error');
+                }
+            });
+        });
+
+        // Cerrar modal — botón X, Cancelar o click en backdrop
+        if (btnCerrar) btnCerrar.addEventListener('click', closeModal);
+        if (btnCancelar) btnCancelar.addEventListener('click', closeModal);
+        if (modal) {
+            modal.addEventListener('click', (ev) => {
+                if (ev.target === modal) closeModal();
+            });
+        }
+
+        // Guardar cambios — PATCH /api/catalogo/inventario/{id}
+        if (btnGuardar) {
+            btnGuardar.addEventListener('click', async () => {
+                if (!currentItem) return;
+
+                const stock = parseInt(modalStock.value);
+                const precio = parseFloat(modalPrecio.value);
+                const estado = modalEstado.value;
+
+                if (isNaN(stock) || stock < 0) {
+                    VO.showToast('Stock inválido (mínimo 0)', 'error');
+                    return;
+                }
+                if (isNaN(precio) || precio < 0) {
+                    VO.showToast('Precio inválido (mínimo 0)', 'error');
+                    return;
+                }
+
+                btnGuardar.disabled = true;
+                const originalHTML = btnGuardar.innerHTML;
+                btnGuardar.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span><span>Guardando…</span>';
+
+                try {
+                    const token = VO.getToken();
+                    const res = await fetch(`/api/catalogo/inventario/${currentItem.inventario_id}`, {
+                        method: 'PATCH',
+                        headers: {
+                            'Authorization': `Bearer ${token}`,
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            stock: stock,
+                            precio_mayorista: precio,
+                            estado_planta: estado,
+                        }),
+                    });
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.detail || 'Error al guardar');
+                    }
+                    VO.showToast('Inventario actualizado ✓', 'success');
+                    closeModal();
+                    // Recargar para mostrar valores actualizados
+                    setTimeout(() => window.location.reload(), 600);
+                } catch (e) {
+                    console.error('Error actualizando inventario:', e);
+                    VO.showToast(e.message || 'No se pudo guardar', 'error');
+                    btnGuardar.disabled = false;
+                    btnGuardar.innerHTML = originalHTML;
+                }
+            });
+        }
+
+        // Eliminar item — DELETE /api/catalogo/inventario/{id}
+        if (btnEliminar) {
+            btnEliminar.addEventListener('click', async () => {
+                if (!currentItem) return;
+
+                const nombre = currentItem.nombre_comun || 'esta planta';
+                if (!confirm(`¿Eliminar "${nombre}" de tu inventario?\n\nEsta acción no se puede deshacer.`)) {
+                    return;
+                }
+
+                btnEliminar.disabled = true;
+                const originalHTML = btnEliminar.innerHTML;
+                btnEliminar.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span><span>Eliminando…</span>';
+
+                try {
+                    const token = VO.getToken();
+                    const res = await fetch(`/api/catalogo/inventario/${currentItem.inventario_id}`, {
+                        method: 'DELETE',
+                        headers: { 'Authorization': `Bearer ${token}` },
+                    });
+                    if (!res.ok) {
+                        const err = await res.json().catch(() => ({}));
+                        throw new Error(err.detail || 'Error al eliminar');
+                    }
+                    VO.showToast('Item eliminado del inventario', 'success');
+                    closeModal();
+                    setTimeout(() => window.location.reload(), 600);
+                } catch (e) {
+                    console.error('Error eliminando:', e);
+                    VO.showToast(e.message || 'No se pudo eliminar', 'error');
+                    btnEliminar.disabled = false;
+                    btnEliminar.innerHTML = originalHTML;
+                }
+            });
         }
 
         // ──────────────────────────────────────────────────
@@ -249,44 +489,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         const fotoPlaceholder = document.querySelector('[data-vo="foto-placeholder"]');
         const fotoSpinner = document.querySelector('[data-vo="foto-spinner"]');
         const fotoInput = document.querySelector('[data-vo="foto-input"]');
-        const btnGuardar = document.querySelector('[data-vo="guardar-perfil"]');
+        const btnGuardarPerfil = document.querySelector('[data-vo="guardar-perfil"]');
 
-        // Pre-fill con datos existentes del perfil
         if (perfil) {
             if (historiaInput) {
                 historiaInput.value = perfil.historia || '';
                 if (charcount) charcount.textContent = (perfil.historia || '').length;
             }
-            if (direccionInput) {
-                direccionInput.value = perfil.direccion || '';
-            }
+            if (direccionInput) direccionInput.value = perfil.direccion || '';
             if (fotoPreview && perfil.foto_url) {
                 fotoPreview.style.backgroundImage = `url('${perfil.foto_url}')`;
                 if (fotoPlaceholder) fotoPlaceholder.style.display = 'none';
             }
         }
 
-        // Contador de caracteres en historia
         if (historiaInput && charcount) {
             historiaInput.addEventListener('input', () => {
                 charcount.textContent = historiaInput.value.length;
             });
         }
 
-        // Subida de foto — multipart/form-data manual (VO.api es JSON-only)
         if (fotoInput) {
             fotoInput.addEventListener('change', async (ev) => {
                 const file = ev.target.files[0];
                 if (!file) return;
-
-                // Validar tamaño en cliente para feedback inmediato
                 if (file.size > 10 * 1024 * 1024) {
                     VO.showToast('Imagen muy grande. Máx 10MB.', 'error');
                     fotoInput.value = '';
                     return;
                 }
-
-                // Preview local instantáneo (no esperar al server)
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     if (fotoPreview) {
@@ -295,8 +526,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 };
                 reader.readAsDataURL(file);
-
-                // Mostrar spinner durante upload
                 if (fotoSpinner) fotoSpinner.classList.remove('hidden');
 
                 try {
@@ -320,7 +549,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                 } catch (e) {
                     console.error('Error subiendo foto del vivero:', e);
                     VO.showToast(e.message || 'No se pudo subir la foto', 'error');
-                    // Revertir preview si falla — recargar el perfil real del server
                     try {
                         const refreshed = await VO.api('/api/viveros/me');
                         if (fotoPreview) {
@@ -334,20 +562,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                     } catch (_) {}
                 } finally {
                     if (fotoSpinner) fotoSpinner.classList.add('hidden');
-                    fotoInput.value = '';  // permite re-seleccionar el mismo archivo
+                    fotoInput.value = '';
                 }
             });
         }
 
-        // Guardar historia + dirección — PATCH JSON manual (igual razón que arriba)
-        if (btnGuardar) {
-            btnGuardar.addEventListener('click', async () => {
+        if (btnGuardarPerfil) {
+            btnGuardarPerfil.addEventListener('click', async () => {
                 const historia = historiaInput ? historiaInput.value : null;
                 const direccion = direccionInput ? direccionInput.value : null;
 
-                btnGuardar.disabled = true;
-                const originalHTML = btnGuardar.innerHTML;
-                btnGuardar.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span><span>Guardando…</span>';
+                btnGuardarPerfil.disabled = true;
+                const originalHTML = btnGuardarPerfil.innerHTML;
+                btnGuardarPerfil.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span><span>Guardando…</span>';
 
                 try {
                     const token = VO.getToken();
@@ -368,8 +595,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     console.error('Error guardando perfil:', e);
                     VO.showToast(e.message || 'No se pudo guardar', 'error');
                 } finally {
-                    btnGuardar.disabled = false;
-                    btnGuardar.innerHTML = originalHTML;
+                    btnGuardarPerfil.disabled = false;
+                    btnGuardarPerfil.innerHTML = originalHTML;
                 }
             });
         }
