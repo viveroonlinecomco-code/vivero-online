@@ -92,15 +92,18 @@
             </div>
         </section>
 
-        <!-- Vivero (con historia + foto + dirección si existen) -->
+        <!-- Vivero (con historia + foto + galería + dirección si existen) -->
         <section class="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
             <h3 class="font-bold text-sm text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1">
                 <span class="material-symbols-outlined text-base text-primary">storefront</span>
                 Vivero
             </h3>
 
-            <!-- Foto del vivero (solo se muestra si existe foto_url) -->
-            <div data-vo="vivero-foto" class="hidden w-full h-40 rounded-lg bg-cover bg-center mb-4"></div>
+            <!-- Foto principal del vivero (solo se muestra si existe foto_url) -->
+            <div data-vo="vivero-foto" class="hidden w-full h-40 rounded-lg bg-cover bg-center mb-3"></div>
+
+            <!-- Galería del vivero (solo se muestra si hay fotos_galeria) -->
+            <div data-vo="vivero-galeria" class="hidden grid-cols-3 gap-2 mb-4 grid"></div>
 
             <p data-vo="vivero-nombre" class="text-lg font-bold"></p>
             <p data-vo="vivero-ciudad" class="text-sm text-slate-500"></p>
@@ -292,7 +295,7 @@
     const planta = item.plantas || {};
     const vivero = item.viveros || {};
 
-    // Foto de la planta (background-image con JSON.stringify para sanitizar)
+    // Foto de la planta
     if (item.foto_ia_url) {
         $('[data-vo="foto"]').style.backgroundImage = `url(${JSON.stringify(item.foto_ia_url)})`;
     } else {
@@ -327,14 +330,27 @@
     $('[data-vo="vivero-nombre"]').textContent = vivero.nombre_vivero || 'Vivero';
     $('[data-vo="vivero-ciudad"]').textContent = vivero.ciudad ? `📍 ${vivero.ciudad}` : '';
 
-    // Foto del vivero (NEW)
+    // Foto principal del vivero
     if (vivero.foto_url) {
         const fotoVivero = $('[data-vo="vivero-foto"]');
         fotoVivero.style.backgroundImage = `url(${JSON.stringify(vivero.foto_url)})`;
         fotoVivero.classList.remove('hidden');
     }
 
-    // Dirección del vivero (NEW)
+    // Galería del vivero (fotos adicionales)
+    if (vivero.fotos_galeria && Array.isArray(vivero.fotos_galeria) && vivero.fotos_galeria.length > 0) {
+        const galeria = $('[data-vo="vivero-galeria"]');
+        galeria.innerHTML = '';
+        vivero.fotos_galeria.forEach(url => {
+            const div = document.createElement('div');
+            div.className = 'aspect-square rounded-lg bg-cover bg-center';
+            div.style.backgroundImage = `url(${JSON.stringify(url)})`;
+            galeria.appendChild(div);
+        });
+        galeria.classList.remove('hidden');
+    }
+
+    // Dirección del vivero
     if (vivero.direccion) {
         $('[data-vo="vivero-direccion-text"]').textContent = vivero.direccion;
         const dir = $('[data-vo="vivero-direccion"]');
@@ -342,7 +358,7 @@
         dir.classList.add('flex');
     }
 
-    // Historia del vivero (NEW)
+    // Historia del vivero
     if (vivero.historia) {
         $('[data-vo="vivero-historia-row"]').classList.remove('hidden');
         $('[data-vo="vivero-historia"]').textContent = vivero.historia;
