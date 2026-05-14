@@ -119,7 +119,7 @@ async def detalle_item(
         "inventario_id, planta_id, altura_cm, precio_mayorista, precio_detal, "
         "stock, unidad_medida, estado_planta, foto_ia_url, notas, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico, familia_botanica, requerimientos_ia, clima_ideal), "
-        "viveros(nombre_vivero, ciudad, latitud, longitud, telefono, whatsapp_numero)"
+        "viveros(nombre_vivero, ciudad, latitud, longitud, telefono, whatsapp_numero, historia, foto_url, direccion)"
     ).eq("inventario_id", inventario_id).limit(1).execute()
 
     if not resp.data:
