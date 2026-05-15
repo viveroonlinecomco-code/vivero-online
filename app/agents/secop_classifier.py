@@ -1,4 +1,4 @@
-"""Clasificador de procesos SECOP usando Gemini.
+"""Clasificador de procesos SECOP usando Gemini (google-genai SDK).
 
 Para cada proceso con un `objeto` (descripción), extrae:
 - es_relevante: si el proceso es REALMENTE sobre plantas
@@ -10,11 +10,10 @@ Para cada proceso con un `objeto` (descripción), extrae:
 - fecha_estimada_entrega_iso: cronograma si aplica
 - confianza: 0..1
 
-Standalone (no hereda de Agent). Decisión consciente para Sprint 1:
-mantenerlo fuera del sistema conversacional de agentes porque es un
-ingester admin-only, no un asistente de usuario. Si en Sprint 1.1
-querés migrarlo al patrón Agent + self.gemini, basta con mover la
-lógica al servicio de Gemini y crear un wrapper Agent aquí.
+Standalone (no hereda de Agent). Decisión consciente para Sprint 1
+dado que es ingester admin-only.
+
+Usa el SDK google-genai (no el legacy google-generativeai).
 """
 from __future__ import annotations
 import json
@@ -22,7 +21,8 @@ import logging
 import os
 from typing import Optional
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from pydantic import BaseModel, Field
 
 
@@ -76,12 +76,12 @@ Respondé SOLO con el JSON, sin markdown, sin texto antes ni después."""
 
 
 class SecopClassifier:
-    """Clasifica procesos SECOP con Gemini.
+    """Clasifica procesos SECOP con Gemini usando el SDK google-genai.
 
     Uso:
         classifier = SecopClassifier()
         analisis, raw = classifier.classify(
-            objeto="Suministro de árboles ornamentales para parque ...",
+            objeto="Suministro de árboles ornamentales ...",
             entidad="Jardín Botánico de Bogotá",
             ciudad="Bogotá D.C.",
             cuantia=50000000,
@@ -99,8 +99,7 @@ class SecopClassifier:
                 "Falta GEMINI_API_KEY en el environment. "
                 "Configurala en Vercel → Project Settings → Environment Variables."
             )
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel(MODEL_NAME)
+        self.client = genai.Client(api_key=api_key)
 
     def classify(
         self,
@@ -112,23 +111,23 @@ class SecopClassifier:
         """Clasifica un proceso. Devuelve (analisis_validado, raw_response_dict).
 
         Lanza Exception si Gemini falla o si el JSON es inválido.
-        El caller debe envolver en try/except y continuar con el siguiente
-        proceso (no abortar la ingesta entera por una clasificación que falle).
+        El caller debe envolver en try/except y continuar con el siguiente proceso.
         """
         prompt = PROMPT_TEMPLATE.format(
             entidad=entidad or "(no especificada)",
             ciudad=ciudad or "(no especificada)",
             cuantia=f"{cuantia:,.0f}" if cuantia else "(no especificada)",
-            objeto=(objeto or "")[:3000],  # cap por si es muy largo
+            objeto=(objeto or "")[:3000],
         )
 
         try:
-            response = self.model.generate_content(
-                prompt,
-                generation_config={
-                    "response_mime_type": "application/json",
-                    "temperature": 0.2,
-                },
+            response = self.client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.2,
+                ),
             )
         except Exception as e:
             logger.error(f"Error llamando Gemini: {e}")
@@ -136,7 +135,7 @@ class SecopClassifier:
 
         raw_text = (response.text or "").strip()
 
-        # Strip markdown fences si Gemini se equivoca y los incluye
+        # Strip markdown fences defensivo (por si Gemini se equivoca)
         if raw_text.startswith("```"):
             lines = raw_text.split("\n")
             raw_text = "\n".join(lines[1:-1]) if len(lines) > 2 else raw_text
