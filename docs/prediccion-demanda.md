@@ -2,241 +2,191 @@
 
 ## Contexto
 
-ViveroOnline opera en B2B AgTech: conecta viveros del altiplano cundiboyacense con compradores institucionales y privados. Los viveros producen plantas en ciclos de 6-18 meses (desde semilla/esqueje a venta listo), lo que crea un problema crítico de planificación: **¿qué especies producir, en qué cantidad, para qué meses?**
+ViveroOnline conecta viveros del altiplano cundiboyacense con compradores institucionales y privados. El segmento de **paisajistas** (subset del rol "comprador") es de alto valor: diseñan e instalan jardines, espacios verdes y proyectos de arborización urbana — para clientes privados (residencial, comercial) y públicos (municipios, parques).
 
-Predicción de Demanda resuelve ese problema usando señales externas anticipatorias:
+El paisajista enfrenta un problema crítico: **¿qué proyectos verdes van a salir en mi zona en los próximos 6-18 meses?**
+
+Predicción de Demanda lo resuelve con señales anticipatorias externas:
 
 - **SECOP II**: contratos públicos de arborización, jardinería, ornamental, reforestación
 - **Curadurías Urbanas**: licencias de construcción con requisitos de compensación arbórea
 - **CAMACOL**: pipeline de metros cuadrados a construir por región
 
-**Output**: cada viverista ve en su dashboard *"Demanda proyectada en tu zona para los próximos 6-12 meses"* — lista priorizada de especies con cantidades estimadas, fuentes y nivel de confianza.
+**Output**: cada paisajista (rol comprador) ve en su dashboard *"Proyectos verdes que vienen en tu zona"* — un feed priorizado con: especies que se van a demandar, cantidades estimadas, fechas de licitación, entidad contratante, link al proceso SECOP. Doble valor:
+
+1. **Procurement planning**: pre-contactar viveros para asegurar stock con tiempo
+2. **Lead intel**: identificar licitaciones SECOP a las que aplicar como proveedor
 
 ## Estado actual de la BD
 
-Existen 2 views relacionadas a demanda, ambas **internas** (basadas en transacciones de la propia plataforma):
+**Tablas creadas en Sprint 1** (migration `prediccion_demanda_sprint_1` aplicada 14-may-2026):
 
-- `v_public_demanda_municipio` — agregado de transacciones por ciudad (últimos 90 días)
-- `v_public_top_especies` — top especies vendidas (últimos 90 días)
+- `secop_procesos` — snapshot crudo de procesos de SECOP II (con `raw_data JSONB` como fuente de verdad + columnas denormalizadas)
+- `secop_clasificacion` — análisis Gemini de cada proceso (especies, cantidades, fechas, flag `es_relevante`)
 
-Con el inventario actual (2 plantas, 0 transacciones cerradas), estas views no son útiles para predicción. Sirven para reporting interno una vez haya volumen.
+Views internas pre-existentes (transacciones de la propia plataforma, NO útiles para predicción en este momento):
 
-**No existen tablas para datos externos** — todo el módulo de predicción se diseña desde cero.
+- `v_public_demanda_municipio` — agregado de transacciones por ciudad
+- `v_public_top_especies` — top especies vendidas
+
+Pendientes para futuros sprints: `secop_paa`, `curaduria_licencias`, `camacol_indicadores`, `prediccion_demanda` (output agregado).
 
 ## Fuentes de Datos
 
 ### Tier 1 — APIs públicas (queriables hoy, sin auth)
 
-**SECOP II** está en datos.gov.co usando Socrata Open Data API. Endpoints relevantes:
+**SECOP II** en datos.gov.co usando Socrata Open Data API (SODA):
 
 | Dataset | ID | Para qué |
 |---|---|---|
-| Procesos de Contratación | `p6dx-8zbt` | Licitaciones en curso |
+| Procesos de Contratación | `p6dx-8zbt` | Licitaciones en curso — **target de Sprint 1** |
 | Contratos Electrónicos | `jbjy-vk9h` | Contratos adjudicados (historial) |
-| PAA - Encabezado | `b6m4-qgqv` | Plan Anual de Adquisiciones — **señal forward-looking** |
+| PAA - Encabezado | `b6m4-qgqv` | Plan Anual de Adquisiciones — señal forward-looking |
 | BPIN por Proceso | `d9na-abhe` | Vincula contratos con proyectos de inversión |
 | Proveedores Registrados | `qmzu-gj57` | Competencia activa |
 
-**Filtros relevantes**:
-- Keywords en campo `objeto`: "plantas", "árboles", "arborización", "ornamental", "siembra", "jardinería", "reforestación", "vivero"
-- Códigos UNSPSC: 10171500 (Plants and flowers), 10171502 (Live plant material), 70140000 (Forestry services)
+**Filtros**:
+- Keywords en campo `objeto`: arborización, plantas, ornamental, siembra, jardinería, reforestación, vivero, silvicultura, paisajismo
+- Municipios prioritarios: Sabana de Bogotá (Cajicá, Chía, Cota, Tabio, Tenjo, Tocancipá, Sopó, Zipaquirá, Funza, Mosquera, Madrid, Bogotá D.C.)
 - Entidades clave: **Jardín Botánico de Bogotá José Celestino Mutis** (responsable de arborización del Distrito por Decreto 531/2010)
 
 **Ejemplo de query**:
-
 GET https://www.datos.gov.co/resource/p6dx-8zbt.json
-?$where=upper(objeto) like '%ARBORIZACION%'
+?$where=upper(objeto_del_contrato) like '%ARBORIZACION%'
 &$limit=100
-
+&$order=fecha_de_publicacion_del_proceso DESC
 ### Tier 2 — Scraping requerido
 
-**Curadurías Urbanas**: cada municipio gestiona las suyas, no hay API unificada nacional. Para empezar, foco en:
+**Curadurías Urbanas**: cada municipio gestiona las suyas, no hay API unificada. Foco para Sprint 4:
 
 - Bogotá: 5 curadurías
 - Cajicá: Curaduría 1 y 2
-- Sabana norte: Chía, Cota, Tabio, Tenjo, Tocancipá (sistemas individuales)
+- Sabana norte: Chía, Cota, Tabio, Tenjo, Tocancipá
 
-Las licencias urbanísticas deben incluir compensación arbórea por área construida (Decreto 1077/2015 + decretos municipales). Scraping necesario para extraer: dirección, m² construidos, requisito de árboles a plantar, fecha estimada de obra.
+Las licencias urbanísticas deben incluir compensación arbórea por área construida (Decreto 1077/2015 + decretos municipales).
 
 ### Tier 3 — PDFs y datos manuales
 
-**CAMACOL** (Cámara Colombiana de la Construcción): publica trimestralmente "Coordenada Urbana" con m² lanzados al mercado por región. Formato PDF + Excel. Procesamiento vía pdfplumber o descarga manual.
+**CAMACOL** (Cámara Colombiana de la Construcción): "Coordenada Urbana" trimestral con m² lanzados al mercado por región. Formato PDF/Excel.
 
-## Arquitectura propuesta
+## Arquitectura
+┌─────────────┐   ┌──────────────┐   ┌─────────────┐   ┌──────────────────┐
+│   INGESTA   │ → │ CLASIFIC. IA │ → │  AGREGACIÓN │ → │       UI         │
+│             │   │              │   │             │   │                  │
+│ Vercel Cron │   │ Gemini extrae│   │ Agrupar por │   │ Dashboard        │
+│ SECOP API   │   │  • especies  │   │  municipio  │   │ comprador        │
+│ Pull semanal│   │  • cantidad  │   │  × especie  │   │ (paisajista)     │
+│             │   │  • altura    │   │  × mes      │   │ +                │
+│             │   │  • fecha     │   │             │   │ Endpoint público │
+│             │   │  • relevante │   │             │   │ /api/prediccion  │
+└─────────────┘   └──────────────┘   └─────────────┘   └──────────────────┘
+## Schema BD — Estado actual
 
-┌─────────────┐   ┌──────────────┐   ┌─────────────┐   ┌──────────┐
-│   INGESTA   │ → │ CLASIFIC. IA │ → │  AGREGACIÓN │ → │    UI    │
-│             │   │              │   │             │   │          │
-│ Vercel Cron │   │ Gemini extrae│   │ Agrupar por │   │ Dashboard│
-│ SECOP API   │   │  • especies  │   │  municipio  │   │ viverista│
-│ Pull semanal│   │  • cantidad  │   │  × especie  │   │ +        │
-│             │   │  • altura    │   │  × mes      │   │ Endpoint │
-│             │   │  • fecha     │   │             │   │  público │
-└─────────────┘   └──────────────┘   └─────────────┘   └──────────┘
-
-## Schema BD propuesto
+**Tablas creadas en Sprint 1** (DDL en `migrations`):
 
 ```sql
--- ─── 1. Ingesta cruda ───
-CREATE TABLE secop_procesos (
-  proceso_id TEXT PRIMARY KEY,
-  entidad TEXT,
-  entidad_nit TEXT,
-  tipo_proceso TEXT,
-  objeto TEXT,
+secop_procesos (
+  proceso_id TEXT PK,
+  entidad TEXT, entidad_nit TEXT,
+  objeto TEXT,                    -- descripción del proceso
   cuantia_proceso NUMERIC,
-  departamento TEXT,
-  ciudad TEXT,
+  departamento TEXT, ciudad TEXT,
   fecha_publicacion DATE,
   fecha_recepcion_propuestas DATE,
   estado_proceso TEXT,
-  raw_data JSONB,
-  fetched_at TIMESTAMPTZ DEFAULT now()
-);
+  modalidad_contratacion TEXT,
+  url_proceso TEXT,
+  raw_data JSONB NOT NULL,        -- payload completo (source of truth)
+  fetched_at TIMESTAMPTZ,
+  procesado_at TIMESTAMPTZ        -- NULL hasta que IA clasifica
+)
++ índices: ciudad, fecha_publicacion, partial(procesado_at IS NULL)
++ RLS ON sin policies (solo service_role accede)
 
-CREATE INDEX idx_secop_procesos_ciudad ON secop_procesos(ciudad);
-CREATE INDEX idx_secop_procesos_fecha ON secop_procesos(fecha_publicacion DESC);
-
-CREATE TABLE secop_paa (
-  paa_id TEXT PRIMARY KEY,
-  entidad TEXT,
-  año INTEGER,
-  descripcion TEXT,
-  cuantia NUMERIC,
-  mes_estimado_inicio INTEGER,
-  ciudad TEXT,
-  raw_data JSONB,
-  fetched_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE TABLE curaduria_licencias (
-  licencia_id TEXT PRIMARY KEY,
-  curaduria TEXT,            -- 'bogota_1', 'cajica_1', etc.
-  municipio TEXT,
-  fecha_licencia DATE,
-  m2_construidos NUMERIC,
-  arboles_compensacion INTEGER,
-  direccion TEXT,
-  raw_data JSONB,
-  fetched_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE TABLE camacol_indicadores (
-  indicador_id BIGSERIAL PRIMARY KEY,
-  region TEXT,
-  año INTEGER,
-  trimestre INTEGER,
-  m2_lanzados NUMERIC,
-  m2_proyectados NUMERIC,
-  fuente_documento TEXT,
-  fetched_at TIMESTAMPTZ DEFAULT now()
-);
-
--- ─── 2. Clasificación IA ───
-CREATE TABLE secop_clasificacion (
-  proceso_id TEXT PRIMARY KEY REFERENCES secop_procesos(proceso_id) ON DELETE CASCADE,
+secop_clasificacion (
+  proceso_id TEXT PK FK→secop_procesos ON DELETE CASCADE,
   especies_mencionadas TEXT[],
   cantidad_estimada INTEGER,
   altura_estimada_cm INTEGER,
-  tipo_proyecto TEXT,           -- 'arborizacion_urbana', 'reforestacion', 'jardineria', 'ornamental'
+  tipo_proyecto TEXT,             -- 'arborizacion_urbana' | 'reforestacion' | 'jardineria' | 'ornamental' | 'otro'
   fecha_estimada_entrega DATE,
-  confianza NUMERIC,            -- 0..1
-  modelo_usado TEXT,            -- 'gemini-2.5-flash'
-  clasificado_at TIMESTAMPTZ DEFAULT now()
-);
-
--- ─── 3. Output agregado ───
-CREATE TABLE prediccion_demanda (
-  prediccion_id BIGSERIAL PRIMARY KEY,
-  municipio TEXT NOT NULL,
-  departamento TEXT,
-  nombre_especie TEXT NOT NULL,
-  planta_id INTEGER REFERENCES plantas(planta_id),
-  mes_proyectado DATE NOT NULL,        -- truncado a YYYY-MM-01
-  unidades_proyectadas INTEGER,
-  rango_min INTEGER,                   -- para uncertainty intervals
-  rango_max INTEGER,
-  fuente TEXT NOT NULL,                -- 'secop_proceso', 'secop_paa', 'curaduria', 'camacol', 'agregado'
-  confianza NUMERIC,
-  fuentes_ids JSONB,                   -- array de IDs de las fuentes
-  generado_at TIMESTAMPTZ DEFAULT now()
-);
-
-CREATE INDEX idx_pred_demanda_lookup
-  ON prediccion_demanda(municipio, mes_proyectado);
+  es_relevante BOOLEAN NOT NULL,  -- false = match keyword pero NO sobre plantas
+  confianza NUMERIC,              -- 0..1
+  modelo_usado TEXT,
+  raw_response JSONB,             -- output completo del LLM (para debug)
+  clasificado_at TIMESTAMPTZ
+)
++ índice parcial: es_relevante=TRUE
++ RLS ON sin policies
 ```
+
+**Tablas pendientes** (Sprints futuros): `secop_paa`, `curaduria_licencias`, `camacol_indicadores`, `prediccion_demanda` (output agregado).
 
 ## Sprint Breakdown
 
-### Sprint 1 — Ingesta SECOP + Clasificación IA (1-2 sesiones)
+### Sprint 1 — Ingesta SECOP + Clasificación IA (en curso)
 
-- DDL: tablas `secop_procesos`, `secop_clasificacion`
-- Endpoint backend: `POST /api/ingesta/secop` (admin-only, manual trigger inicial)
-- Servicio: `app/services/secop_ingester.py` — query Socrata API, dedup, insert
-- Agente: `app/agents/secop_classifier.py` — Gemini extrae especies + cantidades + fechas del campo `objeto`
-- Validación: ingestar últimos 90 días, ver cuántos procesos relevantes salen para Sabana de Bogotá
+- ✅ DDL: tablas `secop_procesos`, `secop_clasificacion`
+- ⏳ `app/services/secop.py` — cliente HTTP para Socrata API
+- ⏳ `app/agents/secop_classifier.py` — Gemini extrae especies + cantidades + fechas + relevancia
+- ⏳ `app/routes/ingesta.py` — endpoint `POST /api/ingesta/secop` (admin-only, trigger manual)
+- ⏳ Registrar router en `app/main.py`
+- ⏳ Smoke test: ingestar últimos 90 días, ver qué sale para Sabana de Bogotá
 
-### Sprint 2 — Agregación + UI básica (1-2 sesiones)
+### Sprint 2 — Agregación + UI básica (próxima sesión)
 
-- DDL: tabla `prediccion_demanda`
-- Script de agregación (puede vivir en backend Python o como SQL function)
+- DDL: tabla `prediccion_demanda` (output agregado)
+- Función de agregación: `secop_clasificacion` (relevante=TRUE) + `secop_procesos` → `prediccion_demanda`
 - Endpoint: `GET /api/prediccion-demanda?municipio=X&meses=12`
-- UI: nueva sección en `viverista_dashboard.html` reemplazando el placeholder actual de "Predicción IA por temporada"
+- UI: nueva sección en `comprador_dashboard.html` con feed de proyectos verdes en su zona
 
-### Sprint 3 — PAA + Cron automatizado (1-2 sesiones)
+### Sprint 3 — PAA + Cron automatizado
 
 - DDL: tabla `secop_paa`
 - Servicio: ingester de PAA
-- Vercel Cron semanal: refrescar SECOP + PAA
-- Pipeline de re-clasificación cuando llegan procesos nuevos
+- Vercel Cron semanal: refrescar SECOP procesos + PAA + re-clasificar nuevos
 
-### Sprint 4 — Curadurías (2-3 sesiones)
+### Sprint 4 — Curadurías
 
-- Scraping curaduría Cajicá (primero) + curadurías Bogotá
+- Scraping curaduría Cajicá + curadurías Bogotá
 - Tabla `curaduria_licencias`
 - Conversión m² → árboles necesarios usando ratios del Decreto 531/2010
-- Insert en `prediccion_demanda` con fuente `'curaduria'`
 
-### Sprint 5 — CAMACOL (1-2 sesiones)
+### Sprint 5 — CAMACOL
 
 - Descarga + parsing de PDFs CAMACOL ("Coordenada Urbana")
 - Tabla `camacol_indicadores`
 - Modelo de proyección: m² CAMACOL → demanda esperada por especie
-- Calibración con datos de SECOP
 
-**Total estimado**: 7-11 sesiones para sistema completo. **MVP con solo SECOP (Sprints 1+2): 2-4 sesiones**.
+**Total**: 7-11 sesiones para sistema completo. MVP con solo SECOP (Sprints 1+2): 2-4 sesiones.
+
+## Decisiones tomadas (al 14-may-2026)
+
+- **Audiencia**: paisajista (subset del rol "comprador"). Sin rol nuevo en la app.
+- **Surface UI**: `/comprador` dashboard, no `/viverista`.
+- **Caso de uso primario**: procurement planning + lead intel (no production planning).
+- **Schema**: `raw_data JSONB` como source of truth; campos extraídos son denormalización para queries rápidas.
+- **Clasificador**: Gemini 2.5 Flash con structured output + flag `es_relevante` para filtrar falsos positivos.
 
 ## Open Questions
 
-Para responder antes de Sprint 1:
-
-1. **¿Hay spec del Auditor?** Si sí, integrarlo con esta propuesta y resolver conflictos.
-2. **¿Target principal?** Dashboard viverista funcional vs demo para pitch a inversores. Cambia priorización.
-3. **¿Quién es el primer cliente?** Si Elena (vivero único actual) puede usar el módulo desde semana 1, calibramos con feedback real. Si no, hay que esperar a tener N viveristas.
-4. **¿Modelado en MVP?** Para Sprint 2, ¿modelo simple (sumar contratos mes a mes) o algo más sofisticado (Prophet, tendencia + estacionalidad)?
-5. **¿Cuántos meses hacia adelante?** 6, 12, 18, 24? Más meses = más incertidumbre = más complejidad.
-6. **¿Confidence intervals?** Para nivel inversor sí; para viverista probablemente "alta / media / baja" alcanza.
-7. **¿Granularidad de especies?** Match con tabla `plantas` por `nombre_cientifico` — pero SECOP usa nombres comunes inconsistentes ("urapan", "guayacán" hay 3+ especies con el mismo nombre común). Necesita capa de normalización IA.
-
-Para responder antes de Sprint 4:
-
-8. **¿Cómo se accede a Curaduría Cajicá?** ¿Portal web público? ¿Solicitud formal? ¿Datos abiertos del municipio?
-
-Para responder antes de Sprint 5:
-
-9. **¿Suscripción a CAMACOL Coordenada Urbana?** ¿Gratuito o pago?
+| # | Pregunta | Estado |
+|---|---|---|
+| 1 | ¿Hay spec del Auditor? | OPEN — sin spec, procedemos con nuestra arquitectura |
+| 2 | ¿Target del producto? | ✅ Paisajista (rol comprador), dashboard `/comprador` |
+| 3 | ¿Primer cliente real? | OPEN — la plataforma tiene 0 compradores. Para Sprint 1 el cliente es Elena en modo admin (smoke test). Antes de Sprint 2 conviene reclutar 1-2 paisajistas informales. |
+| 4 | ¿Modelado en MVP? | OPEN — Sprint 2 decisión. Por defecto: sumar cantidades estimadas por (municipio, especie, mes). |
+| 5 | ¿Cuántos meses adelante? | OPEN — propuesta: 12 meses por default (la mitad del ciclo de producción típico). |
+| 6 | ¿Confidence intervals? | OPEN — para MVP: 'alta / media / baja' basado en `confianza` promedio. Intervalos numéricos en Sprint 5. |
+| 7 | ¿Granularidad de especies? | OPEN — capa de normalización IA pendiente. Sprint 2: match por similitud de strings con tabla `plantas`. |
+| 8 | ¿Acceso a Curadurías? | OPEN — research antes de Sprint 4 |
+| 9 | ¿Suscripción CAMACOL? | OPEN — research antes de Sprint 5 |
 
 ## Referencias
 
-- **SECOP II API docs**: https://dev.socrata.com/foundry/www.datos.gov.co/jbjy-vk9h
+- **SECOP II API**: https://www.datos.gov.co/Estad-sticas-Nacionales/SECOP-II-Procesos-de-Contrataci-n/p6dx-8zbt
+- **Socrata Query Language (SoQL)**: https://dev.socrata.com/docs/queries/
 - **Datos Abiertos Colombia**: https://www.datos.gov.co
-- **Decreto 531/2010 Bogotá** — silvicultura urbana: regula intervención arbórea, define responsabilidades del Jardín Botánico
-- **Decreto 1077/2015 (Nacional)** — Decreto Único Reglamentario del Sector Vivienda
+- **Decreto 531/2010 Bogotá** — silvicultura urbana
+- **Decreto 1077/2015 (Nacional)** — Decreto Único Reglamentario Sector Vivienda
 - **CAMACOL Coordenada Urbana**: https://camacol.co
-
-## Decisiones de arranque
-
-Pendientes hasta resolver Open Questions 1-3:
-- ¿Empezar por Sprint 1 (Ingesta + IA) o por Sprint 2 (UI con datos mock para demo de inversores)?
-- ¿Schema completo desde Sprint 1 (5 tablas), o iterativo (1 tabla a la vez)?
-- ¿Cron desde Sprint 1, o trigger manual hasta Sprint 3?
