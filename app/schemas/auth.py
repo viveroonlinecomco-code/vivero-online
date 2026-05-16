@@ -1,92 +1,60 @@
-"""Schemas Pydantic para auth: OTP + onboarding."""
-from typing import Literal, Optional
+from typing import Optional, List, Literal
 from pydantic import BaseModel, Field, field_validator
-import re
 
 
-WHATSAPP_REGEX = re.compile(r"^\+57\d{10}$")  # Colombia: +57 + 10 dígitos
+TIPOS_PROYECTOS_VALIDOS = {"residencial", "comercial", "urbano", "institucional", "otro"}
+TIPOS_CLIENTE_VALIDOS = {"paisajista", "constructora", "conjunto", "empresa", "otro"}
 
 
-class OtpSendRequest(BaseModel):
-    """Solicitud para enviar código OTP por WhatsApp."""
-    whatsapp: str = Field(..., description="Número E.164, ej: +573001234567")
+class CompradorPreferencias(BaseModel):
+    """Perfil enriquecido del comprador — schema soft.
 
-    @field_validator("whatsapp")
+    Agregar un campo nuevo NO requiere migración SQL: solo se suma acá
+    y se maneja en frontend + flow. La tabla `clientes.preferencias`
+    lo absorbe en su JSONB.
+    """
+    descripcion: Optional[str] = Field(None, max_length=280)
+    web: Optional[str] = Field(None, max_length=200)
+    instagram: Optional[str] = Field(None, max_length=80)
+    tipos_proyectos: List[str] = Field(default_factory=list)
+    municipios_operacion: List[str] = Field(default_factory=list)
+
+    # ── Campos futuros que el equipo comercial puede activar cuando quiera,
+    #    sin tocar DB. Solo descomentar acá y agregar el control al form: ──
+    # interes_nativas: Optional[bool] = None
+    # volumen_mensual_estimado: Optional[Literal["bajo", "medio", "alto"]] = None
+    # frecuencia_compra: Optional[Literal["puntual", "mensual", "trimestral"]] = None
+    # estilo_paisajismo: Optional[str] = None
+
+    @field_validator("tipos_proyectos")
     @classmethod
-    def validate_whatsapp(cls, v: str) -> str:
-        v = v.strip().replace(" ", "").replace("-", "")
-        if not WHATSAPP_REGEX.match(v):
-            raise ValueError("El número debe ser colombiano en formato +57XXXXXXXXXX")
+    def tipos_proyectos_validos(cls, v):
+        invalidos = [t for t in v if t not in TIPOS_PROYECTOS_VALIDOS]
+        if invalidos:
+            raise ValueError(f"tipos_proyectos inválidos: {invalidos}")
         return v
-
-
-class OtpSendResponse(BaseModel):
-    """Respuesta al envío de OTP."""
-    ok: bool
-    message: str
-    delivered_via: Literal["whatsapp", "sms"] = "whatsapp"
-
-
-class OtpVerifyRequest(BaseModel):
-    """Verifica el código OTP ingresado."""
-    whatsapp: str
-    code: str = Field(..., min_length=4, max_length=10)
-
-    @field_validator("whatsapp")
-    @classmethod
-    def validate_whatsapp(cls, v: str) -> str:
-        v = v.strip().replace(" ", "").replace("-", "")
-        if not WHATSAPP_REGEX.match(v):
-            raise ValueError("Número inválido")
-        return v
-
-    @field_validator("code")
-    @classmethod
-    def validate_code(cls, v: str) -> str:
-        v = v.strip()
-        if not v.isdigit():
-            raise ValueError("El código debe ser numérico")
-        return v
-
-
-class OtpVerifyResponse(BaseModel):
-    """Respuesta con sesión Supabase + estado del perfil."""
-    ok: bool
-    access_token: str
-    refresh_token: str
-    user_id: str
-    whatsapp: str
-    needs_onboarding: bool
-    rol: Optional[Literal["admin", "viverista", "comprador"]] = None
 
 
 class OnboardingRequest(BaseModel):
-    """Datos del primer registro después del OTP."""
     rol: Literal["viverista", "comprador"]
-    nombre: str = Field(..., min_length=2, max_length=120)
-    municipio: str = Field(..., min_length=2, max_length=80)
-    nit: Optional[str] = None
+    nombre_display: str = Field(..., min_length=2, max_length=120)
+    municipio: str = Field(..., min_length=1)
+    nit: Optional[str] = Field(None, max_length=30)
     habeas_data: bool
 
     # Viverista
-    nombre_vivero: Optional[str] = None
+    nombre_vivero: Optional[str] = Field(None, max_length=120)
 
-    # Comprador
-    empresa: Optional[str] = None
-    tipo_comprador: Optional[Literal[
-        "paisajista", "constructora", "conjunto", "empresa", "otro"
-    ]] = None
+    # Comprador básicos
+    nombre_empresa: Optional[str] = Field(None, max_length=160)
+    tipo_cliente: Optional[str] = None
 
-    @field_validator("habeas_data")
+    # Comprador soft profile → JSONB
+    preferencias: Optional[CompradorPreferencias] = None
+
+    @field_validator("tipo_cliente")
     @classmethod
-    def must_accept_habeas(cls, v: bool) -> bool:
-        if not v:
-            raise ValueError("Debes aceptar el tratamiento de datos")
+    def tipo_cliente_valido(cls, v):
+        if v is not None and v not in TIPOS_CLIENTE_VALIDOS:
+            raise ValueError(f"tipo_cliente debe ser uno de {sorted(TIPOS_CLIENTE_VALIDOS)}")
         return v
-
-
-class OnboardingResponse(BaseModel):
-    ok: bool
-    rol: str
-    vivero_id: Optional[int] = None
-    cliente_id: Optional[int] = None
