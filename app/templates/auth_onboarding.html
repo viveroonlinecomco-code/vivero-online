@@ -43,7 +43,6 @@
 
 <div class="flex flex-col min-h-screen max-w-md mx-auto px-6 py-8">
 
-    <!-- Header de escape (siempre visible) -->
     <div class="flex items-center justify-between mb-6">
         <a href="/" class="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-primary transition-colors">
             <span class="material-symbols-outlined text-base">arrow_back</span>
@@ -54,7 +53,6 @@
         </a>
     </div>
 
-    <!-- Step indicator -->
     <div class="flex items-center gap-2 mb-8">
         <div id="dot-1" class="w-8 h-1 rounded-full bg-primary"></div>
         <div id="dot-2" class="w-8 h-1 rounded-full bg-slate-200 dark:bg-slate-700"></div>
@@ -71,7 +69,6 @@
         </p>
 
         <div class="space-y-3 mb-8">
-            <!-- Card: Viverista -->
             <button type="button" data-role="viverista" class="role-card w-full text-left p-5 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-lg">
                 <div class="flex items-start gap-4">
                     <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -90,7 +87,6 @@
                 </div>
             </button>
 
-            <!-- Card: Comprador -->
             <button type="button" data-role="comprador" class="role-card w-full text-left p-5 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-lg">
                 <div class="flex items-start gap-4">
                     <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -125,7 +121,6 @@
     <div id="step-profile" class="hidden flex-1">
         <button type="button" id="back-btn" class="material-symbols-outlined text-slate-700 dark:text-slate-300 p-2 -ml-2 mb-4 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition">arrow_back</button>
 
-        <!-- Banner de rol elegido -->
         <div id="role-banner" class="mb-6 p-4 bg-primary/5 dark:bg-primary/10 border-2 border-primary/20 rounded-lg flex items-center justify-between gap-3">
             <div class="flex items-center gap-3 min-w-0">
                 <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -163,7 +158,6 @@
                 >
             </div>
 
-            <!-- Viverista only -->
             <div id="grp-vivero" class="space-y-4">
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
@@ -178,7 +172,6 @@
                 </div>
             </div>
 
-            <!-- Comprador only -->
             <div id="grp-empresa" class="hidden space-y-4">
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
@@ -250,7 +243,6 @@
                 </div>
             </div>
 
-            <!-- Habeas data -->
             <label class="flex items-start gap-3 p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT cursor-pointer">
                 <input
                     id="f-habeas"
@@ -279,7 +271,7 @@
 </div>
 
 <script>
-// ─── 1. Capturar rol intencionado del URL ANTES de cualquier redirect ───
+// ─── 1. Capturar rol intencionado del URL ───
 const VALID_ROLES = ['viverista', 'comprador'];
 const urlParams = new URLSearchParams(window.location.search);
 const urlRol = urlParams.get('rol');
@@ -287,11 +279,11 @@ if (urlRol && VALID_ROLES.includes(urlRol)) {
     localStorage.setItem('vivero_intended_rol', urlRol);
 }
 
-// ─── 2. Verificar auth (puede redirigir si no hay token) ───
+// ─── 2. Verificar auth ───
 const token = localStorage.getItem('vivero_access_token');
 if (!token) window.location.href = '/auth/ingresar';
 
-// ─── 3. Determinar rol intencionado (URL tiene precedencia, luego localStorage) ───
+// ─── 3. Determinar rol intencionado (URL > localStorage) ───
 const intendedRol = (urlRol && VALID_ROLES.includes(urlRol))
     ? urlRol
     : localStorage.getItem('vivero_intended_rol');
@@ -300,45 +292,130 @@ let selectedRole = null;
 const continueBtn = document.getElementById('continue-btn');
 const roleCards = document.querySelectorAll('.role-card');
 
+function selectCard(card) {
+    roleCards.forEach(c => c.dataset.selected = 'false');
+    card.dataset.selected = 'true';
+    selectedRole = card.dataset.role;
+    continueBtn.disabled = false;
+}
+
 roleCards.forEach(card => {
-    card.addEventListener('click', () => {
-        roleCards.forEach(c => c.dataset.selected = 'false');
-        card.dataset.selected = 'true';
-        selectedRole = card.dataset.role;
-        continueBtn.disabled = false;
-    });
+    card.addEventListener('click', () => selectCard(card));
 });
 
-// ─── 4. Funciones de navegación entre steps ───
+// Auto-seleccionar si el URL trae el hint
+if (intendedRol) {
+    const targetCard = document.querySelector(`.role-card[data-role="${intendedRol}"]`);
+    if (targetCard) selectCard(targetCard);
+}
+
+// ─── 4. Navegación entre steps ───
 function goToStep2() {
+    if (!selectedRole) return;
     document.getElementById('step-role').classList.add('hidden');
     document.getElementById('step-profile').classList.remove('hidden');
     document.getElementById('dot-2').classList.remove('bg-slate-200', 'dark:bg-slate-700');
     document.getElementById('dot-2').classList.add('bg-primary');
 
-    if (selectedRole === 'viverista') {
-        document.getElementById('profile-heading').textContent = 'de tu vivero';
-        document.getElementById('grp-vivero').classList.remove('hidden');
-        document.getElementById('grp-empresa').classList.add('hidden');
-        document.getElementById('f-nombre-vivero').required = true;
-    } else {
-        document.getElementById('profile-heading').textContent = 'de tu empresa';
-        document.getElementById('grp-vivero').classList.add('hidden');
-        document.getElementById('grp-empresa').classList.remove('hidden');
-        document.getElementById('f-nombre-vivero').required = false;
-    }
+    const isViverista = selectedRole === 'viverista';
+    document.getElementById('profile-heading').textContent = isViverista ? 'de tu vivero' : 'de tu empresa';
+    document.getElementById('grp-vivero').classList.toggle('hidden', !isViverista);
+    document.getElementById('grp-empresa').classList.toggle('hidden', isViverista);
+    document.getElementById('f-nombre-vivero').required = isViverista;
 
-    const bannerName = document.getElementById('role-banner-name');
-    const bannerIcon = document.getElementById('role-banner-icon');
-    if (selectedRole === 'viverista') {
-        bannerName.textContent = 'Viverista';
-        bannerIcon.textContent = 'forest';
-    } else {
-        bannerName.textContent = 'Comprador B2B';
-        bannerIcon.textContent = 'architecture';
-    }
+    document.getElementById('role-banner-name').textContent = isViverista ? 'Viverista' : 'Comprador B2B';
+    document.getElementById('role-banner-icon').textContent = isViverista ? 'forest' : 'architecture';
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
-function bac
+function goBackToStep1() {
+    document.getElementById('step-profile').classList.add('hidden');
+    document.getElementById('step-role').classList.remove('hidden');
+    document.getElementById('dot-2').classList.remove('bg-primary');
+    document.getElementById('dot-2').classList.add('bg-slate-200', 'dark:bg-slate-700');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// ─── 5. Wire de event listeners (LO QUE FALTABA EN EL ORIGINAL) ───
+continueBtn.addEventListener('click', goToStep2);
+document.getElementById('back-btn').addEventListener('click', goBackToStep1);
+document.getElementById('change-role-btn').addEventListener('click', goBackToStep1);
+
+// ─── 6. Submit del formulario — fetch REAL al backend ───
+document.getElementById('profile-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const submitBtn = document.getElementById('submit-btn');
+    const btnText = document.getElementById('btn-text');
+    const btnSpinner = document.getElementById('btn-spinner');
+    const errorBox = document.getElementById('error-box');
+
+    // Validar habeas data
+    if (!document.getElementById('f-habeas').checked) {
+        errorBox.textContent = 'Debes aceptar el tratamiento de datos personales para continuar.';
+        errorBox.classList.remove('hidden');
+        return;
+    }
+
+    // Estado de carga
+    submitBtn.disabled = true;
+    btnText.textContent = 'Guardando...';
+    btnSpinner.classList.remove('hidden');
+    errorBox.classList.add('hidden');
+
+    try {
+        // Recolectar payload — campos comunes
+        const payload = {
+            rol: selectedRole,
+            nombre_display: document.getElementById('f-nombre').value.trim(),
+            municipio: document.getElementById('f-municipio').value,
+            nit: document.getElementById('f-nit').value.trim() || null,
+            habeas_data: true,
+        };
+
+        // Campos específicos por rol
+        if (selectedRole === 'viverista') {
+            payload.nombre_vivero = document.getElementById('f-nombre-vivero').value.trim();
+        } else {
+            payload.nombre_empresa = document.getElementById('f-empresa').value.trim() || null;
+            payload.tipo_cliente = document.getElementById('f-tipo-comprador').value;
+        }
+
+        const resp = await fetch('/api/auth/onboarding', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
+
+        if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            let msg = errData.detail || `Error ${resp.status}`;
+            if (Array.isArray(msg)) {
+                // FastAPI 422 devuelve array de errores
+                msg = msg.map(e => `${e.loc?.join('.')}: ${e.msg}`).join('; ');
+            }
+            throw new Error(msg);
+        }
+
+        // Limpiar el hint de rol del localStorage (ya cumplió su función)
+        localStorage.removeItem('vivero_intended_rol');
+
+        // Redirect según rol
+        window.location.href = selectedRole === 'viverista' ? '/viverista' : '/comprador';
+
+    } catch (error) {
+        errorBox.textContent = String(error.message || error);
+        errorBox.classList.remove('hidden');
+        submitBtn.disabled = false;
+        btnText.textContent = 'Finalizar registro';
+        btnSpinner.classList.add('hidden');
+    }
+});
+</script>
+
+</body>
+</html>
