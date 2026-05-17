@@ -1,99 +1,154 @@
-"""Rutas de autenticación: OTP + onboarding."""
-import logging
-
-from fastapi import APIRouter, Depends, HTTPException
-
-from app.auth.deps import require_user, UserContext
-from app.auth.flow import send_otp, verify_otp, complete_onboarding
-from app.schemas.auth import (
-    OtpSendRequest, OtpSendResponse,
-    OtpVerifyRequest, OtpVerifyResponse,
-    OnboardingRequest, OnboardingResponse,
-)
+"""Schemas Pydantic para autenticación: OTP + onboarding."""
+from typing import Optional, List, Literal
+from pydantic import BaseModel, Field, field_validator
 
 
-router = APIRouter(prefix="/api/auth", tags=["auth"])
-logger = logging.getLogger(__name__)
+# ─────────────────── CONSTANTES DE VALIDACIÓN ───────────────────
+
+TIPOS_PROYECTOS_VALIDOS = {
+    "residencial", "comercial", "urbano", "institucional", "otro",
+}
+TIPOS_COMPRADOR_VALIDOS = {
+    "paisajista", "constructora", "conjunto", "empresa", "otro",
+}
 
 
-@router.post("/otp/send", response_model=OtpSendResponse)
-async def api_otp_send(req: OtpSendRequest):
-    return await send_otp(req.whatsapp)
+# ─────────────────── OTP SEND / VERIFY ───────────────────
+
+class OtpSendRequest(BaseModel):
+    """Request para enviar OTP por WhatsApp."""
+    whatsapp: str = Field(..., pattern=r"^\+?\d{10,15}$",
+                          description="Número internacional, con o sin '+'")
 
 
-@router.post("/otp/verify", response_model=OtpVerifyResponse)
-async def api_otp_verify(req: OtpVerifyRequest):
-    return await verify_otp(req.whatsapp, req.code)
+class OtpSendResponse(BaseModel):
+    """Confirmación de envío de OTP."""
+    ok: bool
+    message: str
+    delivered_via: str
 
 
-@router.post("/onboarding", response_model=OnboardingResponse)
-async def api_onboarding(
-    req: OnboardingRequest,
-    user: UserContext = Depends(require_user),
-):
-    if not user.whatsapp:
-        raise HTTPException(400, detail="WhatsApp no presente en el token")
-    return await complete_onboarding(user.user_id, user.whatsapp, req)
+class OtpVerifyRequest(BaseModel):
+    """Request para validar el código OTP recibido."""
+    whatsapp: str = Field(..., pattern=r"^\+?\d{10,15}$")
+    code: str = Field(..., min_length=4, max_length=10,
+                      description="Código de 6 dígitos enviado por Twilio")
 
 
-@router.get("/me")
-async def api_me(user: UserContext = Depends(require_user)):
-    """Devuelve el contexto actual del usuario autenticado.
+class OtpVerifyResponse(BaseModel):
+    """Sesión emitida tras validar OTP correctamente."""
+    ok: bool
+    access_token: str
+    refresh_token: str
+    user_id: str
+    whatsapp: str
+    needs_onboarding: bool
+    rol: Optional[str] = None
 
-    IMPORTANTE: La tabla `perfiles` es source-of-truth para `rol`, `vivero_id`
-    y `cliente_id`. El JWT (`user.rol`, `user.vivero_id`, `user.cliente_id`)
-    se usa solo como fallback cuando todavía no existe el perfil en DB.
 
-    Esto previene el bug de "JWT stale": si el usuario completó onboarding
-    pero su token aún tiene un `app_metadata` viejo (por ejemplo, registrado
-    inicialmente como comprador y luego cambiado a viverista), la DB ya tiene
-    el rol correcto y se respeta sin necesidad de re-loguear.
+# ─────────────────── ONBOARDING ───────────────────
 
-    Si el usuario es comprador, también devuelve `tipo_cliente`
-    (paisajista | constructora | conjunto | empresa | otro) para que el
-    frontend pueda personalizar el saludo. Es solo metadata, NO un rol.
+class CompradorPreferencias(BaseModel):
+    """Perfil enriquecido del comprador — schema soft (se persiste como JSONB).
+
+    Diseño deliberado: en vez de columnas estructuradas en `clientes`,
+    todo va anidado en `clientes.preferencias` JSONB. Esto permite al
+    equipo comercial agregar nuevas preguntas (interes_nativas,
+    volumen_mensual_estimado, frecuencia_compra, estilo_paisajismo, etc.)
+    sin migraciones SQL — solo se descomenta acá y se agrega el control
+    al template.
     """
-    from app.services.supabase import admin
-    db = admin()
-    profile = db.table("perfiles").select(
-        "rol, vivero_id, cliente_id, nombre_display, whatsapp_numero"
-    ).eq("id", user.user_id).limit(1).execute()
-    p = profile.data[0] if profile.data else {}
+    descripcion: Optional[str] = Field(None, max_length=280,
+                                       description="Bio corta del comprador")
+    web: Optional[str] = Field(None, max_length=200,
+                               description="URL de página web (opcional)")
+    instagram: Optional[str] = Field(None, max_length=80,
+                                     description="Handle de IG, con o sin @")
+    tipos_proyectos: List[str] = Field(
+        default_factory=list,
+        description="Tipos de proyectos que maneja: residencial, comercial, "
+                    "urbano, institucional, otro",
+    )
+    municipios_operacion: List[str] = Field(
+        default_factory=list,
+        description="Municipios donde opera el comprador (no solo su sede)",
+    )
 
-    # ── DB > JWT: la DB gana siempre que tenga el dato ──
-    db_rol = p.get("rol")
-    db_vivero = p.get("vivero_id")
-    db_cliente = p.get("cliente_id")
+    # ── Campos futuros que el equipo comercial puede activar sin tocar DB.
+    #    Solo descomentar acá + sumar control al form en auth_onboarding.html ──
+    # interes_nativas: Optional[bool] = None
+    # volumen_mensual_estimado: Optional[Literal["bajo", "medio", "alto"]] = None
+    # frecuencia_compra: Optional[Literal["puntual", "mensual", "trimestral"]] = None
+    # estilo_paisajismo: Optional[str] = None
 
-    final_rol = db_rol if db_rol else user.rol
-    final_vivero = db_vivero if db_vivero is not None else user.vivero_id
-    final_cliente = db_cliente if db_cliente is not None else user.cliente_id
+    @field_validator("tipos_proyectos")
+    @classmethod
+    def tipos_proyectos_validos(cls, v):
+        invalidos = [t for t in v if t not in TIPOS_PROYECTOS_VALIDOS]
+        if invalidos:
+            raise ValueError(
+                f"tipos_proyectos inválidos: {invalidos}. "
+                f"Válidos: {sorted(TIPOS_PROYECTOS_VALIDOS)}"
+            )
+        return v
 
-    # Log de discrepancias JWT vs DB — útil para detectar tokens stale en producción
-    if user.rol and db_rol and user.rol != db_rol:
-        logger.warning(
-            "JWT/DB rol discrepancy for user %s: JWT=%s, DB=%s. Using DB.",
-            user.user_id, user.rol, db_rol,
-        )
 
-    # tipo_cliente solo aplica si es comprador
-    tipo_cliente = None
-    if final_cliente:
-        try:
-            cli = db.table("clientes").select("tipo_cliente").eq(
-                "cliente_id", final_cliente
-            ).limit(1).execute()
-            if cli.data:
-                tipo_cliente = cli.data[0].get("tipo_cliente")
-        except Exception:
-            tipo_cliente = None
+class OnboardingRequest(BaseModel):
+    """Datos para completar el onboarding tras OTP verificado.
 
-    return {
-        "user_id": user.user_id,
-        "whatsapp": user.whatsapp or p.get("whatsapp_numero"),
-        "rol": final_rol,
-        "vivero_id": final_vivero,
-        "cliente_id": final_cliente,
-        "nombre_display": p.get("nombre_display"),
-        "tipo_cliente": tipo_cliente,  # solo presente si rol=comprador
-    }
+    Convención de nombres de campo: mantiene los que ya usabas en `flow.py`
+    (`nombre`, `empresa`, `tipo_comprador`) — no se renombran para no
+    romper el código existente.
+    """
+    rol: Literal["viverista", "comprador"]
+    nombre: str = Field(..., min_length=2, max_length=120,
+                        description="Nombre completo del usuario")
+    municipio: str = Field(..., min_length=1,
+                           description="Municipio de sede del usuario")
+    nit: Optional[str] = Field(None, max_length=30,
+                               description="NIT o cédula, opcional")
+    habeas_data: bool = Field(..., description="Aceptación Ley 1581 — obligatorio True")
+
+    # ─── Viverista ───
+    nombre_vivero: Optional[str] = Field(None, max_length=120,
+                                         description="Nombre comercial del vivero")
+
+    # ─── Comprador básicos ───
+    empresa: Optional[str] = Field(None, max_length=160,
+                                   description="Empresa u organización del comprador")
+    tipo_comprador: Optional[str] = Field(
+        None,
+        description="paisajista | constructora | conjunto | empresa | otro",
+    )
+
+    # ─── Comprador perfil enriquecido (JSONB en DB) ───
+    preferencias: Optional[CompradorPreferencias] = None
+
+    @field_validator("tipo_comprador")
+    @classmethod
+    def tipo_comprador_valido(cls, v):
+        if v is not None and v not in TIPOS_COMPRADOR_VALIDOS:
+            raise ValueError(
+                f"tipo_comprador inválido. "
+                f"Válidos: {sorted(TIPOS_COMPRADOR_VALIDOS)}"
+            )
+        return v
+
+    @field_validator("habeas_data")
+    @classmethod
+    def habeas_obligatorio(cls, v):
+        if v is not True:
+            raise ValueError("habeas_data debe ser True para completar el registro")
+        return v
+
+
+class OnboardingResponse(BaseModel):
+    """Confirmación de onboarding completado.
+
+    Devuelve `vivero_id` para viveristas y `cliente_id` para compradores —
+    el otro queda en None.
+    """
+    ok: bool
+    rol: str
+    vivero_id: Optional[int] = None
+    cliente_id: Optional[int] = None
