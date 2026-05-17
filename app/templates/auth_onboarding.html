@@ -378,4 +378,137 @@ function goToStep2() {
 }
 
 function goBackToStep1() {
-    document.
+    document.getElementById('step-profile').classList.add('hidden');
+    document.getElementById('step-role').classList.remove('hidden');
+    document.getElementById('dot-2').classList.remove('bg-primary');
+    document.getElementById('dot-2').classList.add('bg-slate-200', 'dark:bg-slate-700');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+continueBtn.addEventListener('click', goToStep2);
+document.getElementById('back-btn').addEventListener('click', goBackToStep1);
+document.getElementById('change-role-btn').addEventListener('click', goBackToStep1);
+
+// ─── 5. Chips multi-select (proyectos + municipios) ───
+function setupChips(containerId) {
+    const container = document.getElementById(containerId);
+    container.querySelectorAll('.chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            const current = chip.dataset.selected === 'true';
+            chip.dataset.selected = current ? 'false' : 'true';
+        });
+    });
+}
+function readChips(containerId) {
+    return [...document.querySelectorAll(`#${containerId} .chip[data-selected="true"]`)]
+        .map(c => c.dataset.value);
+}
+setupChips('chips-proyectos');
+setupChips('chips-municipios');
+
+// Auto-pre-select del municipio de sede en municipios_operacion
+document.getElementById('f-municipio').addEventListener('change', (e) => {
+    const sede = e.target.value;
+    if (!sede || sede === 'Otro') return;
+    const chip = document.querySelector(`#chips-municipios .chip[data-value="${sede}"]`);
+    if (chip && chip.dataset.selected !== 'true') {
+        chip.dataset.selected = 'true';
+    }
+});
+
+// ─── 6. Submit ───
+document.getElementById('profile-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const submitBtn = document.getElementById('submit-btn');
+    const btnText = document.getElementById('btn-text');
+    const btnSpinner = document.getElementById('btn-spinner');
+    const errorBox = document.getElementById('error-box');
+
+    // Validaciones del lado del cliente
+    if (!document.getElementById('f-habeas').checked) {
+        errorBox.textContent = 'Debes aceptar el tratamiento de datos personales para continuar.';
+        errorBox.classList.remove('hidden');
+        return;
+    }
+
+    if (selectedRole === 'comprador') {
+        const proyectos = readChips('chips-proyectos');
+        const municipios = readChips('chips-municipios');
+        if (proyectos.length === 0) {
+            errorBox.textContent = 'Selecciona al menos un tipo de proyecto que manejas.';
+            errorBox.classList.remove('hidden');
+            return;
+        }
+        if (municipios.length === 0) {
+            errorBox.textContent = 'Selecciona al menos un municipio donde operas.';
+            errorBox.classList.remove('hidden');
+            return;
+        }
+    }
+
+    submitBtn.disabled = true;
+    btnText.textContent = 'Guardando...';
+    btnSpinner.classList.remove('hidden');
+    errorBox.classList.add('hidden');
+
+    try {
+        // Payload alineado con los nombres de campo de OnboardingRequest:
+        // rol, nombre, municipio, nit, habeas_data, nombre_vivero, empresa,
+        // tipo_comprador, preferencias.
+        const payload = {
+            rol: selectedRole,
+            nombre: document.getElementById('f-nombre').value.trim(),
+            municipio: document.getElementById('f-municipio').value,
+            nit: document.getElementById('f-nit').value.trim() || null,
+            habeas_data: true,
+        };
+
+        if (selectedRole === 'viverista') {
+            payload.nombre_vivero = document.getElementById('f-nombre-vivero').value.trim();
+        } else {
+            payload.empresa = document.getElementById('f-empresa').value.trim() || null;
+            payload.tipo_comprador = document.getElementById('f-tipo-comprador').value;
+            payload.preferencias = {
+                tipos_proyectos: readChips('chips-proyectos'),
+                municipios_operacion: readChips('chips-municipios'),
+                descripcion: document.getElementById('f-descripcion').value.trim() || null,
+                web: document.getElementById('f-web').value.trim() || null,
+                instagram: document.getElementById('f-instagram').value.trim() || null,
+            };
+        }
+
+        const resp = await fetch('/api/auth/onboarding', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
+
+        if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            let msg = errData.detail || `Error ${resp.status}`;
+            if (Array.isArray(msg)) {
+                // FastAPI 422 devuelve array de errores con loc + msg
+                msg = msg.map(e => `${e.loc?.join('.')}: ${e.msg}`).join('; ');
+            }
+            throw new Error(msg);
+        }
+
+        localStorage.removeItem('vivero_intended_rol');
+        window.location.href = selectedRole === 'viverista' ? '/viverista' : '/comprador';
+
+    } catch (error) {
+        errorBox.textContent = String(error.message || error);
+        errorBox.classList.remove('hidden');
+        submitBtn.disabled = false;
+        btnText.textContent = 'Finalizar registro';
+        btnSpinner.classList.add('hidden');
+    }
+});
+</script>
+
+</body>
+</html>
