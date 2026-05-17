@@ -72,7 +72,9 @@ async def verify_otp(whatsapp: str, code: str) -> dict:
     tokens = _generate_session(client, email)
 
     # 4. Mira si ya tiene perfil completo
-    profile_resp = client.table("perfiles").select("rol, vivero_id, cliente_id, onboarding_ok").eq("id", user_id).execute()
+    profile_resp = client.table("perfiles").select(
+        "rol, vivero_id, cliente_id, onboarding_ok"
+    ).eq("id", user_id).execute()
     rows = profile_resp.data or []
 
     needs_onboarding = True
@@ -96,9 +98,8 @@ async def verify_otp(whatsapp: str, code: str) -> dict:
 
 def _get_or_create_user(client, email: str, whatsapp: str) -> tuple[str, bool]:
     """Retorna (user_id, is_new). Busca usuario existente vía SQL directo."""
-    # Busca usuario existente por email vía SQL directo (más rápido que list_users)
+    # Busca usuario existente por email vía API REST directa (más rápido que list_users)
     try:
-        # Usa la API REST de Supabase directamente para query auth.users
         from app.config import get_settings
         import httpx
         s = get_settings()
@@ -106,7 +107,6 @@ def _get_or_create_user(client, email: str, whatsapp: str) -> tuple[str, bool]:
             "apikey": s.supabase_service_key,
             "Authorization": f"Bearer {s.supabase_service_key}",
         }
-        # Endpoint admin para listar usuarios filtrados
         resp = httpx.get(
             f"{s.supabase_url}/auth/v1/admin/users",
             headers=headers,
@@ -138,11 +138,9 @@ def _get_or_create_user(client, email: str, whatsapp: str) -> tuple[str, bool]:
     except Exception as e:
         # Si la creación falla porque el usuario ya existe, intentar buscarlo por SQL
         logger.warning(f"Error en create_user: {e}")
-        # Re-buscar por SQL
         try:
             from app.services.supabase import admin
             db = admin()
-            # Consulta directa a auth.users vía rpc o select
             result = db.from_("auth.users").select("id").eq("email", email).limit(1).execute()
             if result.data:
                 return result.data[0]["id"], False
@@ -162,7 +160,6 @@ def _generate_session(client, email: str) -> dict:
         "type": "magiclink",
         "email": email,
     })
-    # El `hashed_token` del response puede ser consumido con verify_otp
     props = getattr(link_resp, "properties", None) or {}
     hashed = props.get("hashed_token") if isinstance(props, dict) else getattr(props, "hashed_token", None)
     if not hashed:
@@ -232,12 +229,17 @@ async def complete_onboarding(user_id: str, whatsapp: str, data: OnboardingReque
 
     Además refresca el `app_metadata` del usuario en Supabase Auth para que
     el rol se propague al JWT en futuros refresh de token (defense-in-depth).
+
+    Phase 1 (mayo 2026): el comprador puede traer un sub-objeto `preferencias`
+    (schema soft) que se guarda en `clientes.preferencias` JSONB.
     """
     client = admin()
 
+    # ────────── VIVERISTA ──────────
     if data.rol == "viverista":
         if not data.nombre_vivero:
             raise HTTPException(400, detail="nombre_vivero requerido")
+
         vivero_resp = client.table("viveros").insert({
             "nombre_vivero": data.nombre_vivero,
             "propietario": data.nombre,
@@ -270,7 +272,21 @@ async def complete_onboarding(user_id: str, whatsapp: str, data: OnboardingReque
 
         return {"ok": True, "rol": "viverista", "vivero_id": vivero_id}
 
-    # Comprador - OJO: columnas reales son nombre_empresa, ciudad, nombre_representante
+    # ────────── COMPRADOR ──────────
+    # OJO: columnas reales son nombre_empresa, ciudad, nombre_representante
+
+    # Phase 1 — serializar schema soft de preferencias → dict para JSONB.
+    # supabase-py serializa automáticamente dict Python → jsonb Postgres.
+    prefs_dict = (
+        data.preferencias.model_dump(exclude_none=True)
+        if data.preferencias
+        else {}
+    )
+    # Fallback: si municipios_operacion vino vacío, default al municipio de sede
+    # (mejor tener un valor sensato que un array vacío para queries futuras)
+    if not prefs_dict.get("municipios_operacion"):
+        prefs_dict["municipios_operacion"] = [data.municipio]
+
     cliente_resp = client.table("clientes").insert({
         "nombre_representante": data.nombre,
         "nombre_empresa": data.empresa or data.nombre,
@@ -281,6 +297,7 @@ async def complete_onboarding(user_id: str, whatsapp: str, data: OnboardingReque
         "nit": data.nit,
         "habeas_data": data.habeas_data,
         "activo": True,
+        "preferencias": prefs_dict,    # NUEVO — Phase 1
     }).execute()
     cliente_id = cliente_resp.data[0]["cliente_id"]
 
