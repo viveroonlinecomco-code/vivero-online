@@ -80,7 +80,7 @@
 </div>
 </div>
 </section>
-<!-- Mis Proyectos — empty state honesto (no hay tabla de proyectos cableada todavía) -->
+<!-- Mis Proyectos — empty state honesto (la abstracción "proyecto" como agrupador de cotizaciones es feature futura) -->
 <section class="px-4 py-4">
 <div class="flex items-center justify-between mb-4">
 <h2 class="text-slate-900 dark:text-slate-100 text-xl font-bold tracking-tight">Mis Proyectos</h2>
@@ -95,18 +95,64 @@
                 </a>
 </div>
 </section>
-<!-- Lista de Compra — empty state honesto (la lista se va a llenar al agregar plantas desde el marketplace) -->
-<section class="px-4 py-6">
-<div class="bg-white dark:bg-slate-800 rounded-xl p-8 shadow-sm border border-slate-100 dark:border-slate-700 text-center">
-<span class="material-symbols-outlined text-slate-400 text-4xl mb-2">shopping_cart</span>
-<h3 class="font-bold text-slate-800 dark:text-slate-100">Tu lista de compra está vacía</h3>
-<p class="text-sm text-slate-500 mt-1 mb-4 max-w-md mx-auto">Empezá a buscar plantas en el marketplace y agregalas a tu lista para generar una orden de compra al vivero.</p>
-<a href="/marketplace" class="inline-flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-full font-semibold hover:bg-primary/90 transition-colors">
-<span class="material-symbols-outlined text-base">search</span>
-                    Buscar plantas
-                </a>
-</div>
+
+<!-- ============ LISTA DE COMPRA (CARRITO) ============ -->
+<!-- Esta sección consume GET /api/marketplace/cotizacion/borrador.
+     Estados manejados:
+     1. Loading (skeleton) mientras la API responde
+     2. Empty (no hay borrador) → mismo CTA original "Buscar plantas"
+     3. Populated → lista de items con foto/vivero/cantidad/subtotal + footer con total + checkout
+-->
+<section class="px-4 py-6" id="lista-compra-section">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-slate-900 dark:text-slate-100 text-xl font-bold tracking-tight">Tu lista de compra</h2>
+    <span id="lista-compra-meta" class="text-xs text-slate-500 hidden"></span>
+  </div>
+
+  <!-- Loading skeleton -->
+  <div id="lista-compra-loading" class="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-100 dark:border-slate-700">
+    <div class="animate-pulse space-y-3">
+      <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4"></div>
+      <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
+    </div>
+  </div>
+
+  <!-- Empty state (oculto inicialmente; se muestra solo si no hay borrador) -->
+  <div id="lista-compra-empty" class="hidden bg-white dark:bg-slate-800 rounded-xl p-8 shadow-sm border border-slate-100 dark:border-slate-700 text-center">
+    <span class="material-symbols-outlined text-slate-400 text-4xl mb-2">shopping_cart</span>
+    <h3 class="font-bold text-slate-800 dark:text-slate-100">Tu lista de compra está vacía</h3>
+    <p class="text-sm text-slate-500 mt-1 mb-4 max-w-md mx-auto">Empezá a buscar plantas en el marketplace y agregalas a tu lista para generar una orden de compra al vivero.</p>
+    <a href="/marketplace" class="inline-flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-full font-semibold hover:bg-primary/90 transition-colors">
+      <span class="material-symbols-outlined text-base">search</span>
+      Buscar plantas
+    </a>
+  </div>
+
+  <!-- Populated state: items del borrador -->
+  <div id="lista-compra-items" class="hidden space-y-3">
+    <!-- Items se inyectan vía JS -->
+  </div>
+
+  <!-- Footer (total + checkout). Oculto hasta que haya items -->
+  <div id="lista-compra-footer" class="hidden mt-4 bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
+    <div class="flex items-center justify-between mb-3">
+      <div>
+        <p class="text-sm text-slate-500">Total estimado</p>
+        <p class="text-2xl font-bold text-primary" id="lista-compra-total">$0</p>
+      </div>
+      <div class="text-right">
+        <p class="text-xs text-slate-500">Vence</p>
+        <p class="text-sm font-semibold text-slate-700 dark:text-slate-200" id="lista-compra-vence">—</p>
+      </div>
+    </div>
+    <button id="btn-checkout" class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-3 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-primary/20 transition">
+      <span class="material-symbols-outlined">point_of_sale</span>
+      Ir a checkout
+    </button>
+    <p class="text-xs text-slate-400 mt-2 text-center">Al hacer checkout se notifica a los viveros con stock</p>
+  </div>
 </section>
+
 </div>
 <!-- Bottom Navigation Bar -->
 <div class="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 px-4 pb-6 pt-2 z-30">
@@ -177,10 +223,151 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (etiquetaTop && me.tipo_cliente) {
             etiquetaTop.textContent = subtipo.toUpperCase();
         }
+
+        // Cargar el carrito (borrador) — se ejecuta después del me() porque
+        // el endpoint requiere autenticación de comprador.
+        cargarBorrador();
     } catch (e) {
         console.error(e);
     }
 });
+
+
+// ═══════════════ CARRITO (LISTA DE COMPRA) ═══════════════
+
+async function cargarBorrador() {
+    const token = localStorage.getItem('vivero_access_token');
+    const loadingEl = document.getElementById('lista-compra-loading');
+    const emptyEl = document.getElementById('lista-compra-empty');
+    const itemsEl = document.getElementById('lista-compra-items');
+    const footerEl = document.getElementById('lista-compra-footer');
+    const metaEl = document.getElementById('lista-compra-meta');
+
+    try {
+        const resp = await fetch('/api/marketplace/cotizacion/borrador', {
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        loadingEl.classList.add('hidden');
+
+        if (!data.borrador || !data.borrador.items || !data.borrador.items.length) {
+            // Sin carrito → mostrar empty state
+            emptyEl.classList.remove('hidden');
+            return;
+        }
+
+        // Carrito con items → renderizar
+        const b = data.borrador;
+        itemsEl.classList.remove('hidden');
+        footerEl.classList.remove('hidden');
+
+        // Meta superior (X unidades · Y viveros)
+        metaEl.classList.remove('hidden');
+        const nv = b.num_viveros_distintos || 0;
+        metaEl.textContent = `${b.num_items} unidades · ${nv} vivero${nv !== 1 ? 's' : ''}`;
+
+        // Items
+        itemsEl.innerHTML = b.items.map(it => renderItem(it)).join('');
+
+        // Footer
+        document.getElementById('lista-compra-total').textContent = formatCOP(b.total_estimado);
+        document.getElementById('lista-compra-vence').textContent = formatFecha(b.fecha_vencimiento);
+
+        // Wire delete buttons
+        itemsEl.querySelectorAll('[data-quitar-item]').forEach(btn => {
+            btn.addEventListener('click', () => quitarItem(parseInt(btn.dataset.quitarItem, 10)));
+        });
+    } catch (e) {
+        console.error('Error cargando borrador:', e);
+        loadingEl.classList.add('hidden');
+        emptyEl.classList.remove('hidden');
+    }
+}
+
+function renderItem(it) {
+    const foto = it.foto_ia_url || 'https://placehold.co/96x96/e2e8f0/64748b?text=%F0%9F%8C%B1';
+    return `
+        <div class="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-100 dark:border-slate-700 flex gap-3">
+            <img src="${escapeHTML(foto)}" alt="${escapeHTML(it.nombre_comun || '')}"
+                 class="w-20 h-20 rounded-lg object-cover flex-shrink-0"
+                 onerror="this.src='https://placehold.co/96x96/e2e8f0/64748b?text=%F0%9F%8C%B1'">
+            <div class="flex-1 min-w-0">
+                <h3 class="font-bold text-slate-800 dark:text-slate-100 truncate">${escapeHTML(it.nombre_comun || 'Sin nombre')}</h3>
+                ${it.nombre_cientifico ? `<p class="text-xs italic text-slate-500 truncate">${escapeHTML(it.nombre_cientifico)}</p>` : ''}
+                <p class="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                    <span class="material-symbols-outlined text-sm">storefront</span>
+                    <span class="truncate">${escapeHTML(it.nombre_vivero || 'Vivero')}${it.ciudad_vivero ? ' · ' + escapeHTML(it.ciudad_vivero) : ''}</span>
+                </p>
+                <div class="flex items-baseline justify-between mt-2 gap-2">
+                    <span class="text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                        ${it.cantidad} × ${formatCOP(it.precio_unitario)}
+                    </span>
+                    <span class="font-bold text-primary whitespace-nowrap">${formatCOP(it.subtotal)}</span>
+                </div>
+            </div>
+            <button data-quitar-item="${it.inventario_id}"
+                    class="self-start text-slate-400 hover:text-red-500 transition-colors p-1 flex-shrink-0"
+                    title="Quitar del carrito">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+    `;
+}
+
+async function quitarItem(inventario_id) {
+    if (!confirm('¿Quitar este item de tu lista?')) return;
+    const token = localStorage.getItem('vivero_access_token');
+    try {
+        const resp = await fetch(`/api/marketplace/cotizacion/item/${inventario_id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `Error ${resp.status}`);
+        }
+        // Recargar el carrito (re-fetch + re-render limpio)
+        document.getElementById('lista-compra-items').classList.add('hidden');
+        document.getElementById('lista-compra-footer').classList.add('hidden');
+        document.getElementById('lista-compra-meta').classList.add('hidden');
+        document.getElementById('lista-compra-empty').classList.add('hidden');
+        document.getElementById('lista-compra-loading').classList.remove('hidden');
+        await cargarBorrador();
+    } catch (e) {
+        alert('No se pudo quitar el item: ' + (e.message || e));
+    }
+}
+
+document.addEventListener('click', (e) => {
+    if (e.target.closest('#btn-checkout')) {
+        alert('Checkout aún no implementado — próximamente con ePayco.');
+    }
+});
+
+
+// ─── Helpers ───
+function formatCOP(v) {
+    if (!v && v !== 0) return '$0';
+    return '$' + Math.round(v).toLocaleString('es-CO');
+}
+
+function formatFecha(s) {
+    if (!s) return '—';
+    try {
+        const d = new Date(s);
+        if (isNaN(d.getTime())) return '—';
+        return d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
+    } catch { return '—'; }
+}
+
+function escapeHTML(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+}
 </script>
 
 
