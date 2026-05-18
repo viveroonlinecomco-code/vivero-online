@@ -4,7 +4,6 @@
 - `decode_jwt(token)`: valida y decodifica el JWT de Supabase.
 """
 from __future__ import annotations
-from functools import lru_cache
 from typing import Any
 
 import jwt
@@ -13,9 +12,18 @@ from supabase import create_client, Client
 from app.config import get_settings
 
 
-@lru_cache
 def admin() -> Client:
-    """Cliente con service_role key - úsalo para operaciones backend."""
+    """Cliente fresh con service_role key — úsalo para operaciones backend.
+
+    IMPORTANTE: NO se cachea con lru_cache. Si dos llamadas comparten el
+    mismo Client y una llama a `client.auth.verify_otp(...)`, ese Client
+    queda contaminado con el JWT del usuario, y las queries posteriores
+    se evalúan como `authenticated` (no `service_role`) → RLS las rechaza
+    con error 42501.
+
+    Cada llamada crea un Client nuevo: barato (no abre conexiones hasta
+    la primera query) y aísla state entre invocaciones del Lambda.
+    """
     s = get_settings()
     return create_client(s.supabase_url, s.supabase_service_key)
 
