@@ -134,7 +134,16 @@ async def crear_cotizacion(
     req: CotizacionRequest,
     user: UserContext = Depends(require_comprador),
 ):
-    """Crea una cotización con múltiples items del marketplace."""
+    """Crea una cotización con múltiples items del marketplace.
+
+    El estado inicial es 'borrador' — la cotización queda en el carrito del
+    comprador, quien la puede ir armando con plantas de distintos viveros.
+    Cuando hace checkout efectivo, transiciona a 'enviada' (y se notifica
+    a los viveros tras confirmación del pago).
+
+    Estados válidos en BD (cotizaciones_estado_check):
+    borrador | enviada | aceptada | rechazada | vencida | convertida
+    """
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
 
@@ -167,7 +176,7 @@ async def crear_cotizacion(
     cot_resp = db.table("cotizaciones").insert({
         "cliente_id": user.cliente_id,
         "total_estimado": total_cop,
-        "estado": "pendiente",
+        "estado": "borrador",
         "notas_cliente": req.notas,
         "prompt_original": req.proyecto,
         "items": items_validados,
@@ -179,5 +188,5 @@ async def crear_cotizacion(
         ok=True,
         cotizacion_id=cotizacion_id,
         total_cop=total_cop,
-        estado="pendiente",
+        estado="borrador",
     )
