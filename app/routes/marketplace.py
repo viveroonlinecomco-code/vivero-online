@@ -6,14 +6,18 @@ Endpoints:
 
 Cotizaciones (multi-proyecto):
 - GET  /api/marketplace/cotizacion/proyectos       → lista TODOS los proyectos del comprador
-- GET  /api/marketplace/cotizacion/{id}            → detalle de UN proyecto (items enriquecidos)
-- POST /api/marketplace/cotizacion                 → agregar items (3 modos: cotizacion_id | nombre_proyecto | legacy)
-- PATCH /api/marketplace/cotizacion/{id}           → renombrar proyecto (solo borradores)
-- DELETE /api/marketplace/cotizacion/{id}          → eliminar proyecto entero
+- GET  /api/marketplace/cotizacion/borrador        → último borrador (compat con dashboard actual)
 - DELETE /api/marketplace/cotizacion/item/{inv_id} → quitar item (opcional ?cotizacion_id=X)
+- POST /api/marketplace/cotizacion                 → agregar items (3 modos: cotizacion_id | nombre_proyecto | legacy)
+- GET  /api/marketplace/cotizacion/{id}            → detalle de UN proyecto
+- PATCH /api/marketplace/cotizacion/{id}           → renombrar proyecto
+- DELETE /api/marketplace/cotizacion/{id}          → eliminar proyecto entero
 
-Compat:
-- GET /api/marketplace/cotizacion/borrador → último borrador del comprador (legacy)
+IMPORTANTE — orden de declaración:
+FastAPI matchea rutas en el orden en que se registran. Las rutas con paths
+literales (/borrador, /proyectos, /item/{inv_id}) DEBEN declararse ANTES que
+las rutas con path param genérico (/{cotizacion_id}: int), o FastAPI intenta
+convertir los strings literales a int y devuelve 422.
 """
 from __future__ import annotations
 from typing import Optional
@@ -45,11 +49,7 @@ async def listar_marketplace(
     limite: int = Query(20, le=100),
     user: UserContext = Depends(require_user),
 ):
-    """Búsqueda geo-espacial + texto en el marketplace.
-
-    Usa la función `buscar_plantas_cercanas` de PostGIS si hay término de búsqueda;
-    si no, lista inventario disponible ordenado por fecha.
-    """
+    """Búsqueda geo-espacial + texto en el marketplace."""
     db = admin()
 
     if q and q.strip():
@@ -80,7 +80,6 @@ async def listar_marketplace(
             })
         return {"ok": True, "items": items, "total": len(items)}
 
-    # Sin búsqueda: listado general de disponibles
     query = db.table("inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
         "stock, unidad_medida, foto_ia_url, vivero_id, "
@@ -138,15 +137,11 @@ async def detalle_item(
 
 
 # ═══════════════════════════════════════════════════════════
-# COTIZACIONES — helpers y endpoints
+# COTIZACIONES — helpers
 # ═══════════════════════════════════════════════════════════
 
 def _validar_items_y_calcular(db, req_items) -> tuple[list[dict], float]:
-    """Valida disponibilidad/stock de cada item y calcula subtotales.
-
-    Retorna (lista de items normalizados, total).
-    Lanza HTTPException si algún item no es válido.
-    """
+    """Valida disponibilidad/stock de cada item y calcula subtotales."""
     items_validados = []
     total = 0.0
     for item in req_items:
@@ -215,7 +210,7 @@ def _merge_items_y_actualizar(
 
 
 def _enriquecer_items(db, items_raw: list[dict]) -> list[dict]:
-    """Agrega info de planta/vivero a cada item del JSONB. Para mostrar en UI."""
+    """Agrega info de planta/vivero a cada item del JSONB."""
     if not items_raw:
         return []
     inventario_ids = [it.get("inventario_id") for it in items_raw if it.get("inventario_id")]
@@ -246,6 +241,10 @@ def _enriquecer_items(db, items_raw: list[dict]) -> list[dict]:
     return enriquecidos
 
 
+# ═══════════════════════════════════════════════════════════
+# COTIZACIONES — endpoints (orden importa: literales antes que path params)
+# ═══════════════════════════════════════════════════════════
+
 # ─────────────────── POST: crear / agregar items ───────────────────
 
 @router.post("/cotizacion", response_model=CotizacionResponse)
@@ -253,23 +252,7 @@ async def crear_o_agregar_a_borrador(
     req: CotizacionRequest,
     user: UserContext = Depends(require_comprador),
 ):
-    """Crea un borrador nuevo o agrega items a un borrador existente.
-
-    Modos de operación (decide el frontend según el flujo del usuario):
-
-    1. EXPLÍCITO con `cotizacion_id`: agrega items al borrador con ese ID.
-       Valida que el borrador exista, pertenezca al comprador, y esté en
-       estado 'borrador' (no se permite modificar enviada/aceptada/etc).
-
-    2. EXPLÍCITO con `nombre_proyecto`: crea un NUEVO borrador con ese nombre.
-       Es el flujo cuando el usuario elige "Crear nuevo proyecto" en el modal.
-
-    3. LEGACY (sin cotizacion_id ni nombre_proyecto): find-or-create.
-       Busca el borrador más reciente del comprador y le agrega los items.
-       Si no tiene ninguno, crea uno nuevo (sin nombre si `proyecto` tampoco
-       viene en el request). Preservado para que el frontend pre-modal del
-       marketplace_detalle.html siga funcionando hasta que se actualice.
-    """
+    """Crea un borrador nuevo o agrega items a un borrador existente."""
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
 
@@ -279,7 +262,6 @@ async def crear_o_agregar_a_borrador(
     db = admin()
     items_nuevos, total_nuevo = _validar_items_y_calcular(db, req.items)
 
-    # ── Modo 1: cotizacion_id explícito ──
     if req.cotizacion_id is not None:
         existente = db.table("cotizaciones").select(
             "cotizacion_id, cliente_id, estado, items, total_estimado"
@@ -289,17 +271,14 @@ async def crear_o_agregar_a_borrador(
             raise HTTPException(404, detail="Proyecto no encontrado")
         b = existente.data[0]
         if b["cliente_id"] != user.cliente_id:
-            # No revelar existencia ajena
             raise HTTPException(404, detail="Proyecto no encontrado")
         if b["estado"] != "borrador":
             raise HTTPException(
                 400,
                 detail=f"No se pueden agregar items a un proyecto en estado '{b['estado']}'",
             )
-
         return _merge_items_y_actualizar(db, b, items_nuevos)
 
-    # ── Modo 2: nombre_proyecto explícito (crear nuevo) ──
     if req.nombre_proyecto is not None:
         cot_resp = db.table("cotizaciones").insert({
             "cliente_id": user.cliente_id,
@@ -318,7 +297,6 @@ async def crear_o_agregar_a_borrador(
             estado="borrador",
         )
 
-    # ── Modo 3 (legacy): find-or-create ──
     existente = db.table("cotizaciones").select(
         "cotizacion_id, items, total_estimado, notas_cliente, prompt_original"
     ).eq("cliente_id", user.cliente_id).eq("estado", "borrador").order(
@@ -332,7 +310,6 @@ async def crear_o_agregar_a_borrador(
             nombre_nuevo=req.proyecto,
         )
 
-    # No tiene borrador → crear uno nuevo
     cot_resp = db.table("cotizaciones").insert({
         "cliente_id": user.cliente_id,
         "total_estimado": total_nuevo,
@@ -352,16 +329,13 @@ async def crear_o_agregar_a_borrador(
 
 
 # ─────────────────── GET: lista de proyectos (dashboard) ───────────────────
+# Path literal — declarado ANTES que /cotizacion/{id}
 
 @router.get("/cotizacion/proyectos")
 async def listar_proyectos(
     user: UserContext = Depends(require_comprador),
 ):
-    """Lista TODOS los proyectos del comprador (todos los estados).
-
-    Resumen para cards del dashboard "Mis Proyectos". NO incluye items
-    detallados — para eso usar GET /cotizacion/{id}.
-    """
+    """Lista TODOS los proyectos del comprador (todos los estados)."""
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
 
@@ -376,7 +350,7 @@ async def listar_proyectos(
         items = r.get("items") or []
         proyectos.append({
             "cotizacion_id": r["cotizacion_id"],
-            "nombre_proyecto": r.get("prompt_original"),  # null → UI muestra "Sin nombre"
+            "nombre_proyecto": r.get("prompt_original"),
             "estado": r["estado"],
             "total_estimado": float(r.get("total_estimado") or 0),
             "num_items": sum(it.get("cantidad", 0) for it in items),
@@ -390,18 +364,126 @@ async def listar_proyectos(
     return {"ok": True, "proyectos": proyectos, "total": len(proyectos)}
 
 
-# ─────────────────── GET: detalle de UN proyecto ───────────────────
+# ─────────────────── GET: borrador activo (LEGACY) ───────────────────
+# Path literal — declarado ANTES que /cotizacion/{id}
+
+@router.get("/cotizacion/borrador")
+async def obtener_borrador(
+    user: UserContext = Depends(require_comprador),
+):
+    """[Legacy] Retorna el borrador MÁS RECIENTE del comprador."""
+    if not user.cliente_id:
+        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
+
+    db = admin()
+    resp = db.table("cotizaciones").select(
+        "cotizacion_id, items, total_estimado, fecha_creacion, "
+        "fecha_vencimiento, notas_cliente, prompt_original"
+    ).eq("cliente_id", user.cliente_id).eq("estado", "borrador").order(
+        "fecha_creacion", desc=True
+    ).limit(1).execute()
+
+    if not resp.data:
+        return {"ok": True, "borrador": None}
+
+    b = resp.data[0]
+    items_enriquecidos = _enriquecer_items(db, b.get("items") or [])
+
+    return {
+        "ok": True,
+        "borrador": {
+            "cotizacion_id": b["cotizacion_id"],
+            "items": items_enriquecidos,
+            "total_estimado": float(b.get("total_estimado") or 0),
+            "num_items": sum(it.get("cantidad", 0) for it in items_enriquecidos),
+            "num_viveros_distintos": len({it.get("vivero_id") for it in items_enriquecidos if it.get("vivero_id")}),
+            "notas_cliente": b.get("notas_cliente"),
+            "prompt_original": b.get("prompt_original"),
+            "fecha_creacion": str(b.get("fecha_creacion") or ""),
+            "fecha_vencimiento": str(b.get("fecha_vencimiento") or ""),
+        },
+    }
+
+
+# ─────────────────── DELETE: quitar item ───────────────────
+# Path literal /item/{int} — declarado ANTES que /cotizacion/{id}
+
+@router.delete("/cotizacion/item/{inventario_id}")
+async def quitar_item_borrador(
+    inventario_id: int,
+    cotizacion_id: Optional[int] = Query(None, description="Si se omite, opera sobre el borrador más reciente (legacy)"),
+    user: UserContext = Depends(require_comprador),
+):
+    """Quita un item del borrador."""
+    if not user.cliente_id:
+        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
+
+    db = admin()
+
+    if cotizacion_id is not None:
+        resp = db.table("cotizaciones").select(
+            "cotizacion_id, cliente_id, estado, items"
+        ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+        if not resp.data:
+            raise HTTPException(404, detail="Cotización no encontrada")
+        b = resp.data[0]
+        if b["cliente_id"] != user.cliente_id:
+            raise HTTPException(404, detail="Cotización no encontrada")
+        if b["estado"] != "borrador":
+            raise HTTPException(
+                400,
+                detail=f"No se puede modificar una cotización en estado '{b['estado']}'",
+            )
+    else:
+        resp = db.table("cotizaciones").select(
+            "cotizacion_id, items"
+        ).eq("cliente_id", user.cliente_id).eq("estado", "borrador").order(
+            "fecha_creacion", desc=True
+        ).limit(1).execute()
+        if not resp.data:
+            raise HTTPException(404, detail="No tienes un borrador activo")
+        b = resp.data[0]
+
+    items_actuales = b.get("items") or []
+    items_filtrados = [it for it in items_actuales if it.get("inventario_id") != inventario_id]
+
+    if len(items_filtrados) == len(items_actuales):
+        raise HTTPException(404, detail=f"Item {inventario_id} no está en este borrador")
+
+    if not items_filtrados:
+        db.table("cotizaciones").delete().eq("cotizacion_id", b["cotizacion_id"]).execute()
+        return {
+            "ok": True,
+            "cotizacion_id": b["cotizacion_id"],
+            "eliminado": True,
+            "borrador": None,
+        }
+
+    total_nuevo = sum(float(it.get("subtotal") or 0) for it in items_filtrados)
+    db.table("cotizaciones").update({
+        "items": items_filtrados,
+        "total_estimado": total_nuevo,
+    }).eq("cotizacion_id", b["cotizacion_id"]).execute()
+
+    return {
+        "ok": True,
+        "cotizacion_id": b["cotizacion_id"],
+        "total_estimado": total_nuevo,
+        "items_restantes": len(items_filtrados),
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# RUTAS CON PATH PARAM /{cotizacion_id}: DECLARADAS AL FINAL
+# (FastAPI matchea en orden — estas DEBEN ir después de las literales)
+# ═══════════════════════════════════════════════════════════
 
 @router.get("/cotizacion/{cotizacion_id}")
 async def obtener_cotizacion(
     cotizacion_id: int,
     user: UserContext = Depends(require_comprador),
 ):
-    """Detalle de UN proyecto con items enriquecidos (foto, planta, vivero).
-
-    Verifica ownership: si el cotizacion_id no es del comprador, devuelve 404
-    (no revelamos existencia).
-    """
+    """Detalle de UN proyecto con items enriquecidos."""
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
 
@@ -437,8 +519,6 @@ async def obtener_cotizacion(
     }
 
 
-# ─────────────────── PATCH: renombrar proyecto ───────────────────
-
 @router.patch("/cotizacion/{cotizacion_id}")
 async def renombrar_proyecto(
     cotizacion_id: int,
@@ -472,8 +552,6 @@ async def renombrar_proyecto(
     return {"ok": True, "cotizacion_id": cotizacion_id, "nombre_proyecto": req.nombre_proyecto}
 
 
-# ─────────────────── DELETE: eliminar proyecto entero ───────────────────
-
 @router.delete("/cotizacion/{cotizacion_id}")
 async def eliminar_proyecto(
     cotizacion_id: int,
@@ -501,125 +579,3 @@ async def eliminar_proyecto(
 
     db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
     return {"ok": True, "cotizacion_id": cotizacion_id, "eliminado": True}
-
-
-# ─────────────────── GET: borrador activo (LEGACY) ───────────────────
-
-@router.get("/cotizacion/borrador")
-async def obtener_borrador(
-    user: UserContext = Depends(require_comprador),
-):
-    """[Legacy] Retorna el borrador MÁS RECIENTE del comprador.
-
-    Mantenido para compat con el dashboard del comprador previo a multi-proyecto.
-    Una vez migrado el dashboard (PR3) a /cotizacion/proyectos + /cotizacion/{id},
-    se puede deprecar.
-    """
-    if not user.cliente_id:
-        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
-
-    db = admin()
-    resp = db.table("cotizaciones").select(
-        "cotizacion_id, items, total_estimado, fecha_creacion, "
-        "fecha_vencimiento, notas_cliente, prompt_original"
-    ).eq("cliente_id", user.cliente_id).eq("estado", "borrador").order(
-        "fecha_creacion", desc=True
-    ).limit(1).execute()
-
-    if not resp.data:
-        return {"ok": True, "borrador": None}
-
-    b = resp.data[0]
-    items_enriquecidos = _enriquecer_items(db, b.get("items") or [])
-
-    return {
-        "ok": True,
-        "borrador": {
-            "cotizacion_id": b["cotizacion_id"],
-            "items": items_enriquecidos,
-            "total_estimado": float(b.get("total_estimado") or 0),
-            "num_items": sum(it.get("cantidad", 0) for it in items_enriquecidos),
-            "num_viveros_distintos": len({it.get("vivero_id") for it in items_enriquecidos if it.get("vivero_id")}),
-            "notas_cliente": b.get("notas_cliente"),
-            "prompt_original": b.get("prompt_original"),
-            "fecha_creacion": str(b.get("fecha_creacion") or ""),
-            "fecha_vencimiento": str(b.get("fecha_vencimiento") or ""),
-        },
-    }
-
-
-# ─────────────────── DELETE: quitar item ───────────────────
-
-@router.delete("/cotizacion/item/{inventario_id}")
-async def quitar_item_borrador(
-    inventario_id: int,
-    cotizacion_id: Optional[int] = Query(None, description="Si se omite, opera sobre el borrador más reciente (legacy)"),
-    user: UserContext = Depends(require_comprador),
-):
-    """Quita un item del borrador.
-
-    - Con `?cotizacion_id=X` → modo explícito sobre ese borrador (valida ownership + estado).
-    - Sin query param → modo legacy, opera sobre el borrador más reciente del comprador.
-
-    Si el borrador queda vacío tras la remoción, se BORRA el borrador entero
-    (no dejamos cotizaciones huérfanas).
-    """
-    if not user.cliente_id:
-        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
-
-    db = admin()
-
-    if cotizacion_id is not None:
-        # Modo explícito
-        resp = db.table("cotizaciones").select(
-            "cotizacion_id, cliente_id, estado, items"
-        ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
-        if not resp.data:
-            raise HTTPException(404, detail="Cotización no encontrada")
-        b = resp.data[0]
-        if b["cliente_id"] != user.cliente_id:
-            raise HTTPException(404, detail="Cotización no encontrada")
-        if b["estado"] != "borrador":
-            raise HTTPException(
-                400,
-                detail=f"No se puede modificar una cotización en estado '{b['estado']}'",
-            )
-    else:
-        # Modo legacy: borrador más reciente
-        resp = db.table("cotizaciones").select(
-            "cotizacion_id, items"
-        ).eq("cliente_id", user.cliente_id).eq("estado", "borrador").order(
-            "fecha_creacion", desc=True
-        ).limit(1).execute()
-        if not resp.data:
-            raise HTTPException(404, detail="No tienes un borrador activo")
-        b = resp.data[0]
-
-    items_actuales = b.get("items") or []
-    items_filtrados = [it for it in items_actuales if it.get("inventario_id") != inventario_id]
-
-    if len(items_filtrados) == len(items_actuales):
-        raise HTTPException(404, detail=f"Item {inventario_id} no está en este borrador")
-
-    if not items_filtrados:
-        # Carrito vacío → borrar el borrador
-        db.table("cotizaciones").delete().eq("cotizacion_id", b["cotizacion_id"]).execute()
-        return {
-            "ok": True,
-            "cotizacion_id": b["cotizacion_id"],
-            "eliminado": True,
-            "borrador": None,
-        }
-
-    total_nuevo = sum(float(it.get("subtotal") or 0) for it in items_filtrados)
-    db.table("cotizaciones").update({
-        "items": items_filtrados,
-        "total_estimado": total_nuevo,
-    }).eq("cotizacion_id", b["cotizacion_id"]).execute()
-
-    return {
-        "ok": True,
-        "cotizacion_id": b["cotizacion_id"],
-        "total_estimado": total_nuevo,
-        "items_restantes": len(items_filtrados),
-    }
