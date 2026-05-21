@@ -9,9 +9,24 @@ class CotizacionItem(BaseModel):
 
 
 class CotizacionRequest(BaseModel):
+    """Request para agregar items a una cotización.
+
+    Tres modos de operación (mutuamente excluyentes para los dos primeros):
+    1. EXPLÍCITO con `cotizacion_id` → agrega items a un borrador existente.
+    2. EXPLÍCITO con `nombre_proyecto` → crea un borrador nuevo con ese nombre.
+    3. LEGACY (sin ninguno) → find-or-create: agrega al borrador más reciente
+       del comprador (o crea uno sin nombre si no tiene). Compat con el
+       frontend del marketplace_detalle.html previo al modal.
+    """
     items: List[CotizacionItem] = Field(..., min_length=1)
     notas: Optional[str] = None
-    proyecto: Optional[str] = None  # Nombre del proyecto del comprador
+
+    # Nuevos campos para multi-proyecto:
+    cotizacion_id: Optional[int] = None
+    nombre_proyecto: Optional[str] = Field(None, max_length=200)
+
+    # Legacy (deprecado pero soportado por compat):
+    proyecto: Optional[str] = None  # se guarda en prompt_original cuando se usa modo legacy
 
 
 class CotizacionResponse(BaseModel):
@@ -19,6 +34,11 @@ class CotizacionResponse(BaseModel):
     cotizacion_id: int
     total_cop: float
     estado: str
+
+
+class RenameProyectoRequest(BaseModel):
+    """Request para renombrar un proyecto (PATCH /cotizacion/{id})."""
+    nombre_proyecto: str = Field(..., min_length=1, max_length=200)
 
 
 class TransaccionOut(BaseModel):
