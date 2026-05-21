@@ -57,6 +57,7 @@
 </button>
 </div>
 </div>
+
 <!-- Search Section -->
 <div class="px-4 py-3">
 <label class="flex flex-col min-w-40 h-14 w-full">
@@ -68,7 +69,8 @@
 </div>
 </label>
 </div>
-<!-- Sugerencias IA — coming soon honesto: el agente de recomendaciones aún no genera resultados reales -->
+
+<!-- Sugerencias IA — coming soon honesto -->
 <section class="px-4 py-6">
 <div class="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-6">
 <div class="flex items-start gap-4">
@@ -80,80 +82,55 @@
 </div>
 </div>
 </section>
-<!-- Mis Proyectos — empty state honesto (la abstracción "proyecto" como agrupador de cotizaciones es feature futura) -->
-<section class="px-4 py-4">
+
+<!-- ============ MIS PROYECTOS — cards expandibles ============ -->
+<!--
+  Consume GET /api/marketplace/cotizacion/proyectos para listar todas las
+  cotizaciones del comprador (todos los estados). Cada card muestra resumen +
+  badge de estado. Click expande para mostrar items via GET /cotizacion/{id}.
+
+  Solo los borradores son editables (quitar item, ir a checkout, eliminar
+  proyecto). Otros estados son view-only.
+-->
+<section class="px-4 py-4" id="proyectos-section">
 <div class="flex items-center justify-between mb-4">
 <h2 class="text-slate-900 dark:text-slate-100 text-xl font-bold tracking-tight">Mis Proyectos</h2>
+<span id="proyectos-meta" class="text-xs text-slate-500 hidden"></span>
 </div>
-<div class="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-8 text-center">
+
+<!-- Loading skeleton -->
+<div id="proyectos-loading" class="space-y-3">
+<div class="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
+<div class="animate-pulse space-y-2">
+<div class="h-5 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
+<div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4"></div>
+</div>
+</div>
+<div class="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
+<div class="animate-pulse space-y-2">
+<div class="h-5 bg-slate-200 dark:bg-slate-700 rounded w-1/3"></div>
+<div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-2/3"></div>
+</div>
+</div>
+</div>
+
+<!-- Empty state -->
+<div id="proyectos-empty" class="hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-8 text-center">
 <span class="material-symbols-outlined text-slate-400 text-4xl mb-2">folder_open</span>
-<h3 class="font-bold text-slate-800 dark:text-slate-100">Aún no tienes proyectos activos</h3>
-<p class="text-sm text-slate-500 mt-1 mb-4 max-w-md mx-auto">Cuando armes tu primera lista de compra, vas a poder agruparla en un proyecto para hacer seguimiento.</p>
+<h3 class="font-bold text-slate-800 dark:text-slate-100">Aún no tienes proyectos</h3>
+<p class="text-sm text-slate-500 mt-1 mb-4 max-w-md mx-auto">Cuando solicites tu primera cotización desde el marketplace, vas a poder crear y gestionar tus proyectos acá.</p>
 <a href="/marketplace" class="inline-flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-full font-semibold hover:bg-primary/90 transition-colors">
 <span class="material-symbols-outlined text-base">explore</span>
-                    Explorar Marketplace
-                </a>
+                Explorar Marketplace
+            </a>
 </div>
-</section>
 
-<!-- ============ LISTA DE COMPRA (CARRITO) ============ -->
-<!-- Esta sección consume GET /api/marketplace/cotizacion/borrador.
-     Estados manejados:
-     1. Loading (skeleton) mientras la API responde
-     2. Empty (no hay borrador) → mismo CTA original "Buscar plantas"
-     3. Populated → lista de items con foto/vivero/cantidad/subtotal + footer con total + checkout
--->
-<section class="px-4 py-6" id="lista-compra-section">
-  <div class="flex items-center justify-between mb-4">
-    <h2 class="text-slate-900 dark:text-slate-100 text-xl font-bold tracking-tight">Tu lista de compra</h2>
-    <span id="lista-compra-meta" class="text-xs text-slate-500 hidden"></span>
-  </div>
-
-  <!-- Loading skeleton -->
-  <div id="lista-compra-loading" class="bg-white dark:bg-slate-800 rounded-xl p-6 shadow-sm border border-slate-100 dark:border-slate-700">
-    <div class="animate-pulse space-y-3">
-      <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4"></div>
-      <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
-    </div>
-  </div>
-
-  <!-- Empty state (oculto inicialmente; se muestra solo si no hay borrador) -->
-  <div id="lista-compra-empty" class="hidden bg-white dark:bg-slate-800 rounded-xl p-8 shadow-sm border border-slate-100 dark:border-slate-700 text-center">
-    <span class="material-symbols-outlined text-slate-400 text-4xl mb-2">shopping_cart</span>
-    <h3 class="font-bold text-slate-800 dark:text-slate-100">Tu lista de compra está vacía</h3>
-    <p class="text-sm text-slate-500 mt-1 mb-4 max-w-md mx-auto">Empezá a buscar plantas en el marketplace y agregalas a tu lista para generar una orden de compra al vivero.</p>
-    <a href="/marketplace" class="inline-flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-full font-semibold hover:bg-primary/90 transition-colors">
-      <span class="material-symbols-outlined text-base">search</span>
-      Buscar plantas
-    </a>
-  </div>
-
-  <!-- Populated state: items del borrador -->
-  <div id="lista-compra-items" class="hidden space-y-3">
-    <!-- Items se inyectan vía JS -->
-  </div>
-
-  <!-- Footer (total + checkout). Oculto hasta que haya items -->
-  <div id="lista-compra-footer" class="hidden mt-4 bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
-    <div class="flex items-center justify-between mb-3">
-      <div>
-        <p class="text-sm text-slate-500">Total estimado</p>
-        <p class="text-2xl font-bold text-primary" id="lista-compra-total">$0</p>
-      </div>
-      <div class="text-right">
-        <p class="text-xs text-slate-500">Vence</p>
-        <p class="text-sm font-semibold text-slate-700 dark:text-slate-200" id="lista-compra-vence">—</p>
-      </div>
-    </div>
-    <button id="btn-checkout" class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-3 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-primary/20 transition">
-      <span class="material-symbols-outlined">point_of_sale</span>
-      Ir a checkout
-    </button>
-    <p class="text-xs text-slate-400 mt-2 text-center">Al hacer checkout se notifica a los viveros con stock</p>
-  </div>
+<!-- Lista de cards -->
+<div id="proyectos-list" class="hidden space-y-3"></div>
 </section>
 
 </div>
+
 <!-- Bottom Navigation Bar -->
 <div class="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 px-4 pb-6 pt-2 z-30">
 <div class="max-w-5xl mx-auto flex justify-between items-center">
@@ -186,7 +163,6 @@
 <script>
 if (!VO.requireAuth()) throw new Error('auth');
 
-// Etiquetas legibles para tipo_cliente (metadata, NO rol)
 const TIPO_CLIENTE_LABEL = {
     paisajista: 'Paisajista',
     constructora: 'Constructora',
@@ -195,28 +171,49 @@ const TIPO_CLIENTE_LABEL = {
     otro: 'Comprador',
 };
 
+const BADGE_STYLES = {
+    borrador:   'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    enviada:    'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    aceptada:   'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+    rechazada:  'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    vencida:    'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+    convertida: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+};
+const BADGE_LABELS = {
+    borrador:   'Borrador',
+    enviada:    'Enviada',
+    aceptada:   'Aceptada',
+    rechazada:  'Rechazada',
+    vencida:    'Vencida',
+    convertida: 'Convertida',
+};
+const ESTADO_DESCR = {
+    enviada:    'Esperando confirmación del vivero',
+    aceptada:   'El vivero confirmó disponibilidad',
+    rechazada:  'El vivero no pudo surtir este pedido',
+    vencida:    'Esta cotización venció sin acción',
+    convertida: 'Esta cotización se convirtió en orden de compra',
+};
+
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         const me = await VO.me();
 
-        // Guardia de rol: solo comprador o admin acceden aquí
+        // Guardia de rol
         if (me.rol !== 'comprador' && me.rol !== 'admin') {
             window.location.href = me.rol === 'viverista' ? '/viverista' : '/';
             return;
         }
 
-        // Truco UI: saludo dinámico según subtipo (tipo_cliente)
+        // Saludo dinámico
         const subtipo = TIPO_CLIENTE_LABEL[me.tipo_cliente] || 'Comprador';
-        const saludo = me.nombre_display
-            ? me.nombre_display
-            : `Bienvenido, ${subtipo}`;
+        const saludo = me.nombre_display ? me.nombre_display : `Bienvenido, ${subtipo}`;
 
         const bienvenida = Array.from(document.querySelectorAll('p, h2, h3')).find(el =>
             /david silva|arq\./i.test(el.textContent)
         );
         if (bienvenida) bienvenida.textContent = saludo;
 
-        // Etiqueta superior pequeña ("Bienvenido" -> el subtipo)
         const etiquetaTop = Array.from(document.querySelectorAll('p')).find(el =>
             /^bienvenido$/i.test((el.textContent || '').trim())
         );
@@ -224,27 +221,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             etiquetaTop.textContent = subtipo.toUpperCase();
         }
 
-        // Cargar el carrito (borrador) — se ejecuta después del me() porque
-        // el endpoint requiere autenticación de comprador.
-        cargarBorrador();
+        // Cargar lista de proyectos
+        cargarProyectos();
     } catch (e) {
         console.error(e);
     }
 });
 
 
-// ═══════════════ CARRITO (LISTA DE COMPRA) ═══════════════
+// ═══════════════════════════════════════════════════════════
+// PROYECTOS — cards expandibles
+// ═══════════════════════════════════════════════════════════
 
-async function cargarBorrador() {
+async function cargarProyectos() {
     const token = localStorage.getItem('vivero_access_token');
-    const loadingEl = document.getElementById('lista-compra-loading');
-    const emptyEl = document.getElementById('lista-compra-empty');
-    const itemsEl = document.getElementById('lista-compra-items');
-    const footerEl = document.getElementById('lista-compra-footer');
-    const metaEl = document.getElementById('lista-compra-meta');
+    const loadingEl = document.getElementById('proyectos-loading');
+    const emptyEl = document.getElementById('proyectos-empty');
+    const listEl = document.getElementById('proyectos-list');
+    const metaEl = document.getElementById('proyectos-meta');
 
     try {
-        const resp = await fetch('/api/marketplace/cotizacion/borrador', {
+        const resp = await fetch('/api/marketplace/cotizacion/proyectos', {
             headers: { 'Authorization': `Bearer ${token}` },
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -252,75 +249,196 @@ async function cargarBorrador() {
 
         loadingEl.classList.add('hidden');
 
-        if (!data.borrador || !data.borrador.items || !data.borrador.items.length) {
-            // Sin carrito → mostrar empty state
+        const proyectos = data.proyectos || [];
+        if (proyectos.length === 0) {
             emptyEl.classList.remove('hidden');
             return;
         }
 
-        // Carrito con items → renderizar
-        const b = data.borrador;
-        itemsEl.classList.remove('hidden');
-        footerEl.classList.remove('hidden');
-
-        // Meta superior (X unidades · Y viveros)
+        listEl.classList.remove('hidden');
         metaEl.classList.remove('hidden');
-        const nv = b.num_viveros_distintos || 0;
-        metaEl.textContent = `${b.num_items} unidades · ${nv} vivero${nv !== 1 ? 's' : ''}`;
+        const numBorradores = proyectos.filter(p => p.estado === 'borrador').length;
+        metaEl.textContent = `${proyectos.length} proyecto${proyectos.length !== 1 ? 's' : ''}`
+            + (numBorradores > 0 ? ` · ${numBorradores} activo${numBorradores !== 1 ? 's' : ''}` : '');
 
-        // Items
-        itemsEl.innerHTML = b.items.map(it => renderItem(it)).join('');
+        listEl.innerHTML = proyectos.map(p => renderProyectoCard(p)).join('');
 
-        // Footer
-        document.getElementById('lista-compra-total').textContent = formatCOP(b.total_estimado);
-        document.getElementById('lista-compra-vence').textContent = formatFecha(b.fecha_vencimiento);
-
-        // Wire delete buttons
-        itemsEl.querySelectorAll('[data-quitar-item]').forEach(btn => {
-            btn.addEventListener('click', () => quitarItem(parseInt(btn.dataset.quitarItem, 10)));
+        // Wire toggle
+        listEl.querySelectorAll('[data-proyecto-card]').forEach(card => {
+            const id = parseInt(card.dataset.proyectoCard, 10);
+            card.querySelector('[data-toggle]').addEventListener('click', () => toggleProyectoExpand(id));
         });
     } catch (e) {
-        console.error('Error cargando borrador:', e);
+        console.error('Error cargando proyectos:', e);
         loadingEl.classList.add('hidden');
         emptyEl.classList.remove('hidden');
     }
 }
 
-function renderItem(it) {
+function renderProyectoCard(p) {
+    const nombre = p.nombre_proyecto
+        ? escapeHTML(p.nombre_proyecto)
+        : '<span class="italic text-slate-400">Sin nombre</span>';
+    const badgeStyle = BADGE_STYLES[p.estado] || BADGE_STYLES.borrador;
+    const badgeLabel = BADGE_LABELS[p.estado] || p.estado;
+    const showVencimiento = p.estado === 'borrador' && p.fecha_vencimiento;
+
+    return `
+        <article class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden" data-proyecto-card="${p.cotizacion_id}">
+            <button data-toggle class="w-full text-left p-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition flex items-center gap-3">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1 flex-wrap">
+                        <h3 class="font-bold text-base text-slate-800 dark:text-slate-100 truncate">${nombre}</h3>
+                        <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${badgeStyle}">${badgeLabel}</span>
+                    </div>
+                    <p class="text-xs text-slate-500">
+                        ${p.num_items} unidades · ${formatCOP(p.total_estimado)}
+                        ${showVencimiento ? ` · vence ${formatFecha(p.fecha_vencimiento)}` : ''}
+                    </p>
+                </div>
+                <span class="material-symbols-outlined text-slate-400 transition-transform" data-chevron>expand_more</span>
+            </button>
+
+            <div class="hidden border-t border-slate-100 dark:border-slate-700" data-panel>
+                <div class="p-4 space-y-2 bg-slate-50/50 dark:bg-slate-900/20" data-items>
+                    <div class="animate-pulse space-y-2">
+                        <div class="h-16 bg-slate-100 dark:bg-slate-700 rounded-lg"></div>
+                        <div class="h-16 bg-slate-100 dark:bg-slate-700 rounded-lg"></div>
+                    </div>
+                </div>
+                <div class="border-t border-slate-100 dark:border-slate-700 p-4 bg-slate-50 dark:bg-slate-900/30" data-footer>
+                    <div class="animate-pulse h-10 bg-slate-100 dark:bg-slate-700 rounded-full"></div>
+                </div>
+            </div>
+        </article>
+    `;
+}
+
+async function toggleProyectoExpand(cotizacion_id) {
+    const card = document.querySelector(`[data-proyecto-card="${cotizacion_id}"]`);
+    if (!card) return;
+
+    const panel = card.querySelector('[data-panel]');
+    const chevron = card.querySelector('[data-chevron]');
+
+    if (!panel.classList.contains('hidden')) {
+        panel.classList.add('hidden');
+        chevron.style.transform = '';
+        return;
+    }
+
+    panel.classList.remove('hidden');
+    chevron.style.transform = 'rotate(180deg)';
+
+    if (!card.dataset.itemsLoaded) {
+        await cargarItemsProyecto(cotizacion_id);
+        card.dataset.itemsLoaded = '1';
+    }
+}
+
+async function cargarItemsProyecto(cotizacion_id) {
+    const card = document.querySelector(`[data-proyecto-card="${cotizacion_id}"]`);
+    if (!card) return;
+
+    const itemsEl = card.querySelector('[data-items]');
+    const footerEl = card.querySelector('[data-footer]');
+    const token = localStorage.getItem('vivero_access_token');
+
+    try {
+        const resp = await fetch(`/api/marketplace/cotizacion/${cotizacion_id}`, {
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const c = data.cotizacion;
+
+        if (!c.items || c.items.length === 0) {
+            itemsEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Este proyecto no tiene items.</p>';
+            footerEl.innerHTML = '';
+            return;
+        }
+
+        const editable = c.estado === 'borrador';
+        itemsEl.innerHTML = c.items.map(it => renderItem(it, editable)).join('');
+
+        // Footer según estado
+        if (editable) {
+            footerEl.innerHTML = `
+                <div class="space-y-2">
+                    <button data-checkout class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2.5 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-primary/20 transition">
+                        <span class="material-symbols-outlined">point_of_sale</span>
+                        Ir a checkout · ${formatCOP(c.total_estimado)}
+                    </button>
+                    <button data-eliminar class="w-full text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400 flex items-center justify-center gap-1 py-1">
+                        <span class="material-symbols-outlined text-sm">delete</span>
+                        Eliminar proyecto
+                    </button>
+                </div>
+            `;
+        } else {
+            footerEl.innerHTML = `
+                <div class="text-center">
+                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200">${formatCOP(c.total_estimado)}</p>
+                    <p class="text-xs text-slate-500 mt-1">${escapeHTML(ESTADO_DESCR[c.estado] || '')}</p>
+                </div>
+            `;
+        }
+
+        // Wire actions
+        if (editable) {
+            itemsEl.querySelectorAll('[data-quitar-item]').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const inv = parseInt(btn.dataset.quitarItem, 10);
+                    quitarItem(cotizacion_id, inv);
+                });
+            });
+            footerEl.querySelector('[data-checkout]')?.addEventListener('click', () => {
+                alert('Checkout aún no implementado — próximamente con ePayco.');
+            });
+            footerEl.querySelector('[data-eliminar]')?.addEventListener('click', () => {
+                eliminarProyecto(cotizacion_id);
+            });
+        }
+    } catch (e) {
+        console.error('Error cargando items:', e);
+        itemsEl.innerHTML = `<p class="text-xs text-red-500 text-center py-4">No se pudieron cargar los items.</p>`;
+        footerEl.innerHTML = '';
+    }
+}
+
+function renderItem(it, editable) {
     const foto = it.foto_ia_url || 'https://placehold.co/96x96/e2e8f0/64748b?text=%F0%9F%8C%B1';
     return `
-        <div class="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-100 dark:border-slate-700 flex gap-3">
+        <div class="bg-white dark:bg-slate-800 rounded-lg p-3 border border-slate-100 dark:border-slate-700 flex gap-3">
             <img src="${escapeHTML(foto)}" alt="${escapeHTML(it.nombre_comun || '')}"
-                 class="w-20 h-20 rounded-lg object-cover flex-shrink-0"
+                 class="w-16 h-16 rounded-lg object-cover flex-shrink-0"
                  onerror="this.src='https://placehold.co/96x96/e2e8f0/64748b?text=%F0%9F%8C%B1'">
             <div class="flex-1 min-w-0">
-                <h3 class="font-bold text-slate-800 dark:text-slate-100 truncate">${escapeHTML(it.nombre_comun || 'Sin nombre')}</h3>
+                <h4 class="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">${escapeHTML(it.nombre_comun || 'Sin nombre')}</h4>
                 ${it.nombre_cientifico ? `<p class="text-xs italic text-slate-500 truncate">${escapeHTML(it.nombre_cientifico)}</p>` : ''}
-                <p class="text-xs text-slate-500 mt-1 flex items-center gap-1">
+                <p class="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
                     <span class="material-symbols-outlined text-sm">storefront</span>
                     <span class="truncate">${escapeHTML(it.nombre_vivero || 'Vivero')}${it.ciudad_vivero ? ' · ' + escapeHTML(it.ciudad_vivero) : ''}</span>
                 </p>
-                <div class="flex items-baseline justify-between mt-2 gap-2">
-                    <span class="text-sm text-slate-600 dark:text-slate-300 whitespace-nowrap">
-                        ${it.cantidad} × ${formatCOP(it.precio_unitario)}
-                    </span>
-                    <span class="font-bold text-primary whitespace-nowrap">${formatCOP(it.subtotal)}</span>
+                <div class="flex items-baseline justify-between mt-1 gap-2">
+                    <span class="text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">${it.cantidad} × ${formatCOP(it.precio_unitario)}</span>
+                    <span class="text-sm font-bold text-primary whitespace-nowrap">${formatCOP(it.subtotal)}</span>
                 </div>
             </div>
-            <button data-quitar-item="${it.inventario_id}"
-                    class="self-start text-slate-400 hover:text-red-500 transition-colors p-1 flex-shrink-0"
-                    title="Quitar del carrito">
-                <span class="material-symbols-outlined">close</span>
-            </button>
+            ${editable ? `
+                <button data-quitar-item="${it.inventario_id}" class="self-start text-slate-400 hover:text-red-500 transition-colors p-1 flex-shrink-0" title="Quitar del proyecto">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            ` : ''}
         </div>
     `;
 }
 
-async function quitarItem(inventario_id) {
-    if (!confirm('¿Quitar este item de tu lista?')) return;
+async function quitarItem(cotizacion_id, inventario_id) {
+    if (!confirm('¿Quitar este item del proyecto?')) return;
     const token = localStorage.getItem('vivero_access_token');
     try {
-        const resp = await fetch(`/api/marketplace/cotizacion/item/${inventario_id}`, {
+        const resp = await fetch(`/api/marketplace/cotizacion/item/${inventario_id}?cotizacion_id=${cotizacion_id}`, {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` },
         });
@@ -328,23 +446,30 @@ async function quitarItem(inventario_id) {
             const err = await resp.json().catch(() => ({}));
             throw new Error(err.detail || `Error ${resp.status}`);
         }
-        // Recargar el carrito (re-fetch + re-render limpio)
-        document.getElementById('lista-compra-items').classList.add('hidden');
-        document.getElementById('lista-compra-footer').classList.add('hidden');
-        document.getElementById('lista-compra-meta').classList.add('hidden');
-        document.getElementById('lista-compra-empty').classList.add('hidden');
-        document.getElementById('lista-compra-loading').classList.remove('hidden');
-        await cargarBorrador();
+        // Reload (el proyecto pudo haberse borrado si era el último item)
+        window.location.reload();
     } catch (e) {
         alert('No se pudo quitar el item: ' + (e.message || e));
     }
 }
 
-document.addEventListener('click', (e) => {
-    if (e.target.closest('#btn-checkout')) {
-        alert('Checkout aún no implementado — próximamente con ePayco.');
+async function eliminarProyecto(cotizacion_id) {
+    if (!confirm('¿Eliminar este proyecto completo? Esta acción no se puede deshacer.')) return;
+    const token = localStorage.getItem('vivero_access_token');
+    try {
+        const resp = await fetch(`/api/marketplace/cotizacion/${cotizacion_id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `Error ${resp.status}`);
+        }
+        window.location.reload();
+    } catch (e) {
+        alert('No se pudo eliminar: ' + (e.message || e));
     }
-});
+}
 
 
 // ─── Helpers ───
