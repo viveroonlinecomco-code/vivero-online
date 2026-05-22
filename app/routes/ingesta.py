@@ -1,4 +1,4 @@
- """Endpoints de ingesta de datos externos para Predicción de Demanda.
+"""Endpoints de ingesta de datos externos para Predicción de Demanda.
 
 Sprint 1 — Solo SECOP II por trigger manual (admin-only).
 Sprint 3 agregará Vercel Cron para automatizar.
