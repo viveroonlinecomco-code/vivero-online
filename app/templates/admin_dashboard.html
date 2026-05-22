@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="es"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
@@ -81,6 +80,67 @@
 <div class="text-center py-6 text-slate-500 text-sm">
 <span class="material-symbols-outlined animate-spin">progress_activity</span>
 <p class="mt-2">Cargando ranking…</p>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Ingesta SECOP II — admin-only manual trigger del endpoint POST /api/ingesta/secop -->
+<div class="px-4 pb-6">
+<div class="bg-white dark:bg-slate-800 rounded-xl p-5 border border-primary/10 shadow-sm">
+<div class="flex items-center justify-between mb-2">
+<h3 class="text-lg font-bold text-slate-900 dark:text-white">Ingestar SECOP II</h3>
+<span class="text-xs text-slate-400 font-medium">Procesos públicos de contratación</span>
+</div>
+<p class="text-sm text-slate-500 mb-4">Trae procesos recientes de SECOP que mencionan plantas/arborización/paisajismo en la Sabana de Bogotá. Si activás clasificación IA, Gemini analiza cada proceso (~2–3s por proceso).</p>
+
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+<div>
+<label class="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">Días atrás</label>
+<input type="number" data-vo="secop-dias" value="30" min="1" max="365" class="w-full rounded-lg border border-primary/20 px-3 py-2 text-sm bg-white dark:bg-slate-700"/>
+</div>
+<div>
+<label class="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">Límite procesos</label>
+<input type="number" data-vo="secop-limit" value="5" min="1" max="200" class="w-full rounded-lg border border-primary/20 px-3 py-2 text-sm bg-white dark:bg-slate-700"/>
+</div>
+<div class="flex items-end">
+<label class="flex items-center gap-2 cursor-pointer select-none py-2">
+<input type="checkbox" data-vo="secop-clasificar" class="rounded text-primary focus:ring-primary"/>
+<span class="text-sm text-slate-700 dark:text-slate-200">Clasificar con IA (Gemini)</span>
+</label>
+</div>
+</div>
+
+<button data-vo="secop-disparar" onclick="dispararSecop()" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+<span data-vo="secop-btn-content" class="flex items-center justify-center gap-2">
+<span class="material-symbols-outlined">cloud_download</span>
+<span>Disparar ingesta</span>
+</span>
+</button>
+
+<div data-vo="secop-resultado" class="mt-5 hidden">
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+<div class="bg-primary/5 rounded-lg p-3 text-center">
+<p class="text-xs text-slate-500 uppercase tracking-wider font-semibold">Ingestados</p>
+<p class="text-2xl font-bold text-primary" data-vo="secop-ingestados">0</p>
+</div>
+<div class="bg-primary/5 rounded-lg p-3 text-center">
+<p class="text-xs text-slate-500 uppercase tracking-wider font-semibold">Nuevos</p>
+<p class="text-2xl font-bold text-primary" data-vo="secop-nuevos">0</p>
+</div>
+<div class="bg-primary/5 rounded-lg p-3 text-center">
+<p class="text-xs text-slate-500 uppercase tracking-wider font-semibold">Clasificados</p>
+<p class="text-2xl font-bold text-primary" data-vo="secop-clasificados">0</p>
+</div>
+<div class="bg-primary/5 rounded-lg p-3 text-center">
+<p class="text-xs text-slate-500 uppercase tracking-wider font-semibold">Relevantes</p>
+<p class="text-2xl font-bold text-primary" data-vo="secop-relevantes">0</p>
+</div>
+</div>
+<p data-vo="secop-fecha-desde" class="text-xs text-slate-500 mt-3"></p>
+<div data-vo="secop-warnings" class="mt-3 hidden">
+<p class="text-xs font-semibold text-amber-700 mb-1">⚠ Warnings:</p>
+<ul class="text-xs text-amber-600 list-disc list-inside space-y-1"></ul>
 </div>
 </div>
 </div>
@@ -184,6 +244,71 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 });
+
+// ─────────────────── INGESTA SECOP ───────────────────
+// Trigger manual del endpoint admin-only POST /api/ingesta/secop.
+// Reutiliza VO.api (Authorization Bearer auto) y VO.showToast.
+window.dispararSecop = async function() {
+    const btn = document.querySelector('[data-vo="secop-disparar"]');
+    const btnContent = document.querySelector('[data-vo="secop-btn-content"]');
+    const resultDiv = document.querySelector('[data-vo="secop-resultado"]');
+    const diasAtras = parseInt(document.querySelector('[data-vo="secop-dias"]').value) || 30;
+    const limit = parseInt(document.querySelector('[data-vo="secop-limit"]').value) || 5;
+    const clasificar = document.querySelector('[data-vo="secop-clasificar"]').checked;
+
+    // Warning si clasificar con limit alto (Vercel timeout ~60s)
+    if (clasificar && limit > 15) {
+        const estimadoSeg = Math.round(limit * 2.5);
+        const ok = confirm(
+            `Clasificar ${limit} procesos con Gemini va a tomar ~${estimadoSeg}s. ` +
+            `Vercel puede cortar la conexión si supera 60s. ¿Continuar igual?`
+        );
+        if (!ok) return;
+    }
+
+    // Loading state
+    btn.disabled = true;
+    btnContent.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span><span>Procesando...</span>';
+    resultDiv.classList.add('hidden');
+
+    try {
+        const data = await VO.api('/api/ingesta/secop', {
+            method: 'POST',
+            body: JSON.stringify({ dias_atras: diasAtras, limit, clasificar }),
+        });
+
+        // Cablear stats
+        document.querySelector('[data-vo="secop-ingestados"]').textContent = data.ingestados ?? 0;
+        document.querySelector('[data-vo="secop-nuevos"]').textContent = data.nuevos ?? 0;
+        document.querySelector('[data-vo="secop-clasificados"]').textContent = data.clasificados ?? 0;
+        document.querySelector('[data-vo="secop-relevantes"]').textContent = data.relevantes ?? 0;
+
+        const fechaSpan = document.querySelector('[data-vo="secop-fecha-desde"]');
+        if (fechaSpan) {
+            fechaSpan.textContent = `Buscó procesos desde: ${data.fecha_desde} · ${data.keywords_count} keywords · ${data.municipios_count} municipios`;
+        }
+
+        // Warnings
+        const warningsDiv = document.querySelector('[data-vo="secop-warnings"]');
+        const warningsUl = warningsDiv ? warningsDiv.querySelector('ul') : null;
+        if (data.warnings && data.warnings.length > 0 && warningsUl) {
+            const escapeHTML = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+            warningsUl.innerHTML = data.warnings.slice(0, 10).map(w => `<li>${escapeHTML(w)}</li>`).join('');
+            warningsDiv.classList.remove('hidden');
+        } else if (warningsDiv) {
+            warningsDiv.classList.add('hidden');
+        }
+
+        resultDiv.classList.remove('hidden');
+        VO.showToast(`✓ ${data.nuevos ?? 0} procesos nuevos ingestados`, 'success');
+    } catch (e) {
+        console.error('Error en ingesta SECOP:', e);
+        VO.showToast('Error: ' + (e.message || 'desconocido'), 'error');
+    } finally {
+        btn.disabled = false;
+        btnContent.innerHTML = '<span class="material-symbols-outlined">cloud_download</span><span>Disparar ingesta</span>';
+    }
+};
 </script>
 
 </body></html>
