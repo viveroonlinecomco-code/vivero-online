@@ -14,6 +14,8 @@ NOTAS HISTÓRICAS:
   `descripci_n_del_procedimiento`. Fix aplicado 2026-05-23 (PR #35).
 - A partir de 2026, datos.gov.co exige X-App-Token header para todas
   las queries SoQL. Sin token devuelve 400. Fix aplicado 2026-05-23.
+- Diagnóstico extendido para investigar 400s post-fix. Esta versión
+  loguea el response body de Socrata para saber exactamente la causa.
 """
 from __future__ import annotations
 import logging
@@ -73,26 +75,26 @@ class SecopClient:
     """Cliente async para SECOP II vía Socrata Open Data API (SODA).
 
     Requiere env var SOCRATA_APP_TOKEN (obligatorio desde 2026).
-
-    Uso:
-        async with SecopClient() as client:
-            procesos = await client.fetch_procesos(
-                keywords=KEYWORDS_PLANTAS,
-                municipios=MUNICIPIOS_PRIORITARIOS,
-                fecha_desde="2025-12-01",
-                limit=200,
-            )
     """
 
     def __init__(self, timeout: float = DEFAULT_TIMEOUT):
         self.timeout = timeout
         self._client: Optional[httpx.AsyncClient] = None
         self.app_token = os.environ.get("SOCRATA_APP_TOKEN")
-        if not self.app_token:
+        # DIAGNÓSTICO: log si el token está presente y su longitud (sin revelar valor)
+        if self.app_token:
+            stripped_len = len(self.app_token.strip())
+            raw_len = len(self.app_token)
+            has_whitespace = raw_len != stripped_len
+            logger.info(
+                f"SOCRATA_APP_TOKEN diagnóstico: presente, "
+                f"longitud_cruda={raw_len}, longitud_stripped={stripped_len}, "
+                f"tiene_whitespace={has_whitespace}"
+            )
+        else:
             logger.warning(
-                "SOCRATA_APP_TOKEN no está seteado en el environment. "
-                "datos.gov.co va a devolver 400 para todas las queries. "
-                "Configurar en Vercel → Settings → Environment Variables."
+                "SOCRATA_APP_TOKEN NO está seteado en el environment. "
+                "datos.gov.co va a devolver 400 para todas las queries."
             )
 
     async def __aenter__(self) -> "SecopClient":
@@ -101,7 +103,8 @@ class SecopClient:
             "User-Agent": "ViveroOnline-Ingesta/1.0",
         }
         if self.app_token:
-            headers["X-App-Token"] = self.app_token
+            # Strip whitespace por si el env var tiene salto de línea o espacios
+            headers["X-App-Token"] = self.app_token.strip()
         self._client = httpx.AsyncClient(timeout=self.timeout, headers=headers)
         return self
 
@@ -118,17 +121,7 @@ class SecopClient:
         limit: int = 200,
         offset: int = 0,
     ) -> list[dict]:
-        """Query SECOP II - Procesos de Contratación.
-
-        Filtros opcionales — todos se aplican como AND:
-        - keywords: matchea cualquier keyword en la descripción (OR interno)
-        - municipios: filtra por ciudad de la entidad (OR interno)
-        - fecha_desde: solo procesos publicados desde esta fecha
-
-        Devuelve lista de dicts con el payload crudo. Los nombres de
-        campos pueden variar; el caller debe usar `extraer_campos()`
-        para normalizar.
-        """
+        """Query SECOP II - Procesos de Contratación."""
         if self._client is None:
             raise RuntimeError(
                 "SecopClient must be used as async context manager: "
@@ -164,9 +157,23 @@ class SecopClient:
 
         params["$order"] = f"{SECOP_II_FECHA_PUB_COL} DESC"
 
-        logger.info(f"SECOP query: {url} params={params}")
+        # DIAGNÓSTICO: log si el header se está enviando
+        header_app_token = self._client.headers.get("X-App-Token")
+        logger.info(
+            f"SECOP request: url={url} "
+            f"x_app_token_header_present={bool(header_app_token)} "
+            f"x_app_token_length={len(header_app_token) if header_app_token else 0}"
+        )
+
         try:
             resp = await self._client.get(url, params=params)
+            # DIAGNÓSTICO: log el body si el status no es 200
+            if resp.status_code != 200:
+                body_preview = resp.text[:1000] if resp.text else "(empty)"
+                logger.error(
+                    f"SECOP devolvió {resp.status_code}. "
+                    f"Response body: {body_preview}"
+                )
             resp.raise_for_status()
             data = resp.json()
             logger.info(f"SECOP devolvió {len(data)} procesos")
@@ -177,16 +184,8 @@ class SecopClient:
 
 
 def extraer_campos(raw: dict) -> dict:
-    """Extrae campos relevantes del payload crudo de SECOP con fallbacks.
-
-    Los nombres de campos en SECOP no son 100% estables. Esta función
-    intenta múltiples nombres comunes para cada campo. El `raw_data`
-    completo se preserva igual en el dict devuelto.
-
-    Devuelve dict listo para insertar/upsert en `secop_procesos`.
-    """
+    """Extrae campos relevantes del payload crudo de SECOP con fallbacks."""
     def first(d: dict, *keys, default=None):
-        """Primer key existente con valor no-None."""
         for k in keys:
             if k in d and d[k] not in (None, "", "null"):
                 return d[k]
@@ -207,12 +206,10 @@ def extraer_campos(raw: dict) -> dict:
         ),
         "objeto": first(
             raw,
-            # SECOP II usa descripci_n_del_procedimiento (el primero)
             "descripci_n_del_procedimiento",
             "descripcion_del_procedimiento",
             "descripci_n_del_proceso",
             "descripcion_del_proceso",
-            # SECOP I usa objeto_del_contrato (fallback)
             "objeto_del_contrato",
         ),
         "cuantia_proceso": _to_float(first(
@@ -272,18 +269,15 @@ def _to_float(v) -> Optional[float]:
 
 
 def _to_date(v) -> Optional[str]:
-    """Convierte timestamps de Socrata a YYYY-MM-DD."""
     if not v:
         return None
     s = str(v)
-    # Formato común de Socrata: '2024-09-30T00:00:00.000'
     if "T" in s:
         return s.split("T")[0]
     return s[:10] if len(s) >= 10 else None
 
 
 def _extract_url(v) -> Optional[str]:
-    """Socrata URL fields pueden ser strings o dicts {url, description}."""
     if not v:
         return None
     if isinstance(v, dict):
