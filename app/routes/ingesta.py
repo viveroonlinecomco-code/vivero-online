@@ -3,10 +3,12 @@
 Sprint 1 — Solo SECOP II por trigger manual (admin-only).
 Sprint 3 agregará Vercel Cron para automatizar.
 
-POST /api/ingesta/secop  → query SECOP API + upsert + clasificación IA
+POST /api/ingesta/secop          → query SECOP API + upsert + clasificación IA
+GET  /api/ingesta/secop/procesos → lista procesos en BD + clasificación + resumen
 """
 from __future__ import annotations
 import logging
+from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from typing import Optional
 
@@ -29,68 +31,79 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/ingesta", tags=["ingesta"])
 
 
-# ─────────────────── SCHEMAS ───────────────────
+# ─────────────────── SCHEMAS - POST /secop ───────────────────
 
 class IngestaSecopRequest(BaseModel):
-    """Parámetros opcionales para customizar la ingesta."""
-    dias_atras: int = Field(
-        default=90, ge=1, le=365,
-        description="Cuántos días hacia atrás buscar procesos"
-    )
-    limit: int = Field(
-        default=200, ge=1, le=2000,
-        description="Máximo de procesos a ingestar en esta ejecución"
-    )
-    municipios: Optional[list[str]] = Field(
-        default=None,
-        description="Override de municipios (default: Sabana de Bogotá)"
-    )
-    keywords: Optional[list[str]] = Field(
-        default=None,
-        description="Override de keywords (default: lista de plantas/arborización)"
-    )
-    clasificar: bool = Field(
-        default=True,
-        description="Si correr Gemini para clasificar los procesos nuevos"
-    )
+    dias_atras: int = Field(default=90, ge=1, le=365)
+    limit: int = Field(default=200, ge=1, le=2000)
+    municipios: Optional[list[str]] = None
+    keywords: Optional[list[str]] = None
+    clasificar: bool = True
 
 
 class IngestaSecopResponse(BaseModel):
-    """Resumen del resultado de la ingesta."""
     ok: bool
-    ingestados: int           # cuántos vinieron de SECOP
-    nuevos: int               # cuántos eran nuevos en la BD
-    clasificados: int         # cuántos pasaron por Gemini
-    relevantes: int           # cuántos eran realmente sobre plantas
+    ingestados: int
+    nuevos: int
+    clasificados: int
+    relevantes: int
     fecha_desde: str
     keywords_count: int
     municipios_count: int
     warnings: list[str] = Field(default_factory=list)
 
 
-# ─────────────────── ENDPOINT ───────────────────
+# ─────────────────── SCHEMAS - GET /secop/procesos ───────────────────
+
+class ClasificacionPreview(BaseModel):
+    """Análisis de IA de un proceso (si fue clasificado)."""
+    especies_mencionadas: list[str] = Field(default_factory=list)
+    cantidad_estimada: Optional[int] = None
+    altura_estimada_cm: Optional[int] = None
+    tipo_proyecto: Optional[str] = None
+    fecha_estimada_entrega: Optional[str] = None
+    es_relevante: bool = False
+    confianza: float = 0.0
+
+
+class ProcesoSecopOut(BaseModel):
+    """Proceso de SECOP listo para mostrar en UI."""
+    proceso_id: str
+    entidad: Optional[str] = None
+    ciudad: Optional[str] = None
+    departamento: Optional[str] = None
+    objeto: Optional[str] = None
+    cuantia_proceso: Optional[float] = None
+    fecha_publicacion: Optional[str] = None
+    estado_proceso: Optional[str] = None
+    modalidad_contratacion: Optional[str] = None
+    url_proceso: Optional[str] = None
+    clasificacion: Optional[ClasificacionPreview] = None
+
+
+class EspecieResumen(BaseModel):
+    especie: str
+    menciones: int
+
+
+class ProcesosListResponse(BaseModel):
+    total: int
+    procesos: list[ProcesoSecopOut]
+    resumen_especies: list[EspecieResumen]
+    total_clasificados: int
+    total_relevantes: int
+
+
+# ─────────────────── ENDPOINT - POST /secop ───────────────────
 
 @router.post("/secop", response_model=IngestaSecopResponse)
 async def ingestar_secop(
     req: IngestaSecopRequest,
     user: UserContext = Depends(require_user),
 ):
-    """Trigger manual de ingesta de SECOP II.
-
-    Pipeline:
-    1. Query SECOP II API con filtros (keywords + municipios + fecha)
-    2. Upsert en secop_procesos (dedup por proceso_id)
-    3. Si clasificar=true: Gemini analiza cada proceso nuevo
-    4. Upsert en secop_clasificacion + marca procesado_at en secop_procesos
-
-    Solo accesible para usuarios admin.
-    """
-    # Defensive admin check (no asumimos que existe require_admin en deps.py)
+    """Trigger manual de ingesta de SECOP II. Admin-only."""
     if user.rol != "admin":
-        raise HTTPException(
-            403,
-            detail="Solo admins pueden disparar la ingesta de SECOP",
-        )
+        raise HTTPException(403, detail="Solo admins pueden disparar la ingesta de SECOP")
 
     fecha_desde = (date.today() - timedelta(days=req.dias_atras)).isoformat()
     keywords = req.keywords or KEYWORDS_PLANTAS
@@ -99,7 +112,6 @@ async def ingestar_secop(
 
     db = admin()
 
-    # ─── 1. Query SECOP API ───
     logger.info(
         f"SECOP ingesta: fecha_desde={fecha_desde}, "
         f"keywords={len(keywords)}, municipios={len(municipios)}, "
@@ -115,9 +127,7 @@ async def ingestar_secop(
             )
     except Exception as e:
         logger.error(f"SECOP API falló: {e}")
-        raise HTTPException(
-            502, detail=f"Error queriando SECOP: {str(e)[:300]}"
-        )
+        raise HTTPException(502, detail=f"Error queriando SECOP: {str(e)[:300]}")
 
     if not raw_procesos:
         return IngestaSecopResponse(
@@ -129,7 +139,6 @@ async def ingestar_secop(
             warnings=["SECOP no devolvió procesos para esos filtros"],
         )
 
-    # ─── 2. Upsert en secop_procesos ───
     nuevos = 0
     procesos_para_clasificar: list[dict] = []
 
@@ -138,19 +147,14 @@ async def ingestar_secop(
             campos = extraer_campos(raw)
             proceso_id = campos.get("proceso_id")
             if not proceso_id:
-                warnings.append(
-                    f"Row sin proceso_id descartada "
-                    f"(keys: {list(raw.keys())[:5]})"
-                )
+                warnings.append(f"Row sin proceso_id descartada (keys: {list(raw.keys())[:5]})")
                 continue
 
-            # ¿Ya existe?
             existing = db.table("secop_procesos").select("proceso_id").eq(
                 "proceso_id", proceso_id
             ).limit(1).execute()
             is_new = not existing.data
 
-            # Upsert (insert si nuevo, update si existe)
             db.table("secop_procesos").upsert(
                 campos,
                 on_conflict="proceso_id",
@@ -164,7 +168,6 @@ async def ingestar_secop(
             warnings.append(f"Row falló: {str(e)[:100]}")
             continue
 
-    # ─── 3. Clasificación con Gemini (opcional) ───
     clasificados = 0
     relevantes = 0
 
@@ -197,7 +200,6 @@ async def ingestar_secop(
                     cuantia=proceso.get("cuantia_proceso"),
                 )
 
-                # Upsert clasificación
                 payload = {
                     "proceso_id": proceso["proceso_id"],
                     "especies_mencionadas": analisis.especies_mencionadas,
@@ -215,7 +217,6 @@ async def ingestar_secop(
                     on_conflict="proceso_id",
                 ).execute()
 
-                # Marcar procesado_at en secop_procesos
                 db.table("secop_procesos").update(
                     {"procesado_at": now_iso}
                 ).eq("proceso_id", proceso["proceso_id"]).execute()
@@ -228,8 +229,7 @@ async def ingestar_secop(
                     f"Error clasificando proceso {proceso.get('proceso_id')}: {e}"
                 )
                 warnings.append(
-                    f"Clasificación falló para {proceso.get('proceso_id')}: "
-                    f"{str(e)[:100]}"
+                    f"Clasificación falló para {proceso.get('proceso_id')}: {str(e)[:100]}"
                 )
                 continue
 
@@ -242,5 +242,130 @@ async def ingestar_secop(
         fecha_desde=fecha_desde,
         keywords_count=len(keywords),
         municipios_count=len(municipios),
-        warnings=warnings[:50],  # cap warnings list size
+        warnings=warnings[:50],
+    )
+
+
+# ─────────────────── ENDPOINT - GET /secop/procesos ───────────────────
+
+@router.get("/secop/procesos", response_model=ProcesosListResponse)
+async def listar_procesos_secop(
+    limit: int = 100,
+    offset: int = 0,
+    relevantes_only: bool = False,
+    user: UserContext = Depends(require_user),
+):
+    """Lista procesos SECOP guardados en BD con su clasificación IA.
+
+    Devuelve también un resumen agregado de especies mencionadas
+    (útil para el panel de "Plantas necesitadas" en /admin).
+
+    Admin-only.
+    """
+    if user.rol != "admin":
+        raise HTTPException(403, detail="Solo admins")
+
+    db = admin()
+
+    # 1) Procesos paginados, ordenados por fecha desc
+    procesos_result = (
+        db.table("secop_procesos")
+        .select("*")
+        .order("fecha_publicacion", desc=True)
+        .range(offset, offset + limit - 1)
+        .execute()
+    )
+    procesos_raw = procesos_result.data or []
+
+    # 2) Clasificaciones de esos procesos
+    proceso_ids = [p["proceso_id"] for p in procesos_raw]
+    clasif_by_id: dict[str, dict] = {}
+    if proceso_ids:
+        clasif_result = (
+            db.table("secop_clasificacion")
+            .select("*")
+            .in_("proceso_id", proceso_ids)
+            .execute()
+        )
+        clasif_by_id = {c["proceso_id"]: c for c in (clasif_result.data or [])}
+
+    # 3) Totales globales (separados para que sean exactos)
+    total_result = db.table("secop_procesos").select("proceso_id", count="exact").execute()
+    total_general = total_result.count or 0
+
+    total_clasificados_result = (
+        db.table("secop_clasificacion").select("proceso_id", count="exact").execute()
+    )
+    total_clasificados = total_clasificados_result.count or 0
+
+    total_relevantes_result = (
+        db.table("secop_clasificacion")
+        .select("proceso_id", count="exact")
+        .eq("es_relevante", True)
+        .execute()
+    )
+    total_relevantes = total_relevantes_result.count or 0
+
+    # 4) Resumen agregado de especies (de TODAS las clasificaciones, no solo la página)
+    all_clasif_result = (
+        db.table("secop_clasificacion")
+        .select("especies_mencionadas")
+        .execute()
+    )
+    especies_flat: list[str] = []
+    for row in all_clasif_result.data or []:
+        especies = row.get("especies_mencionadas") or []
+        if isinstance(especies, list):
+            especies_flat.extend(str(e).strip().lower() for e in especies if e and str(e).strip())
+
+    counts = Counter(especies_flat)
+    resumen_especies = [
+        EspecieResumen(especie=e, menciones=c)
+        for e, c in counts.most_common(20)
+    ]
+
+    # 5) Armar procesos de salida con clasificación embedida
+    procesos_out: list[ProcesoSecopOut] = []
+    for p in procesos_raw:
+        c = clasif_by_id.get(p["proceso_id"])
+        clasificacion = None
+        if c:
+            clasificacion = ClasificacionPreview(
+                especies_mencionadas=c.get("especies_mencionadas") or [],
+                cantidad_estimada=c.get("cantidad_estimada"),
+                altura_estimada_cm=c.get("altura_estimada_cm"),
+                tipo_proyecto=c.get("tipo_proyecto"),
+                fecha_estimada_entrega=c.get("fecha_estimada_entrega"),
+                es_relevante=bool(c.get("es_relevante")),
+                confianza=float(c.get("confianza") or 0.0),
+            )
+
+        if relevantes_only and (not clasificacion or not clasificacion.es_relevante):
+            continue
+
+        # Normalizar fecha_publicacion a string YYYY-MM-DD (puede venir como date)
+        fp = p.get("fecha_publicacion")
+        if fp is not None and not isinstance(fp, str):
+            fp = str(fp)
+
+        procesos_out.append(ProcesoSecopOut(
+            proceso_id=p["proceso_id"],
+            entidad=p.get("entidad"),
+            ciudad=p.get("ciudad"),
+            departamento=p.get("departamento"),
+            objeto=p.get("objeto"),
+            cuantia_proceso=p.get("cuantia_proceso"),
+            fecha_publicacion=fp,
+            estado_proceso=p.get("estado_proceso"),
+            modalidad_contratacion=p.get("modalidad_contratacion"),
+            url_proceso=p.get("url_proceso"),
+            clasificacion=clasificacion,
+        ))
+
+    return ProcesosListResponse(
+        total=total_general,
+        procesos=procesos_out,
+        resumen_especies=resumen_especies,
+        total_clasificados=total_clasificados,
+        total_relevantes=total_relevantes,
     )
