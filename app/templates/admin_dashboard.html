@@ -16,18 +16,14 @@
                         "background-light": "#f7f7f6",
                         "background-dark": "#171d15",
                     },
-                    fontFamily: {
-                        "display": ["Inter"]
-                    },
+                    fontFamily: { "display": ["Inter"] },
                     borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
                 },
             },
         }
     </script>
 <style>
-    body {
-      min-height: max(884px, 100dvh);
-    }
+    body { min-height: max(884px, 100dvh); }
   </style>
   </head>
 <body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100">
@@ -45,7 +41,7 @@
 </div>
 </div>
 
-<!-- Key Metrics — los 4 KPIs son data real desde /api/kpis -->
+<!-- Key Metrics -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 p-4">
 <div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-800 border border-primary/10 shadow-sm">
 <p class="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider">GMV Total</p>
@@ -69,7 +65,7 @@
 </div>
 </div>
 
-<!-- Top Viveristas — lista renderizada por JS desde kpis.top_viveristas -->
+<!-- Top Viveristas -->
 <div class="px-4 pb-6">
 <div class="bg-white dark:bg-slate-800 rounded-xl p-5 border border-primary/10 shadow-sm">
 <div class="flex items-center justify-between mb-4">
@@ -85,7 +81,7 @@
 </div>
 </div>
 
-<!-- Ingesta SECOP II — admin-only manual trigger del endpoint POST /api/ingesta/secop -->
+<!-- Ingestar SECOP II -->
 <div class="px-4 pb-6">
 <div class="bg-white dark:bg-slate-800 rounded-xl p-5 border border-primary/10 shadow-sm">
 <div class="flex items-center justify-between mb-2">
@@ -146,7 +142,54 @@
 </div>
 </div>
 
-<!-- Insights IA — coming soon: el agente CEO_Orchestrator existe pero todavía no genera output dirigido al admin -->
+<!-- ═══════════════════════════════════════════════════
+     PROCESOS SECOP EN BD (sección nueva)
+     ═══════════════════════════════════════════════════ -->
+<div class="px-4 pb-6">
+<div class="bg-white dark:bg-slate-800 rounded-xl p-5 border border-primary/10 shadow-sm">
+<div class="flex items-center justify-between mb-4">
+<div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white">Procesos SECOP en BD</h3>
+<p class="text-xs text-slate-400 mt-0.5">Lo que se ingestó · oportunidades reales de demanda</p>
+</div>
+<button onclick="cargarProcesosSecop()" title="Refrescar" class="rounded-full p-2 bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined text-base">refresh</span>
+</button>
+</div>
+
+<!-- Stats globales -->
+<div class="grid grid-cols-3 gap-2 mb-4">
+<div class="bg-slate-50 dark:bg-slate-700 rounded-lg p-3 text-center">
+<p class="text-xs text-slate-500 uppercase tracking-wider">En BD</p>
+<p class="text-xl font-bold text-slate-900 dark:text-white" data-vo="bd-total">0</p>
+</div>
+<div class="bg-slate-50 dark:bg-slate-700 rounded-lg p-3 text-center">
+<p class="text-xs text-slate-500 uppercase tracking-wider">Clasificados</p>
+<p class="text-xl font-bold text-slate-900 dark:text-white" data-vo="bd-clasificados">0</p>
+</div>
+<div class="bg-primary/5 rounded-lg p-3 text-center">
+<p class="text-xs text-slate-500 uppercase tracking-wider">Relevantes</p>
+<p class="text-xl font-bold text-primary" data-vo="bd-relevantes">0</p>
+</div>
+</div>
+
+<!-- Resumen de especies (si hay clasificación) -->
+<div data-vo="resumen-especies-block" class="hidden mb-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200/50">
+<p class="text-xs font-semibold text-emerald-800 dark:text-emerald-200 mb-2 uppercase tracking-wider">🌱 Plantas más mencionadas en SECOP</p>
+<div class="flex flex-wrap gap-1.5" data-vo="resumen-especies-tags"></div>
+</div>
+
+<!-- Tabla de procesos -->
+<div data-vo="procesos-tabla" class="space-y-2">
+<div class="text-center py-6 text-slate-500 text-sm">
+<span class="material-symbols-outlined animate-spin">progress_activity</span>
+<p class="mt-2">Cargando procesos…</p>
+</div>
+</div>
+</div>
+</div>
+
+<!-- Insights IA -->
 <div class="px-4 pb-20">
 <div class="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-6">
 <div class="flex items-start gap-4">
@@ -159,7 +202,7 @@
 </div>
 </div>
 
-<!-- Bottom Navigation Bar — todos los enlaces apuntan a rutas reales -->
+<!-- Bottom Navigation Bar -->
 <div class="fixed bottom-0 left-0 right-0 border-t border-primary/10 bg-white dark:bg-background-dark px-4 pb-6 pt-2 z-50">
 <div class="flex justify-between max-w-md mx-auto">
 <a class="flex flex-1 flex-col items-center justify-center gap-1 text-primary" href="/admin">
@@ -187,6 +230,16 @@
 <script>
 if (!VO.requireAuth()) throw new Error('auth');
 
+// Helpers de escape y formato
+function escapeHTML(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function truncate(s, n) {
+    s = String(s ?? '');
+    return s.length > n ? s.slice(0, n) + '…' : s;
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         const me = await VO.me();
@@ -198,7 +251,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const k = await VO.api('/api/kpis');
 
-        // KPIs reales cableados por data-vo attributes
         const gmv = document.querySelector('[data-vo="gmv"]');
         if (gmv) gmv.textContent = VO.formatCOP(k.gmv_total_cop || 0);
 
@@ -211,7 +263,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         const items = document.querySelector('[data-vo="items-disponibles"]');
         if (items) items.textContent = (k.items_disponibles || 0).toLocaleString('es-CO');
 
-        // Top Viveristas — empty state honesto si no hay actividad, ranking real si la hay
         const topList = document.querySelector('[data-vo="top-viveristas"]');
         if (topList) {
             const tops = (k.top_viveristas || []).slice(0, 5);
@@ -226,8 +277,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 topList.innerHTML = tops.map(v => `
                     <div class="flex items-center justify-between py-3 border-b border-primary/10 last:border-0">
                         <div>
-                            <p class="font-semibold text-sm">${v.nombre_vivero || 'Sin nombre'}</p>
-                            <p class="text-xs text-slate-500">${v.ciudad || ''}</p>
+                            <p class="font-semibold text-sm">${escapeHTML(v.nombre_vivero || 'Sin nombre')}</p>
+                            <p class="text-xs text-slate-500">${escapeHTML(v.ciudad || '')}</p>
                         </div>
                         <div class="text-right">
                             <p class="font-bold text-primary text-sm">${VO.formatCOPFull(v.gmv_90d_cop || 0)}</p>
@@ -237,6 +288,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 `).join('');
             }
         }
+
+        // Cargar procesos SECOP al inicio
+        cargarProcesosSecop();
     } catch (e) {
         console.error('Error cargando admin dashboard:', e);
         if (typeof VO.showToast === 'function') {
@@ -246,8 +300,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ─────────────────── INGESTA SECOP ───────────────────
-// Trigger manual del endpoint admin-only POST /api/ingesta/secop.
-// Reutiliza VO.api (Authorization Bearer auto) y VO.showToast.
 window.dispararSecop = async function() {
     const btn = document.querySelector('[data-vo="secop-disparar"]');
     const btnContent = document.querySelector('[data-vo="secop-btn-content"]');
@@ -256,7 +308,6 @@ window.dispararSecop = async function() {
     const limit = parseInt(document.querySelector('[data-vo="secop-limit"]').value) || 5;
     const clasificar = document.querySelector('[data-vo="secop-clasificar"]').checked;
 
-    // Warning si clasificar con limit alto (Vercel timeout ~60s)
     if (clasificar && limit > 15) {
         const estimadoSeg = Math.round(limit * 2.5);
         const ok = confirm(
@@ -266,7 +317,6 @@ window.dispararSecop = async function() {
         if (!ok) return;
     }
 
-    // Loading state
     btn.disabled = true;
     btnContent.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span><span>Procesando...</span>';
     resultDiv.classList.add('hidden');
@@ -277,7 +327,6 @@ window.dispararSecop = async function() {
             body: JSON.stringify({ dias_atras: diasAtras, limit, clasificar }),
         });
 
-        // Cablear stats
         document.querySelector('[data-vo="secop-ingestados"]').textContent = data.ingestados ?? 0;
         document.querySelector('[data-vo="secop-nuevos"]').textContent = data.nuevos ?? 0;
         document.querySelector('[data-vo="secop-clasificados"]').textContent = data.clasificados ?? 0;
@@ -288,11 +337,9 @@ window.dispararSecop = async function() {
             fechaSpan.textContent = `Buscó procesos desde: ${data.fecha_desde} · ${data.keywords_count} keywords · ${data.municipios_count} municipios`;
         }
 
-        // Warnings
         const warningsDiv = document.querySelector('[data-vo="secop-warnings"]');
         const warningsUl = warningsDiv ? warningsDiv.querySelector('ul') : null;
         if (data.warnings && data.warnings.length > 0 && warningsUl) {
-            const escapeHTML = (s) => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
             warningsUl.innerHTML = data.warnings.slice(0, 10).map(w => `<li>${escapeHTML(w)}</li>`).join('');
             warningsDiv.classList.remove('hidden');
         } else if (warningsDiv) {
@@ -301,6 +348,9 @@ window.dispararSecop = async function() {
 
         resultDiv.classList.remove('hidden');
         VO.showToast(`✓ ${data.nuevos ?? 0} procesos nuevos ingestados`, 'success');
+
+        // Refrescar la tabla automáticamente
+        setTimeout(cargarProcesosSecop, 500);
     } catch (e) {
         console.error('Error en ingesta SECOP:', e);
         VO.showToast('Error: ' + (e.message || 'desconocido'), 'error');
@@ -309,6 +359,118 @@ window.dispararSecop = async function() {
         btnContent.innerHTML = '<span class="material-symbols-outlined">cloud_download</span><span>Disparar ingesta</span>';
     }
 };
+
+// ─────────────────── LISTADO DE PROCESOS SECOP ───────────────────
+window.cargarProcesosSecop = async function() {
+    const tablaDiv = document.querySelector('[data-vo="procesos-tabla"]');
+    tablaDiv.innerHTML = `
+        <div class="text-center py-6 text-slate-500 text-sm">
+            <span class="material-symbols-outlined animate-spin">progress_activity</span>
+            <p class="mt-2">Cargando procesos…</p>
+        </div>`;
+
+    try {
+        const data = await VO.api('/api/ingesta/secop/procesos?limit=100');
+
+        // Stats
+        document.querySelector('[data-vo="bd-total"]').textContent = (data.total || 0).toLocaleString('es-CO');
+        document.querySelector('[data-vo="bd-clasificados"]').textContent = (data.total_clasificados || 0).toLocaleString('es-CO');
+        document.querySelector('[data-vo="bd-relevantes"]').textContent = (data.total_relevantes || 0).toLocaleString('es-CO');
+
+        // Resumen de especies
+        const resumenBlock = document.querySelector('[data-vo="resumen-especies-block"]');
+        const resumenTags = document.querySelector('[data-vo="resumen-especies-tags"]');
+        if (data.resumen_especies && data.resumen_especies.length > 0) {
+            resumenTags.innerHTML = data.resumen_especies.map(e => `
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs bg-emerald-100 text-emerald-800 font-medium">
+                    ${escapeHTML(e.especie)}
+                    <span class="ml-1.5 px-1.5 py-0.5 rounded-full bg-emerald-700 text-white text-[10px] font-bold">×${e.menciones}</span>
+                </span>
+            `).join('');
+            resumenBlock.classList.remove('hidden');
+        } else {
+            resumenBlock.classList.add('hidden');
+        }
+
+        // Tabla de procesos
+        if (!data.procesos || data.procesos.length === 0) {
+            tablaDiv.innerHTML = `
+                <div class="text-center py-8 text-slate-500 text-sm border-2 border-dashed border-slate-200 rounded-lg">
+                    <span class="material-symbols-outlined text-slate-300 text-4xl mb-2">inbox</span>
+                    <p class="font-medium">Aún no hay procesos en BD.</p>
+                    <p class="text-xs mt-1">Disparar ingesta arriba para traer datos de SECOP II.</p>
+                </div>`;
+            return;
+        }
+
+        tablaDiv.innerHTML = data.procesos.map(renderProcesoCard).join('');
+    } catch (e) {
+        console.error('Error cargando procesos SECOP:', e);
+        tablaDiv.innerHTML = `<p class="text-sm text-red-600 py-4">Error: ${escapeHTML(e.message || 'desconocido')}</p>`;
+    }
+};
+
+function renderProcesoCard(p) {
+    const cuantia = p.cuantia_proceso ? VO.formatCOPFull(p.cuantia_proceso) : '<span class="text-slate-400">Sin cuantía</span>';
+    const fecha = p.fecha_publicacion || '?';
+    const ciudad = p.ciudad || '?';
+    const entidad = p.entidad || 'Sin entidad';
+    const objeto = p.objeto || '';
+    const url = p.url_proceso || '';
+    const c = p.clasificacion;
+
+    // Badge según clasificación
+    let badge = '';
+    if (c) {
+        if (c.es_relevante) {
+            badge = `<span class="px-2 py-0.5 rounded-full bg-primary text-white text-[10px] font-bold uppercase tracking-wider">Relevante</span>`;
+        } else {
+            badge = `<span class="px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 text-[10px] font-medium uppercase tracking-wider">Falso positivo</span>`;
+        }
+    } else {
+        badge = `<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-medium uppercase tracking-wider">Sin clasificar</span>`;
+    }
+
+    // Tags de clasificación
+    let metaLine = '';
+    let especiesHTML = '';
+    if (c) {
+        const parts = [];
+        if (c.tipo_proyecto) parts.push(escapeHTML(c.tipo_proyecto));
+        if (c.cantidad_estimada) parts.push(`~${c.cantidad_estimada.toLocaleString('es-CO')} unidades`);
+        if (c.altura_estimada_cm) parts.push(`~${c.altura_estimada_cm} cm altura`);
+        if (parts.length > 0) {
+            metaLine = `<p class="text-xs text-slate-500 mt-1.5">${parts.join(' · ')}</p>`;
+        }
+        if (c.especies_mencionadas && c.especies_mencionadas.length > 0) {
+            especiesHTML = `
+                <div class="mt-2 flex flex-wrap gap-1">
+                    ${c.especies_mencionadas.map(e => `
+                        <span class="inline-block px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-medium">${escapeHTML(e)}</span>
+                    `).join('')}
+                </div>`;
+        }
+    }
+
+    return `
+        <div class="border border-primary/10 rounded-lg p-3 hover:bg-primary/5 transition-colors">
+            <div class="flex justify-between items-start gap-3">
+                <div class="flex-1 min-w-0">
+                    <p class="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">${escapeHTML(entidad)}</p>
+                    <p class="text-xs text-slate-500 mt-0.5">${escapeHTML(ciudad)} · ${escapeHTML(fecha)}</p>
+                </div>
+                <div class="text-right shrink-0 flex flex-col items-end gap-1">
+                    <p class="text-sm font-bold text-primary whitespace-nowrap">${cuantia}</p>
+                    ${badge}
+                </div>
+            </div>
+            <p class="text-xs text-slate-700 dark:text-slate-300 mt-2 leading-relaxed">${escapeHTML(truncate(objeto, 240))}</p>
+            ${metaLine}
+            ${especiesHTML}
+            ${url ? `<a href="${escapeHTML(url)}" target="_blank" rel="noopener" class="text-xs text-primary hover:underline mt-2 inline-flex items-center gap-1">Ver en SECOP <span class="material-symbols-outlined text-xs">open_in_new</span></a>` : ''}
+        </div>
+    `;
+}
 </script>
 
 </body></html>
