@@ -1,6 +1,6 @@
 """Cliente HTTP para la API pública de SECOP II en datos.gov.co (Socrata).
 
-API pública (con app_token obligatorio desde 2026) que soporta SoQL.
+API pública (con app_token recomendado para rate limit) que soporta SoQL.
 Docs: https://dev.socrata.com/foundry/www.datos.gov.co/p6dx-8zbt
 
 Datasets relevantes:
@@ -12,10 +12,11 @@ NOTAS HISTÓRICAS:
 - La versión inicial filtraba sobre `objeto_del_contrato` (columna de
   SECOP I). El dataset target es SECOP II que usa
   `descripci_n_del_procedimiento`. Fix aplicado 2026-05-23 (PR #35).
-- A partir de 2026, datos.gov.co exige X-App-Token header para todas
-  las queries SoQL. Sin token devuelve 400. Fix aplicado 2026-05-23.
-- Diagnóstico extendido para investigar 400s post-fix. Esta versión
-  loguea el response body de Socrata para saber exactamente la causa.
+- A partir de 2026, datos.gov.co requiere X-App-Token header para
+  queries SoQL. Sin token devuelve 400 por rate limit. Fix PR #36.
+- Socrata trunca nombres de columnas a 30 chars. La columna de fecha
+  de publicación NO es `fecha_de_publicacion_del_proceso` sino
+  `fecha_de_publicacion_del` (truncada). Fix aplicado 2026-05-23.
 """
 from __future__ import annotations
 import logging
@@ -36,10 +37,11 @@ DATASET_PAA = "b6m4-qgqv"
 BASE_URL = "https://www.datos.gov.co/resource"
 DEFAULT_TIMEOUT = 30.0
 
-# Columnas del dataset SECOP II Procesos. OJO: NO son las de SECOP I.
+# Columnas REALES del dataset SECOP II Procesos (verificadas contra
+# response de Socrata el 2026-05-23). Socrata trunca a 30 chars.
 SECOP_II_DESCRIPCION_COL = "descripci_n_del_procedimiento"
 SECOP_II_CIUDAD_COL = "ciudad_entidad"
-SECOP_II_FECHA_PUB_COL = "fecha_de_publicacion_del_proceso"
+SECOP_II_FECHA_PUB_COL = "fecha_de_publicacion_del"  # truncado, NO "_proceso"
 
 
 # ─── Keywords para filtrar procesos relevantes a plantas ───
@@ -72,29 +74,16 @@ MUNICIPIOS_PRIORITARIOS = [
 
 
 class SecopClient:
-    """Cliente async para SECOP II vía Socrata Open Data API (SODA).
-
-    Requiere env var SOCRATA_APP_TOKEN (obligatorio desde 2026).
-    """
+    """Cliente async para SECOP II vía Socrata Open Data API (SODA)."""
 
     def __init__(self, timeout: float = DEFAULT_TIMEOUT):
         self.timeout = timeout
         self._client: Optional[httpx.AsyncClient] = None
         self.app_token = os.environ.get("SOCRATA_APP_TOKEN")
-        # DIAGNÓSTICO: log si el token está presente y su longitud (sin revelar valor)
-        if self.app_token:
-            stripped_len = len(self.app_token.strip())
-            raw_len = len(self.app_token)
-            has_whitespace = raw_len != stripped_len
-            logger.info(
-                f"SOCRATA_APP_TOKEN diagnóstico: presente, "
-                f"longitud_cruda={raw_len}, longitud_stripped={stripped_len}, "
-                f"tiene_whitespace={has_whitespace}"
-            )
-        else:
+        if not self.app_token:
             logger.warning(
-                "SOCRATA_APP_TOKEN NO está seteado en el environment. "
-                "datos.gov.co va a devolver 400 para todas las queries."
+                "SOCRATA_APP_TOKEN no está seteado. Las queries van a "
+                "trabajar contra el rate limit anónimo de datos.gov.co."
             )
 
     async def __aenter__(self) -> "SecopClient":
@@ -103,7 +92,6 @@ class SecopClient:
             "User-Agent": "ViveroOnline-Ingesta/1.0",
         }
         if self.app_token:
-            # Strip whitespace por si el env var tiene salto de línea o espacios
             headers["X-App-Token"] = self.app_token.strip()
         self._client = httpx.AsyncClient(timeout=self.timeout, headers=headers)
         return self
@@ -157,22 +145,14 @@ class SecopClient:
 
         params["$order"] = f"{SECOP_II_FECHA_PUB_COL} DESC"
 
-        # DIAGNÓSTICO: log si el header se está enviando
-        header_app_token = self._client.headers.get("X-App-Token")
-        logger.info(
-            f"SECOP request: url={url} "
-            f"x_app_token_header_present={bool(header_app_token)} "
-            f"x_app_token_length={len(header_app_token) if header_app_token else 0}"
-        )
-
+        logger.info(f"SECOP query: {url} params={params}")
         try:
             resp = await self._client.get(url, params=params)
-            # DIAGNÓSTICO: log el body si el status no es 200
+            # Log response body si hay error (útil para diagnóstico)
             if resp.status_code != 200:
-                body_preview = resp.text[:1000] if resp.text else "(empty)"
+                body_preview = resp.text[:500] if resp.text else "(empty)"
                 logger.error(
-                    f"SECOP devolvió {resp.status_code}. "
-                    f"Response body: {body_preview}"
+                    f"SECOP devolvió {resp.status_code}. Body: {body_preview}"
                 )
             resp.raise_for_status()
             data = resp.json()
@@ -229,13 +209,13 @@ def extraer_campos(raw: dict) -> dict:
         ),
         "fecha_publicacion": _to_date(first(
             raw,
+            "fecha_de_publicacion_del",        # ← columna real (truncada)
             "fecha_de_publicacion_del_proceso",
-            "fecha_de_publicacion_del",
+            "fecha_de_publicacion",
             "fecha_publicacion_proceso",
         )),
         "fecha_recepcion_propuestas": _to_date(first(
             raw,
-            "fecha_de_recepcion_de_respuestas",
             "fecha_de_recepcion_de",
             "fecha_recepcion_propuestas",
         )),
