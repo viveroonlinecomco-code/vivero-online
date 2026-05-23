@@ -7,6 +7,11 @@ Datasets relevantes:
 - p6dx-8zbt: SECOP II - Procesos de Contratación  (target Sprint 1)
 - jbjy-vk9h: SECOP II - Contratos Electrónicos
 - b6m4-qgqv: SECOP II - PAA Encabezado (Plan Anual de Adquisiciones)
+
+NOTA HISTÓRICA: la versión inicial de este módulo filtraba sobre
+`objeto_del_contrato` (columna de SECOP I), pero el dataset target es
+SECOP II que usa `descripci_n_del_procedimiento`. Esto causaba 400 en
+todas las queries. Fix aplicado el 2026-05-23.
 """
 from __future__ import annotations
 import logging
@@ -25,6 +30,12 @@ DATASET_PAA = "b6m4-qgqv"
 
 BASE_URL = "https://www.datos.gov.co/resource"
 DEFAULT_TIMEOUT = 30.0
+
+# Columna del dataset SECOP II Procesos sobre la que buscamos keywords.
+# OJO: NO es `objeto_del_contrato` (eso es SECOP I).
+SECOP_II_DESCRIPCION_COL = "descripci_n_del_procedimiento"
+SECOP_II_CIUDAD_COL = "ciudad_entidad"
+SECOP_II_FECHA_PUB_COL = "fecha_de_publicacion_del_proceso"
 
 
 # ─── Keywords para filtrar procesos relevantes a plantas ───
@@ -95,7 +106,7 @@ class SecopClient:
         """Query SECOP II - Procesos de Contratación.
 
         Filtros opcionales — todos se aplican como AND:
-        - keywords: matchea cualquier keyword en el objeto (OR interno)
+        - keywords: matchea cualquier keyword en la descripción (OR interno)
         - municipios: filtra por ciudad de la entidad (OR interno)
         - fecha_desde: solo procesos publicados desde esta fecha
 
@@ -119,24 +130,24 @@ class SecopClient:
 
         if keywords:
             kw_or = " OR ".join([
-                f"upper(objeto_del_contrato) like '%{kw.upper()}%'"
+                f"upper({SECOP_II_DESCRIPCION_COL}) like '%{kw.upper()}%'"
                 for kw in keywords
             ])
             where_clauses.append(f"({kw_or})")
 
         if municipios:
             mun_list = ", ".join([f"'{m}'" for m in municipios])
-            where_clauses.append(f"ciudad_entidad in ({mun_list})")
+            where_clauses.append(f"{SECOP_II_CIUDAD_COL} in ({mun_list})")
 
         if fecha_desde:
             where_clauses.append(
-                f"fecha_de_publicacion_del_proceso >= '{fecha_desde}'"
+                f"{SECOP_II_FECHA_PUB_COL} >= '{fecha_desde}'"
             )
 
         if where_clauses:
             params["$where"] = " AND ".join(where_clauses)
 
-        params["$order"] = "fecha_de_publicacion_del_proceso DESC"
+        params["$order"] = f"{SECOP_II_FECHA_PUB_COL} DESC"
 
         logger.info(f"SECOP query: {url} params={params}")
         try:
@@ -181,18 +192,20 @@ def extraer_campos(raw: dict) -> dict:
         ),
         "objeto": first(
             raw,
-            "objeto_del_contrato",
+            # SECOP II usa descripci_n_del_procedimiento (el primero)
             "descripci_n_del_procedimiento",
             "descripcion_del_procedimiento",
             "descripci_n_del_proceso",
             "descripcion_del_proceso",
+            # SECOP I usa objeto_del_contrato (fallback)
+            "objeto_del_contrato",
         ),
         "cuantia_proceso": _to_float(first(
             raw,
-            "cuantia_a_contratar",
-            "valor_total_de_la_contrataci_n",
-            "cuantia_proceso",
             "precio_base",
+            "valor_total_de_la_contrataci_n",
+            "cuantia_a_contratar",
+            "cuantia_proceso",
         )),
         "departamento": first(
             raw,
@@ -210,15 +223,16 @@ def extraer_campos(raw: dict) -> dict:
         )),
         "fecha_recepcion_propuestas": _to_date(first(
             raw,
+            "fecha_de_recepcion_de_respuestas",
             "fecha_de_recepcion_de",
             "fecha_recepcion_propuestas",
         )),
         "estado_proceso": first(
             raw,
+            "fase",
             "estado_del_procedimiento",
             "estado_de_apertura_del_proceso",
             "estado_proceso",
-            "fase",
         ),
         "modalidad_contratacion": first(
             raw,
