@@ -1,6 +1,6 @@
 """Cliente HTTP para la API pública de SECOP II en datos.gov.co (Socrata).
 
-API pública (sin auth) que soporta SoQL (Socrata Query Language).
+API pública (con app_token obligatorio desde 2026) que soporta SoQL.
 Docs: https://dev.socrata.com/foundry/www.datos.gov.co/p6dx-8zbt
 
 Datasets relevantes:
@@ -8,13 +8,16 @@ Datasets relevantes:
 - jbjy-vk9h: SECOP II - Contratos Electrónicos
 - b6m4-qgqv: SECOP II - PAA Encabezado (Plan Anual de Adquisiciones)
 
-NOTA HISTÓRICA: la versión inicial de este módulo filtraba sobre
-`objeto_del_contrato` (columna de SECOP I), pero el dataset target es
-SECOP II que usa `descripci_n_del_procedimiento`. Esto causaba 400 en
-todas las queries. Fix aplicado el 2026-05-23.
+NOTAS HISTÓRICAS:
+- La versión inicial filtraba sobre `objeto_del_contrato` (columna de
+  SECOP I). El dataset target es SECOP II que usa
+  `descripci_n_del_procedimiento`. Fix aplicado 2026-05-23 (PR #35).
+- A partir de 2026, datos.gov.co exige X-App-Token header para todas
+  las queries SoQL. Sin token devuelve 400. Fix aplicado 2026-05-23.
 """
 from __future__ import annotations
 import logging
+import os
 from typing import Optional, Any
 
 import httpx
@@ -31,15 +34,13 @@ DATASET_PAA = "b6m4-qgqv"
 BASE_URL = "https://www.datos.gov.co/resource"
 DEFAULT_TIMEOUT = 30.0
 
-# Columna del dataset SECOP II Procesos sobre la que buscamos keywords.
-# OJO: NO es `objeto_del_contrato` (eso es SECOP I).
+# Columnas del dataset SECOP II Procesos. OJO: NO son las de SECOP I.
 SECOP_II_DESCRIPCION_COL = "descripci_n_del_procedimiento"
 SECOP_II_CIUDAD_COL = "ciudad_entidad"
 SECOP_II_FECHA_PUB_COL = "fecha_de_publicacion_del_proceso"
 
 
 # ─── Keywords para filtrar procesos relevantes a plantas ───
-# Usadas en SoQL $where con LIKE case-insensitive
 KEYWORDS_PLANTAS = [
     "arborizacion", "arborización",
     "siembra", "plantacion", "plantación",
@@ -52,7 +53,6 @@ KEYWORDS_PLANTAS = [
 
 
 # ─── Municipios prioritarios para la Sabana de Bogotá ───
-# Variantes con/sin tilde para matching robusto
 MUNICIPIOS_PRIORITARIOS = [
     "Bogotá", "Bogota", "Bogotá D.C.", "Bogota D.C.",
     "Cajicá", "Cajica",
@@ -72,6 +72,8 @@ MUNICIPIOS_PRIORITARIOS = [
 class SecopClient:
     """Cliente async para SECOP II vía Socrata Open Data API (SODA).
 
+    Requiere env var SOCRATA_APP_TOKEN (obligatorio desde 2026).
+
     Uso:
         async with SecopClient() as client:
             procesos = await client.fetch_procesos(
@@ -85,9 +87,22 @@ class SecopClient:
     def __init__(self, timeout: float = DEFAULT_TIMEOUT):
         self.timeout = timeout
         self._client: Optional[httpx.AsyncClient] = None
+        self.app_token = os.environ.get("SOCRATA_APP_TOKEN")
+        if not self.app_token:
+            logger.warning(
+                "SOCRATA_APP_TOKEN no está seteado en el environment. "
+                "datos.gov.co va a devolver 400 para todas las queries. "
+                "Configurar en Vercel → Settings → Environment Variables."
+            )
 
     async def __aenter__(self) -> "SecopClient":
-        self._client = httpx.AsyncClient(timeout=self.timeout)
+        headers: dict[str, str] = {
+            "Accept": "application/json",
+            "User-Agent": "ViveroOnline-Ingesta/1.0",
+        }
+        if self.app_token:
+            headers["X-App-Token"] = self.app_token
+        self._client = httpx.AsyncClient(timeout=self.timeout, headers=headers)
         return self
 
     async def __aexit__(self, *args):
