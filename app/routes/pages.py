@@ -90,14 +90,7 @@ async def page_pagos_resultado():
     return _tpl("pagos_resultado.html")
 
 
-@router.get("/inversores", response_class=HTMLResponse)
-async def page_inversores():
-    return _tpl("inversores.html")
 
-
-@router.get("/inversores/login", response_class=HTMLResponse)
-async def page_inversores_login():
-    return _tpl("inversores_login.html")
 
 
 # ─────────────────── LEGAL ───────────────────
