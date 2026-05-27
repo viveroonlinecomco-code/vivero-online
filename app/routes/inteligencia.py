@@ -21,25 +21,43 @@ router = APIRouter(prefix="/api/mi-cuenta/inteligencia", tags=["inteligencia"])
 
 # ─────────────────── HELPERS ───────────────────
 
-def _verificar_suscripcion(user_id: str, plan: str = "inteligencia") -> bool:
-    """Llama a la función SQL tiene_suscripcion_activa() vía RPC.
+def _extraer_user_id(user) -> str | None:
+    """Extrae el user_id del UserContext sea cual sea el nombre del campo."""
+    for attr in ("id", "user_id", "sub", "uid"):
+        val = getattr(user, attr, None)
+        if val:
+            return str(val)
+    return None
 
-    Importante: la función usa auth.uid() internamente, pero como acá
-    invocamos con service_role la sesión Postgres no tiene jwt. Por eso
-    hacemos la query directa contra la tabla con filtro explícito por user_id.
+
+def _verificar_suscripcion(user_id, plan: str = "inteligencia") -> bool:
+    """Verifica si el user tiene suscripción activa del plan dado (o superior).
+
+    Defensivo: cualquier error de query → devuelve False (no crashea).
     """
-    db = admin()
-    resp = (
-        db.table("suscripciones")
-        .select("suscripcion_id")
-        .eq("user_id", user_id)
-        .in_("plan", [plan, "pro"])
-        .eq("estado", "activa")
-        .limit(1)
-        .execute()
-    )
-    return bool(resp.data)
+    if not user_id:
+        return False
 
+    try:
+        db = admin()
+        resp = (
+            db.table("suscripciones")
+            .select("suscripcion_id, plan, estado, fecha_proximo_cobro")
+            .eq("user_id", str(user_id))
+            .eq("estado", "activa")
+            .execute()
+        )
+        rows = resp.data or []
+        # Filtramos en Python para evitar incompatibilidades con .in_()
+        planes_validos = {plan, "pro"}
+        for r in rows:
+            if r.get("plan") in planes_validos:
+                return True
+        return False
+    except Exception as e:
+        import logging
+        logging.error(f"Error en _verificar_suscripcion: {e!r}")
+        return False
 
 # ─────────────────── ENDPOINT: MERCADO ───────────────────
 
@@ -49,9 +67,10 @@ async def get_mercado(user: UserContext = Depends(require_user)):
 
     Gateado por suscripción Inteligencia activa (admin bypassa).
     """
+    user_id = _extraer_user_id(user)
     # Admin puede ver siempre (para auditoría / testing)
     if user.rol != "admin":
-        if not _verificar_suscripcion(user.id, plan="inteligencia"):
+        if not _verificar_suscripcion(user_id, plan="inteligencia"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
@@ -107,9 +126,10 @@ async def get_secop(
     Filtros opcionales por especie mencionada y municipio.
     Gateado por suscripción Inteligencia activa (admin bypassa).
     """
+     user_id = _extraer_user_id(user)
     # Admin puede ver siempre
     if user.rol != "admin":
-        if not _verificar_suscripcion(user.id, plan="inteligencia"):
+        if not _verificar_suscripcion(user_id, plan="inteligencia"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
