@@ -1,14 +1,11 @@
 """Endpoints del plan Inteligencia (suscripción paga del comprador).
 
-Gateado por la función SQL `tiene_suscripcion_activa('inteligencia')`.
+Gateado por suscripción activa en la tabla `suscripciones`.
 Si el usuario NO tiene suscripción activa, devuelve 403 con un código
 machine-readable que el frontend usa para mostrar el paywall.
-
-Las 4 vistas v_public_* fueron revocadas a anon/authenticated tras
-eliminar /inversores. Solo service_role puede leerlas — por eso acá
-usamos `admin()` (cliente con service_role).
 """
-from __future__ import annotations
+import logging
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -18,49 +15,59 @@ from app.services.supabase import admin
 
 router = APIRouter(prefix="/api/mi-cuenta/inteligencia", tags=["inteligencia"])
 
+logger = logging.getLogger(__name__)
 
-# ─────────────────── HELPERS ───────────────────
 
-def _verificar_suscripcion(user_id: str, plan: str = "inteligencia") -> bool:
-    """Llama a la función SQL tiene_suscripcion_activa() vía RPC.
+def _extraer_user_id(user) -> Optional[str]:
+    """Extrae el user_id del UserContext sea cual sea el nombre del campo."""
+    for attr in ("id", "user_id", "sub", "uid"):
+        val = getattr(user, attr, None)
+        if val:
+            return str(val)
+    return None
 
-    Importante: la función usa auth.uid() internamente, pero como acá
-    invocamos con service_role la sesión Postgres no tiene jwt. Por eso
-    hacemos la query directa contra la tabla con filtro explícito por user_id.
+
+def _verificar_suscripcion(user_id, plan: str = "inteligencia") -> bool:
+    """Verifica si el user tiene suscripcion activa del plan dado (o superior).
+
+    Defensivo: cualquier error de query devuelve False (no crashea el endpoint).
     """
-    db = admin()
-    resp = (
-        db.table("suscripciones")
-        .select("suscripcion_id")
-        .eq("user_id", user_id)
-        .in_("plan", [plan, "pro"])
-        .eq("estado", "activa")
-        .limit(1)
-        .execute()
-    )
-    return bool(resp.data)
+    if not user_id:
+        return False
 
+    try:
+        db = admin()
+        resp = (
+            db.table("suscripciones")
+            .select("suscripcion_id, plan, estado, fecha_proximo_cobro")
+            .eq("user_id", str(user_id))
+            .eq("estado", "activa")
+            .execute()
+        )
+        rows = resp.data or []
+        planes_validos = {plan, "pro"}
+        for r in rows:
+            if r.get("plan") in planes_validos:
+                return True
+        return False
+    except Exception as e:
+        logger.error("Error en _verificar_suscripcion: %r", e)
+        return False
 
-# ─────────────────── ENDPOINT: MERCADO ───────────────────
 
 @router.get("/mercado")
 async def get_mercado(user: UserContext = Depends(require_user)):
-    """Dashboard de mercado: flywheel, crecimiento, demanda municipio, top especies.
+    """Dashboard de mercado: flywheel, crecimiento, demanda municipio, top especies."""
+    user_id = _extraer_user_id(user)
 
-    Gateado por suscripción Inteligencia activa (admin bypassa).
-    """
-    # Admin puede ver siempre (para auditoría / testing)
     if user.rol != "admin":
-        if not _verificar_suscripcion(user.id, plan="inteligencia"):
+        if not _verificar_suscripcion(user_id, plan="inteligencia"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "code": "subscription_required",
                     "plan_requerido": "inteligencia",
-                    "mensaje": (
-                        "Necesitás el plan Inteligencia para acceder al "
-                        "dashboard de mercado. Suscribite desde /mi-cuenta/suscripcion."
-                    ),
+                    "mensaje": "Necesitas el plan Inteligencia para acceder al dashboard de mercado.",
                 },
             )
 
@@ -91,44 +98,32 @@ async def get_mercado(user: UserContext = Depends(require_user)):
     }
 
 
-# ─────────────────── ENDPOINT: SECOP ───────────────────
-
 @router.get("/secop")
 async def get_secop(
-    especie: str | None = None,
-    municipio: str | None = None,
+    especie: Optional[str] = None,
+    municipio: Optional[str] = None,
     limite: int = 50,
     incluir_no_relevantes: bool = False,
     user: UserContext = Depends(require_user),
 ):
-    """Feed de procesos SECOP clasificados.
+    """Feed de procesos SECOP clasificados."""
+    user_id = _extraer_user_id(user)
 
-    Por default solo devuelve los marcados como relevantes por la IA.
-    Filtros opcionales por especie mencionada y municipio.
-    Gateado por suscripción Inteligencia activa (admin bypassa).
-    """
-    # Admin puede ver siempre
     if user.rol != "admin":
-        if not _verificar_suscripcion(user.id, plan="inteligencia"):
+        if not _verificar_suscripcion(user_id, plan="inteligencia"):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "code": "subscription_required",
                     "plan_requerido": "inteligencia",
-                    "mensaje": (
-                        "Necesitás el plan Inteligencia para acceder al "
-                        "feed SECOP. Suscribite desde /mi-cuenta/suscripcion."
-                    ),
+                    "mensaje": "Necesitas el plan Inteligencia para acceder al feed SECOP.",
                 },
             )
 
-    # Limitar para evitar abuso
     limite = max(1, min(limite, 200))
 
     db = admin()
 
-    # Query: secop_procesos LEFT JOIN secop_clasificacion
-    # Trae todos los procesos + su clasificación si existe
     query = (
         db.table("secop_procesos")
         .select(
@@ -140,31 +135,32 @@ async def get_secop(
     )
 
     if municipio:
-        query = query.ilike("municipio_entidad", f"%{municipio}%")
+        query = query.ilike("municipio_entidad", "%" + municipio + "%")
 
     resp = query.execute()
     procesos = resp.data or []
 
-    # Filtrado en Python (Supabase REST no soporta filtros en relaciones nested fácil)
     resultado = []
     for p in procesos:
-        clasif = p.get("secop_clasificacion") or []
-        clasif = clasif[0] if isinstance(clasif, list) and clasif else (clasif if isinstance(clasif, dict) else None)
+        clasif_raw = p.get("secop_clasificacion") or []
+        if isinstance(clasif_raw, list):
+            clasif = clasif_raw[0] if clasif_raw else None
+        elif isinstance(clasif_raw, dict):
+            clasif = clasif_raw
+        else:
+            clasif = None
 
         es_relevante = clasif.get("es_relevante") if clasif else None
 
-        # Filtro por relevancia (default: solo relevantes)
         if not incluir_no_relevantes and es_relevante is not True:
             continue
 
-        # Filtro por especie mencionada
         if especie:
             especies = (clasif or {}).get("especies_mencionadas") or []
             especies_lower = [str(e).lower() for e in especies]
             if not any(especie.lower() in e for e in especies_lower):
                 continue
 
-        # Aplanar el resultado
         resultado.append({
             "id_del_proceso": p.get("id_del_proceso"),
             "entidad": p.get("entidad"),
