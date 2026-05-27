@@ -90,9 +90,10 @@ async def page_pagos_resultado():
     return _tpl("pagos_resultado.html")
 
 
-
-
-
+@router.get("/mi-cuenta/inteligencia", response_class=HTMLResponse)
+async def page_mi_cuenta_inteligencia():
+    return _tpl("mi_cuenta_inteligencia.html")
+    
 # ─────────────────── LEGAL ───────────────────
 
 @router.get("/habeas-data", response_class=HTMLResponse)
