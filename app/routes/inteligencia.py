@@ -1,9 +1,4 @@
-"""Endpoints del plan Inteligencia (suscripción paga del comprador).
-
-Gateado por suscripción activa en la tabla `suscripciones`.
-Si el usuario NO tiene suscripción activa, devuelve 403 con un código
-machine-readable que el frontend usa para mostrar el paywall.
-"""
+"""Endpoints del plan Inteligencia (suscripcion paga del comprador)."""
 import logging
 from typing import Optional
 
@@ -28,10 +23,7 @@ def _extraer_user_id(user) -> Optional[str]:
 
 
 def _verificar_suscripcion(user_id, plan: str = "inteligencia") -> bool:
-    """Verifica si el user tiene suscripcion activa del plan dado (o superior).
-
-    Defensivo: cualquier error de query devuelve False (no crashea el endpoint).
-    """
+    """Verifica si el user tiene suscripcion activa del plan dado (o superior)."""
     if not user_id:
         return False
 
@@ -101,12 +93,16 @@ async def get_mercado(user: UserContext = Depends(require_user)):
 @router.get("/secop")
 async def get_secop(
     especie: Optional[str] = None,
-    municipio: Optional[str] = None,
+    ciudad: Optional[str] = None,
     limite: int = 50,
-    incluir_no_relevantes: bool = False,
+    solo_relevantes: bool = False,
     user: UserContext = Depends(require_user),
 ):
-    """Feed de procesos SECOP clasificados."""
+    """Feed de procesos SECOP clasificados.
+
+    Por default devuelve TODOS los procesos recientes (con clasificacion IA si existe).
+    Usar solo_relevantes=true para filtrar solo los marcados como relevantes.
+    """
     user_id = _extraer_user_id(user)
 
     if user.rol != "admin":
@@ -127,15 +123,17 @@ async def get_secop(
     query = (
         db.table("secop_procesos")
         .select(
-            "*, secop_clasificacion!left(especies_mencionadas, cantidad_estimada, "
+            "proceso_id, entidad, objeto, cuantia_proceso, departamento, ciudad, "
+            "fecha_publicacion, url_proceso, estado_proceso, modalidad_contratacion, "
+            "secop_clasificacion!left(especies_mencionadas, cantidad_estimada, "
             "altura_estimada_cm, tipo_proyecto, es_relevante, confianza, modelo_usado)"
         )
-        .order("fecha_de_publicacion_del", desc=True)
+        .order("fecha_publicacion", desc=True)
         .limit(limite)
     )
 
-    if municipio:
-        query = query.ilike("municipio_entidad", "%" + municipio + "%")
+    if ciudad:
+        query = query.ilike("ciudad", "%" + ciudad + "%")
 
     resp = query.execute()
     procesos = resp.data or []
@@ -152,7 +150,7 @@ async def get_secop(
 
         es_relevante = clasif.get("es_relevante") if clasif else None
 
-        if not incluir_no_relevantes and es_relevante is not True:
+        if solo_relevantes and es_relevante is not True:
             continue
 
         if especie:
@@ -162,16 +160,16 @@ async def get_secop(
                 continue
 
         resultado.append({
-            "id_del_proceso": p.get("id_del_proceso"),
+            "proceso_id": p.get("proceso_id"),
             "entidad": p.get("entidad"),
-            "objeto_del_contrato": p.get("descripci_n_del_procedimiento"),
-            "cuantia_cop": p.get("precio_base"),
-            "departamento_entidad": p.get("departamento_entidad"),
-            "municipio_entidad": p.get("municipio_entidad"),
-            "fecha_publicacion": p.get("fecha_de_publicacion_del"),
-            "url_proceso": p.get("urlproceso"),
-            "estado_del_procedimiento": p.get("estado_del_procedimiento"),
-            "modalidad_de_contratacion": p.get("modalidad_de_contratacion"),
+            "objeto": p.get("objeto"),
+            "cuantia_cop": p.get("cuantia_proceso"),
+            "departamento": p.get("departamento"),
+            "ciudad": p.get("ciudad"),
+            "fecha_publicacion": p.get("fecha_publicacion"),
+            "url_proceso": p.get("url_proceso"),
+            "estado_proceso": p.get("estado_proceso"),
+            "modalidad_contratacion": p.get("modalidad_contratacion"),
             "clasificacion_ia": clasif,
         })
 
@@ -180,9 +178,9 @@ async def get_secop(
         "total": len(resultado),
         "filtros_aplicados": {
             "especie": especie,
-            "municipio": municipio,
+            "ciudad": ciudad,
             "limite": limite,
-            "incluir_no_relevantes": incluir_no_relevantes,
+            "solo_relevantes": solo_relevantes,
         },
         "procesos": resultado,
     }
