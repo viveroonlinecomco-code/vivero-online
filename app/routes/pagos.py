@@ -160,9 +160,9 @@ async def confirmar_pago(
         return {"ok": False, "reason": "invalid_signature"}
 
     # 2. Buscar pago por referencia
-    pago_resp = db.table("pagos").select("pago_id, transaccion_id, estado_pago").eq(
-        "referencia_externa", x_id_factura
-    ).limit(1).execute()
+    pago_resp = db.table("pagos").select(
+        "pago_id, transaccion_id, estado_pago, tipo, suscripcion_id"
+    ).eq("referencia_externa", x_id_factura).limit(1).execute()
     if not pago_resp.data:
         return {"ok": False, "reason": "pago_no_encontrado"}
     pago = pago_resp.data[0]
@@ -176,11 +176,25 @@ async def confirmar_pago(
         "webhook_payload": conf.model_dump(),
     }).eq("pago_id", pago["pago_id"]).execute()
 
-    # 4. Si fue aprobado, marcar transacción como pagada
+    # 4. Si fue aprobado, actualizar el objeto referenciado segun el tipo
     if new_state == "aprobado":
-        db.table("transacciones_b2b").update({
-            "estado": "pagada",
-        }).eq("transaccion_id", pago["transaccion_id"]).execute()
+        tipo_pago = pago.get("tipo") or "transaccion_b2b"
+        if tipo_pago == "suscripcion" and pago.get("suscripcion_id"):
+            # Activar suscripcion Inteligencia por 30 dias
+            from datetime import datetime, timedelta, timezone
+            ahora = datetime.now(timezone.utc)
+            proximo_cobro = ahora + timedelta(days=30)
+            db.table("suscripciones").update({
+                "estado": "activa",
+                "fecha_inicio": ahora.isoformat(),
+                "fecha_proximo_cobro": proximo_cobro.isoformat(),
+                "epayco_subscription_id": x_ref_payco,
+            }).eq("suscripcion_id", pago["suscripcion_id"]).execute()
+        elif pago.get("transaccion_id"):
+            # Pago de transaccion B2B del marketplace (flujo original)
+            db.table("transacciones_b2b").update({
+                "estado": "pagada",
+            }).eq("transaccion_id", pago["transaccion_id"]).execute()
 
     return {"ok": True, "estado": new_state}
 
