@@ -17,6 +17,7 @@ from app.routes import whatsapp as whatsapp_routes
 from app.routes import pagos as pagos_routes
 from app.routes import public as public_routes
 from app.routes import ingesta as ingesta_routes
+from app.routes import inteligencia as inteligencia_routes
 from app.routes import pages as pages_routes
 
 
@@ -77,6 +78,7 @@ app.include_router(transacciones_routes.router)
 app.include_router(chat_routes.router)
 app.include_router(kpis_routes.router)
 app.include_router(whatsapp_routes.router)
+app.include_router(inteligencia_routes.router)
 app.include_router(pagos_routes.router)
 app.include_router(public_routes.router)
 app.include_router(ingesta_routes.router)
