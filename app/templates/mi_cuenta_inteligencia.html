@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta content="width=device-width, initial-scale=1.0" name="viewport">
-<meta name="description" content="ViveroOnline · Plan Inteligencia · Dashboard de mercado y oportunidades SECOP para compradores B2B">
+<meta name="description" content="ViveroOnline · Plan Inteligencia · Dashboard de mercado y oportunidades SECOP">
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
-<script id="tailwind-config">
+<script>
     tailwind.config = {
         darkMode: "class",
         theme: { extend: {
@@ -22,41 +22,34 @@
 </head>
 <body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100">
 
-<!-- Header -->
 <header class="border-b border-primary/10 bg-white/80 dark:bg-slate-900/80 backdrop-blur sticky top-0 z-40">
     <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
         <a href="/comprador" class="flex items-center gap-2">
             <span class="material-symbols-outlined text-primary text-2xl">arrow_back</span>
             <span class="font-bold tracking-tight">Volver al dashboard</span>
         </a>
-        <div class="flex items-center gap-4">
-            <span id="badge-plan" class="hidden text-xs font-bold px-3 py-1 rounded-full bg-primary/10 text-primary">
-                PLAN INTELIGENCIA
-            </span>
-        </div>
+        <span id="badge-plan" class="hidden text-xs font-bold px-3 py-1 rounded-full bg-primary/10 text-primary">
+            PLAN INTELIGENCIA
+        </span>
     </div>
 </header>
 
 <main class="max-w-6xl mx-auto px-6 py-8">
 
-    <!-- ────── PAYWALL (visible si no hay suscripción) ────── -->
+    <!-- ────── PAYWALL ────── -->
     <section id="paywall" class="hidden">
         <div class="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-bold mb-6">
             <span class="material-symbols-outlined text-sm">lock</span>
             PLAN INTELIGENCIA · SUSCRIPCIÓN REQUERIDA
         </div>
-
         <h1 class="text-4xl md:text-5xl font-black tracking-tight mb-4">
             Comprá<br>
             <span class="text-primary">con datos, no por corazonadas.</span>
         </h1>
         <p class="text-lg text-slate-600 dark:text-slate-400 max-w-2xl mb-8">
             Acceso al dashboard de mercado en tiempo real y al feed automático
-            de licitaciones SECOP relevantes para tu negocio. Por menos de
-            lo que cuesta un error de sourcing.
+            de licitaciones SECOP relevantes para tu negocio.
         </p>
-
-        <!-- Features -->
         <div class="grid md:grid-cols-2 gap-4 mb-10">
             <div class="bg-white dark:bg-slate-900 border border-primary/10 rounded-lg p-6">
                 <div class="flex items-center gap-3 mb-3">
@@ -64,18 +57,9 @@
                     <h3 class="text-xl font-bold">Dashboard de mercado</h3>
                 </div>
                 <ul class="space-y-2 text-sm text-slate-600 dark:text-slate-400">
-                    <li class="flex items-start gap-2">
-                        <span class="material-symbols-outlined text-primary text-base">check</span>
-                        GMV transado y tendencia semanal
-                    </li>
-                    <li class="flex items-start gap-2">
-                        <span class="material-symbols-outlined text-primary text-base">check</span>
-                        Demanda agregada por municipio
-                    </li>
-                    <li class="flex items-start gap-2">
-                        <span class="material-symbols-outlined text-primary text-base">check</span>
-                        Top 20 especies con más rotación
-                    </li>
+                    <li class="flex items-start gap-2"><span class="material-symbols-outlined text-primary text-base">check</span>GMV transado y tendencia semanal</li>
+                    <li class="flex items-start gap-2"><span class="material-symbols-outlined text-primary text-base">check</span>Demanda agregada por municipio</li>
+                    <li class="flex items-start gap-2"><span class="material-symbols-outlined text-primary text-base">check</span>Top 20 especies con más rotación</li>
                 </ul>
             </div>
             <div class="bg-white dark:bg-slate-900 border border-primary/10 rounded-lg p-6">
@@ -84,57 +68,32 @@
                     <h3 class="text-xl font-bold">Oportunidades SECOP</h3>
                 </div>
                 <ul class="space-y-2 text-sm text-slate-600 dark:text-slate-400">
-                    <li class="flex items-start gap-2">
-                        <span class="material-symbols-outlined text-primary text-base">check</span>
-                        Feed automático de licitaciones públicas
-                    </li>
-                    <li class="flex items-start gap-2">
-                        <span class="material-symbols-outlined text-primary text-base">check</span>
-                        Clasificación IA: relevante / no relevante
-                    </li>
-                    <li class="flex items-start gap-2">
-                        <span class="material-symbols-outlined text-primary text-base">check</span>
-                        Filtros por especie y municipio
-                    </li>
+                    <li class="flex items-start gap-2"><span class="material-symbols-outlined text-primary text-base">check</span>Feed automático de licitaciones públicas</li>
+                    <li class="flex items-start gap-2"><span class="material-symbols-outlined text-primary text-base">check</span>Clasificación IA: relevante / no relevante</li>
+                    <li class="flex items-start gap-2"><span class="material-symbols-outlined text-primary text-base">check</span>Filtros por especie y ciudad</li>
                 </ul>
             </div>
         </div>
-
-        <!-- CTA -->
         <div class="bg-primary text-white rounded-lg p-8 text-center">
             <p class="text-sm uppercase tracking-widest mb-2 text-white/70">Plan Inteligencia</p>
             <p class="text-4xl font-black mb-1">$79.900 <span class="text-lg font-medium text-white/80">COP/mes</span></p>
             <p class="text-white/80 mb-6 text-sm">Cancelá cuando quieras · Sin permanencia</p>
-            <a href="/mi-cuenta/suscripcion"
-               class="inline-block bg-white text-primary font-bold py-3 px-8 rounded-full hover:bg-white/90">
+            <a href="/mi-cuenta/suscripcion" class="inline-block bg-white text-primary font-bold py-3 px-8 rounded-full hover:bg-white/90">
                 Suscribirme al plan Inteligencia
             </a>
         </div>
     </section>
 
-    <!-- ────── DASHBOARD (visible si suscripción activa) ────── -->
-    <section id="dashboard" class="hidden">
+    <!-- ────── DASHBOARD (vista única scrolleable) ────── -->
+    <section id="dashboard" class="hidden space-y-16">
 
-        <!-- Tabs -->
-        <div class="border-b border-primary/10 mb-8">
-            <nav class="flex gap-8">
-                <button id="tab-mercado-btn" type="button"
-                        class="px-1 py-3 font-bold text-primary border-b-2 border-primary flex items-center gap-2">
-                    <span class="material-symbols-outlined">trending_up</span>
-                    Mercado
-                </button>
-                <button id="tab-secop-btn" type="button"
-                        class="px-1 py-3 font-bold text-slate-400 border-b-2 border-transparent hover:text-primary flex items-center gap-2">
-                    <span class="material-symbols-outlined">gavel</span>
-                    Oportunidades SECOP
-                </button>
-            </nav>
-        </div>
+        <!-- ═══ SECCIÓN MERCADO ═══ -->
+        <div class="space-y-8">
+            <div class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-primary text-3xl">trending_up</span>
+                <h2 class="text-2xl font-black">Mercado ViveroOnline</h2>
+            </div>
 
-        <!-- ── TAB: MERCADO ── -->
-        <div id="tab-mercado" class="space-y-12">
-
-            <!-- KPIs -->
             <section class="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="bg-white dark:bg-slate-900 border border-primary/10 rounded-lg p-6 shadow-sm">
                     <p class="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">GMV transado</p>
@@ -158,11 +117,10 @@
                 </div>
             </section>
 
-            <!-- Crecimiento semanal -->
             <section class="bg-white dark:bg-slate-900 border border-primary/10 rounded-lg p-6 shadow-sm">
                 <div class="flex items-center justify-between mb-6">
                     <div>
-                        <h2 class="text-xl font-bold mb-1">Crecimiento semanal</h2>
+                        <h3 class="text-lg font-bold mb-1">Crecimiento semanal</h3>
                         <p class="text-sm text-slate-500">Últimas 12 semanas</p>
                     </div>
                     <span class="material-symbols-outlined text-primary text-3xl">trending_up</span>
@@ -170,11 +128,10 @@
                 <div id="grafica-crecimiento" class="h-48 flex items-end gap-2"></div>
             </section>
 
-            <!-- Demanda + Especies -->
             <section class="grid md:grid-cols-2 gap-6">
                 <div class="bg-white dark:bg-slate-900 border border-primary/10 rounded-lg p-6 shadow-sm">
                     <div class="flex items-center justify-between mb-6">
-                        <h2 class="text-xl font-bold">Demanda por municipio</h2>
+                        <h3 class="text-lg font-bold">Demanda por municipio</h3>
                         <span class="material-symbols-outlined text-primary text-2xl">location_on</span>
                     </div>
                     <div id="lista-municipios" class="space-y-3">
@@ -183,7 +140,7 @@
                 </div>
                 <div class="bg-white dark:bg-slate-900 border border-primary/10 rounded-lg p-6 shadow-sm">
                     <div class="flex items-center justify-between mb-6">
-                        <h2 class="text-xl font-bold">Top especies</h2>
+                        <h3 class="text-lg font-bold">Top especies</h3>
                         <span class="material-symbols-outlined text-primary text-2xl">eco</span>
                     </div>
                     <div id="lista-especies" class="space-y-3">
@@ -191,22 +148,29 @@
                     </div>
                 </div>
             </section>
-
-            <p class="text-center text-xs text-slate-400">
-                Datos agregados · Cifras aprox. a 100K COP · Actualizado: <span id="updated-at">—</span>
-            </p>
         </div>
 
-        <!-- ── TAB: SECOP ── -->
-        <div id="tab-secop" class="hidden space-y-6">
+        <!-- ═══ SECCIÓN SECOP ═══ -->
+        <div class="space-y-6">
+            <div class="flex items-center gap-3">
+                <span class="material-symbols-outlined text-primary text-3xl">gavel</span>
+                <div class="flex-1">
+                    <h2 class="text-2xl font-black">Oportunidades SECOP</h2>
+                    <p class="text-sm text-slate-500">Licitaciones públicas relacionadas con plantas, paisajismo y jardinería</p>
+                </div>
+            </div>
 
             <!-- Filtros -->
             <section class="bg-white dark:bg-slate-900 border border-primary/10 rounded-lg p-4 shadow-sm">
                 <div class="flex flex-col md:flex-row gap-3">
                     <input id="filtro-especie" type="text" placeholder="Filtrar por especie (ej: aguacate)"
                            class="flex-1 px-4 py-2 bg-background-light dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
-                    <input id="filtro-municipio" type="text" placeholder="Filtrar por municipio"
+                    <input id="filtro-ciudad" type="text" placeholder="Filtrar por ciudad"
                            class="flex-1 px-4 py-2 bg-background-light dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+                    <label class="flex items-center gap-2 text-sm px-3 cursor-pointer">
+                        <input id="filtro-relevantes" type="checkbox" class="rounded text-primary focus:ring-primary">
+                        <span>Solo relevantes (IA)</span>
+                    </label>
                     <button id="btn-buscar-secop" type="button"
                             class="bg-primary hover:bg-primary/90 text-white font-bold py-2 px-6 rounded-full text-sm">
                         Buscar
@@ -215,45 +179,68 @@
             </section>
 
             <!-- Resumen -->
-            <div id="secop-resumen" class="text-sm text-slate-500"></div>
+            <div id="secop-resumen" class="text-sm text-slate-500">Cargando oportunidades...</div>
 
-            <!-- Lista de procesos -->
-            <div id="lista-secop" class="space-y-3">
-                <div class="text-slate-500 text-sm">Cargando oportunidades...</div>
+            <!-- Tabla de procesos -->
+            <div class="bg-white dark:bg-slate-900 border border-primary/10 rounded-lg shadow-sm overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead class="bg-primary/5 text-xs uppercase tracking-wide text-slate-600 dark:text-slate-400">
+                            <tr>
+                                <th class="px-4 py-3 text-left font-semibold">Entidad</th>
+                                <th class="px-4 py-3 text-left font-semibold">Ciudad</th>
+                                <th class="px-4 py-3 text-right font-semibold">Cuantía</th>
+                                <th class="px-4 py-3 text-left font-semibold">Objeto</th>
+                                <th class="px-4 py-3 text-left font-semibold">Clasif. IA</th>
+                                <th class="px-4 py-3 text-center font-semibold">Link</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tabla-secop" class="divide-y divide-primary/5">
+                            <tr><td colspan="6" class="px-4 py-8 text-center text-slate-400">Cargando procesos...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
+
+        <p class="text-center text-xs text-slate-400">
+            Datos actualizados: <span id="updated-at">—</span>
+        </p>
     </section>
 </main>
 
 <script>
-// Formato de COP
+// ─────────── HELPERS ───────────
 function formatCOP(n) {
     n = Number(n) || 0;
     if (n >= 1_000_000_000) return '$' + (n / 1_000_000_000).toFixed(1) + 'B';
-    if (n >= 1_000_000) return '$' + (n / 1_000_000).toFixed(1) + 'M';
+    if (n >= 1_000_000) return '$' + (n / 1_000_000).toFixed(0) + 'M';
     if (n >= 1_000) return '$' + Math.round(n / 1_000) + 'K';
     return '$' + n.toLocaleString('es-CO');
 }
 
-// ────── INIT ──────
+function escHTML(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function truncar(s, max = 120) {
+    s = String(s || '');
+    return s.length > max ? s.substring(0, max) + '…' : s;
+}
+
+// ─────────── INIT ───────────
 (async function init() {
     if (!VO.requireAuth()) return;
 
-    // Intentar cargar el dashboard. Si responde 403 con subscription_required, paywall.
+    // Cargar mercado primero. Si responde paywall, no cargamos secop.
     try {
         const data = await VO.api('/api/mi-cuenta/inteligencia/mercado');
         mostrarDashboard(data);
+        cargarSecop();
     } catch (err) {
-        // El wrapper VO.api lanza Error con detail. Si es subscription_required, paywall.
-        if (err.message && err.message.toString().toLowerCase().includes('subscription')) {
-            mostrarPaywall();
-        } else if (err.message && err.message.includes('Inteligencia')) {
-            mostrarPaywall();
-        } else {
-            // Cualquier otro error: paywall conservador
-            console.error('Error cargando inteligencia:', err);
-            mostrarPaywall();
-        }
+        console.error('Error cargando mercado:', err);
+        mostrarPaywall();
     }
 })();
 
@@ -266,7 +253,7 @@ function mostrarDashboard(data) {
     document.getElementById('dashboard').classList.remove('hidden');
     document.getElementById('badge-plan').classList.remove('hidden');
 
-    // ── Render KPIs ──
+    // KPIs
     const k = data.kpis || {};
     document.getElementById('kpi-gmv').textContent = formatCOP(k.gmv_aprox_cop);
     document.getElementById('kpi-viveros').textContent = k.viveristas_activos || 0;
@@ -274,7 +261,7 @@ function mostrarDashboard(data) {
     document.getElementById('kpi-compradores').textContent = k.compradores_activos || 0;
     document.getElementById('kpi-items').textContent = (k.items_disponibles || 0).toLocaleString('es-CO');
 
-    // ── Render gráfica crecimiento ──
+    // Crecimiento
     const grafica = document.getElementById('grafica-crecimiento');
     const semanas = data.crecimiento_semanal || [];
     if (semanas.length === 0) {
@@ -288,12 +275,11 @@ function mostrarDashboard(data) {
                     <div class="text-xs font-semibold text-slate-500">${formatCOP(s.gmv_aprox_cop)}</div>
                     <div class="w-full bg-primary rounded-t-md" style="height: ${Math.max(h, 4)}%; min-height: 4px;"></div>
                     <div class="text-[10px] text-slate-400">${(s.semana || '').substring(5,10)}</div>
-                </div>
-            `;
+                </div>`;
         }).join('');
     }
 
-    // ── Render municipios ──
+    // Municipios
     const muniList = document.getElementById('lista-municipios');
     const munis = data.demanda_municipio || [];
     if (munis.length === 0) {
@@ -303,17 +289,16 @@ function mostrarDashboard(data) {
         muniList.innerHTML = munis.slice(0, 10).map(m => `
             <div>
                 <div class="flex items-center justify-between mb-1">
-                    <span class="text-sm font-semibold">${m.municipio}</span>
+                    <span class="text-sm font-semibold">${escHTML(m.municipio)}</span>
                     <span class="text-xs text-slate-500">${m.viveros_en_municipio} viveros · ${m.items_activos} items</span>
                 </div>
                 <div class="h-2 bg-primary/10 rounded-full overflow-hidden">
                     <div class="h-full bg-primary" style="width: ${(m.viveros_en_municipio / maxV) * 100}%"></div>
                 </div>
-            </div>
-        `).join('');
+            </div>`).join('');
     }
 
-    // ── Render especies ──
+    // Especies
     const espList = document.getElementById('lista-especies');
     const especies = data.top_especies || [];
     if (especies.length === 0) {
@@ -323,105 +308,79 @@ function mostrarDashboard(data) {
             <div class="flex items-center gap-3 py-1">
                 <span class="text-xs font-bold text-slate-400 w-6">#${i+1}</span>
                 <div class="flex-1 min-w-0">
-                    <p class="text-sm font-semibold truncate">${e.nombre_comun || ''}</p>
-                    ${e.nombre_cientifico ? `<p class="text-xs text-slate-400 italic truncate">${e.nombre_cientifico}</p>` : ''}
+                    <p class="text-sm font-semibold truncate">${escHTML(e.nombre_comun || '')}</p>
+                    ${e.nombre_cientifico ? `<p class="text-xs text-slate-400 italic truncate">${escHTML(e.nombre_cientifico)}</p>` : ''}
                 </div>
                 <span class="text-xs text-slate-500">${e.viveros_la_ofrecen || 0} viveros</span>
-            </div>
-        `).join('');
+            </div>`).join('');
     }
 
     document.getElementById('updated-at').textContent = new Date().toLocaleString('es-CO');
 
-    // ── Setup tabs ──
-    setupTabs();
-}
-
-function setupTabs() {
-    const btnMercado = document.getElementById('tab-mercado-btn');
-    const btnSecop = document.getElementById('tab-secop-btn');
-    const tabMercado = document.getElementById('tab-mercado');
-    const tabSecop = document.getElementById('tab-secop');
-
-    btnMercado.addEventListener('click', () => {
-        btnMercado.classList.add('text-primary', 'border-primary');
-        btnMercado.classList.remove('text-slate-400', 'border-transparent');
-        btnSecop.classList.remove('text-primary', 'border-primary');
-        btnSecop.classList.add('text-slate-400', 'border-transparent');
-        tabMercado.classList.remove('hidden');
-        tabSecop.classList.add('hidden');
-    });
-
-    btnSecop.addEventListener('click', () => {
-        btnSecop.classList.add('text-primary', 'border-primary');
-        btnSecop.classList.remove('text-slate-400', 'border-transparent');
-        btnMercado.classList.remove('text-primary', 'border-primary');
-        btnMercado.classList.add('text-slate-400', 'border-transparent');
-        tabSecop.classList.remove('hidden');
-        tabMercado.classList.add('hidden');
-        cargarSecop();
-    });
-
-    // Botón buscar SECOP
+    // Wire-up del botón Buscar SECOP
     document.getElementById('btn-buscar-secop').addEventListener('click', cargarSecop);
 }
 
-let secopCargadoUnaVez = false;
 async function cargarSecop() {
     const especie = document.getElementById('filtro-especie').value.trim();
-    const municipio = document.getElementById('filtro-municipio').value.trim();
+    const ciudad = document.getElementById('filtro-ciudad').value.trim();
+    const soloRelevantes = document.getElementById('filtro-relevantes').checked;
 
     const params = new URLSearchParams();
     if (especie) params.set('especie', especie);
-    if (municipio) params.set('municipio', municipio);
+    if (ciudad) params.set('ciudad', ciudad);
+    if (soloRelevantes) params.set('solo_relevantes', 'true');
     params.set('limite', '50');
 
-    const lista = document.getElementById('lista-secop');
+    const tbody = document.getElementById('tabla-secop');
     const resumen = document.getElementById('secop-resumen');
-    lista.innerHTML = '<div class="text-slate-500 text-sm">Buscando...</div>';
+    tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-slate-400">Buscando...</td></tr>';
+    resumen.textContent = '';
 
     try {
         const data = await VO.api(`/api/mi-cuenta/inteligencia/secop?${params}`);
-        secopCargadoUnaVez = true;
-
-        resumen.textContent = `${data.total} ${data.total === 1 ? 'oportunidad encontrada' : 'oportunidades encontradas'}`;
-
         const procesos = data.procesos || [];
+        resumen.textContent = `${data.total} ${data.total === 1 ? 'proceso encontrado' : 'procesos encontrados'}`;
+
         if (procesos.length === 0) {
-            lista.innerHTML = `
-                <div class="text-center py-12 text-slate-500">
-                    <span class="material-symbols-outlined text-5xl mb-2">search_off</span>
-                    <p>Sin oportunidades relevantes que coincidan con tu búsqueda</p>
-                </div>`;
+            tbody.innerHTML = `
+                <tr><td colspan="6" class="px-4 py-12 text-center text-slate-400">
+                    <span class="material-symbols-outlined text-4xl mb-2 block">search_off</span>
+                    Sin procesos que coincidan con tu búsqueda
+                </td></tr>`;
             return;
         }
 
-        lista.innerHTML = procesos.map(p => {
+        tbody.innerHTML = procesos.map(p => {
             const clasif = p.clasificacion_ia || {};
-            const especies = (clasif.especies_mencionadas || []).join(', ');
+            const esRel = clasif.es_relevante;
+            let badge = '';
+            if (esRel === true) {
+                badge = '<span class="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-bold whitespace-nowrap">✓ Relevante</span>';
+            } else if (esRel === false) {
+                badge = '<span class="px-2 py-1 bg-slate-100 text-slate-500 rounded-full text-xs font-bold whitespace-nowrap">No relevante</span>';
+            } else {
+                badge = '<span class="text-xs text-slate-400 italic">Sin clasif.</span>';
+            }
+
+            const especies = clasif.especies_mencionadas || [];
+            const especiesStr = especies.length ? `<div class="text-xs text-emerald-700 mt-1">${escHTML(especies.join(', '))}</div>` : '';
+
             return `
-                <article class="bg-white dark:bg-slate-900 border border-primary/10 rounded-lg p-5 shadow-sm">
-                    <div class="flex items-start justify-between gap-4 mb-2">
-                        <h3 class="font-bold text-base flex-1">${p.entidad || 'Sin entidad'}</h3>
-                        <span class="text-sm font-bold text-primary whitespace-nowrap">
-                            ${p.cuantia_cop ? formatCOP(p.cuantia_cop) : '—'}
-                        </span>
-                    </div>
-                    <p class="text-sm text-slate-600 dark:text-slate-400 mb-3">${p.objeto_del_contrato || ''}</p>
-                    <div class="flex flex-wrap items-center gap-2 text-xs">
-                        <span class="px-2 py-1 bg-primary/10 text-primary rounded-full">
-                            ${p.municipio_entidad || p.departamento_entidad || 'Colombia'}
-                        </span>
-                        ${especies ? `<span class="px-2 py-1 bg-emerald-50 text-emerald-700 rounded-full">${especies}</span>` : ''}
-                        ${clasif.confianza ? `<span class="text-slate-400">Confianza: ${Math.round(clasif.confianza * 100)}%</span>` : ''}
-                        ${p.url_proceso ? `<a href="${p.url_proceso}" target="_blank" class="ml-auto text-primary font-bold hover:underline">Ver en SECOP →</a>` : ''}
-                    </div>
-                </article>
-            `;
+                <tr class="hover:bg-primary/5">
+                    <td class="px-4 py-3 font-semibold align-top">${escHTML(truncar(p.entidad, 60))}</td>
+                    <td class="px-4 py-3 align-top text-slate-600">${escHTML(p.ciudad || p.departamento || '—')}</td>
+                    <td class="px-4 py-3 text-right font-bold text-primary align-top whitespace-nowrap">${p.cuantia_cop ? formatCOP(p.cuantia_cop) : '—'}</td>
+                    <td class="px-4 py-3 align-top text-slate-700">${escHTML(truncar(p.objeto, 150))}${especiesStr}</td>
+                    <td class="px-4 py-3 align-top">${badge}</td>
+                    <td class="px-4 py-3 align-top text-center">
+                        ${p.url_proceso ? `<a href="${escHTML(p.url_proceso)}" target="_blank" rel="noopener" class="text-primary font-bold hover:underline whitespace-nowrap">Ver →</a>` : '—'}
+                    </td>
+                </tr>`;
         }).join('');
     } catch (err) {
         console.error('Error cargando SECOP:', err);
-        lista.innerHTML = '<p class="text-slate-500 text-sm">Error al cargar oportunidades. Intentá de nuevo.</p>';
+        tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Error al cargar oportunidades.</td></tr>';
     }
 }
 </script>
