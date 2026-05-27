@@ -89,3 +89,104 @@ async def get_mercado(user: UserContext = Depends(require_user)):
         "demanda_municipio": demanda_resp.data or [],
         "top_especies": especies_resp.data or [],
     }
+
+
+# ─────────────────── ENDPOINT: SECOP ───────────────────
+
+@router.get("/secop")
+async def get_secop(
+    especie: str | None = None,
+    municipio: str | None = None,
+    limite: int = 50,
+    incluir_no_relevantes: bool = False,
+    user: UserContext = Depends(require_user),
+):
+    """Feed de procesos SECOP clasificados.
+
+    Por default solo devuelve los marcados como relevantes por la IA.
+    Filtros opcionales por especie mencionada y municipio.
+    Gateado por suscripción Inteligencia activa (admin bypassa).
+    """
+    # Admin puede ver siempre
+    if user.rol != "admin":
+        if not _verificar_suscripcion(user.id, plan="inteligencia"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "subscription_required",
+                    "plan_requerido": "inteligencia",
+                    "mensaje": (
+                        "Necesitás el plan Inteligencia para acceder al "
+                        "feed SECOP. Suscribite desde /mi-cuenta/suscripcion."
+                    ),
+                },
+            )
+
+    # Limitar para evitar abuso
+    limite = max(1, min(limite, 200))
+
+    db = admin()
+
+    # Query: secop_procesos LEFT JOIN secop_clasificacion
+    # Trae todos los procesos + su clasificación si existe
+    query = (
+        db.table("secop_procesos")
+        .select(
+            "*, secop_clasificacion!left(especies_mencionadas, cantidad_estimada, "
+            "altura_estimada_cm, tipo_proyecto, es_relevante, confianza, modelo_usado)"
+        )
+        .order("fecha_de_publicacion_del", desc=True)
+        .limit(limite)
+    )
+
+    if municipio:
+        query = query.ilike("municipio_entidad", f"%{municipio}%")
+
+    resp = query.execute()
+    procesos = resp.data or []
+
+    # Filtrado en Python (Supabase REST no soporta filtros en relaciones nested fácil)
+    resultado = []
+    for p in procesos:
+        clasif = p.get("secop_clasificacion") or []
+        clasif = clasif[0] if isinstance(clasif, list) and clasif else (clasif if isinstance(clasif, dict) else None)
+
+        es_relevante = clasif.get("es_relevante") if clasif else None
+
+        # Filtro por relevancia (default: solo relevantes)
+        if not incluir_no_relevantes and es_relevante is not True:
+            continue
+
+        # Filtro por especie mencionada
+        if especie:
+            especies = (clasif or {}).get("especies_mencionadas") or []
+            especies_lower = [str(e).lower() for e in especies]
+            if not any(especie.lower() in e for e in especies_lower):
+                continue
+
+        # Aplanar el resultado
+        resultado.append({
+            "id_del_proceso": p.get("id_del_proceso"),
+            "entidad": p.get("entidad"),
+            "objeto_del_contrato": p.get("descripci_n_del_procedimiento"),
+            "cuantia_cop": p.get("precio_base"),
+            "departamento_entidad": p.get("departamento_entidad"),
+            "municipio_entidad": p.get("municipio_entidad"),
+            "fecha_publicacion": p.get("fecha_de_publicacion_del"),
+            "url_proceso": p.get("urlproceso"),
+            "estado_del_procedimiento": p.get("estado_del_procedimiento"),
+            "modalidad_de_contratacion": p.get("modalidad_de_contratacion"),
+            "clasificacion_ia": clasif,
+        })
+
+    return {
+        "ok": True,
+        "total": len(resultado),
+        "filtros_aplicados": {
+            "especie": especie,
+            "municipio": municipio,
+            "limite": limite,
+            "incluir_no_relevantes": incluir_no_relevantes,
+        },
+        "procesos": resultado,
+    }
