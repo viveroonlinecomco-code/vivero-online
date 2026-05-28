@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta content="width=device-width, initial-scale=1.0" name="viewport">
+<meta name="description" content="ViveroOnline · Resultado del pago">
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
-<script id="tailwind-config">
+<script>
     tailwind.config = {
         darkMode: "class",
         theme: { extend: {
@@ -17,127 +18,175 @@
     }
 </script>
 <title>Resultado del pago · ViveroOnline</title>
+<script src="/static/js/vivero.js"></script>
 </head>
 <body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100">
 
-<div class="flex flex-col min-h-screen max-w-md mx-auto px-6 py-8 items-center justify-center">
+<main class="max-w-2xl mx-auto px-6 py-16">
 
-    <!-- Estado: cargando -->
-    <div id="loading" class="text-center">
-        <div class="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center mb-6 mx-auto">
-            <span class="material-symbols-outlined text-primary text-4xl animate-spin">progress_activity</span>
-        </div>
-        <h1 class="text-2xl font-bold mb-2">Verificando tu pago...</h1>
-        <p class="text-slate-500">Esto puede tomar unos segundos.</p>
+    <!-- Logo -->
+    <div class="text-center mb-12">
+        <a href="/" class="inline-flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary text-3xl">eco</span>
+            <span class="text-2xl font-black tracking-tight">VIVEROONLINE.COM.CO</span>
+        </a>
     </div>
 
-    <!-- Estado: aprobado -->
-    <div id="aprobado" class="hidden text-center">
-        <div class="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center mb-6 mx-auto">
-            <span class="material-symbols-outlined text-emerald-600 text-5xl">check_circle</span>
+    <!-- ═══ ESTADO: APROBADO ═══ -->
+    <section id="estado-aprobado" class="hidden text-center">
+        <div class="inline-flex items-center justify-center w-20 h-20 bg-emerald-100 dark:bg-emerald-900/30 rounded-full mb-6">
+            <span class="material-symbols-outlined text-5xl text-emerald-600 dark:text-emerald-400">check_circle</span>
         </div>
-        <h1 class="text-2xl font-black mb-2">¡Pago aprobado! 🌱</h1>
-        <p class="text-slate-600 mb-8">Tu transacción se confirmó correctamente.</p>
-        <div class="bg-white dark:bg-slate-800 rounded-lg p-4 text-left mb-6 w-full">
-            <div class="flex justify-between text-sm mb-2">
-                <span class="text-slate-500">Monto:</span>
-                <span class="font-bold" id="monto-aprobado"></span>
+        <h1 class="text-3xl md:text-4xl font-black tracking-tight mb-3">¡Pago confirmado!</h1>
+        <p class="text-lg text-slate-600 dark:text-slate-400 mb-8">
+            Tu pago se procesó correctamente. Ya tenés acceso a todo lo que comprás.
+        </p>
+
+        <!-- Detalles -->
+        <div class="bg-white dark:bg-slate-900 border border-primary/10 rounded-lg p-6 shadow-sm mb-8 text-left space-y-3">
+            <div class="flex items-center justify-between border-b border-primary/5 pb-3">
+                <span class="text-sm text-slate-500">Referencia</span>
+                <span class="font-mono text-sm" id="ref-aprobado">—</span>
             </div>
-            <div class="flex justify-between text-sm">
-                <span class="text-slate-500">Referencia:</span>
-                <span class="font-mono text-xs" id="ref-aprobado"></span>
+            <div class="flex items-center justify-between" id="row-monto-aprobado">
+                <span class="text-sm text-slate-500">Monto</span>
+                <span class="font-bold" id="monto-aprobado">—</span>
             </div>
         </div>
-        <a href="/marketplace" class="block w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-full">
-            Volver al marketplace
-        </a>
-    </div>
 
-    <!-- Estado: pendiente PSE -->
-    <div id="pendiente" class="hidden text-center">
-        <div class="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center mb-6 mx-auto">
-            <span class="material-symbols-outlined text-amber-600 text-5xl">schedule</span>
+        <a id="cta-aprobado" href="/mi-cuenta/inteligencia"
+           class="inline-block bg-primary hover:bg-primary/90 text-white font-bold py-3 px-8 rounded-full">
+            Ir al dashboard de Inteligencia
+        </a>
+    </section>
+
+    <!-- ═══ ESTADO: PENDIENTE (PSE) ═══ -->
+    <section id="estado-pendiente" class="hidden text-center">
+        <div class="inline-flex items-center justify-center w-20 h-20 bg-amber-100 dark:bg-amber-900/30 rounded-full mb-6">
+            <span class="material-symbols-outlined text-5xl text-amber-600 dark:text-amber-400">schedule</span>
         </div>
-        <h1 class="text-2xl font-black mb-2">Pago en proceso</h1>
-        <p class="text-slate-600 mb-2">Tu pago está siendo procesado.</p>
-        <p class="text-slate-500 text-sm mb-8">Si pagaste por PSE, esto puede tomar unos minutos. Te notificaremos por WhatsApp cuando se confirme.</p>
-        <a href="/marketplace" class="block w-full bg-primary text-white font-bold py-4 rounded-full">
-            Volver al marketplace
-        </a>
-    </div>
+        <h1 class="text-3xl md:text-4xl font-black tracking-tight mb-3">Tu pago está en proceso</h1>
+        <p class="text-lg text-slate-600 dark:text-slate-400 mb-8">
+            Estamos confirmando tu pago con la entidad bancaria.
+            Los pagos por PSE pueden tardar entre unos minutos y 24 horas.
+            Te avisamos por WhatsApp cuando se confirme.
+        </p>
 
-    <!-- Estado: rechazado -->
-    <div id="rechazado" class="hidden text-center">
-        <div class="w-20 h-20 rounded-full bg-red-100 flex items-center justify-center mb-6 mx-auto">
-            <span class="material-symbols-outlined text-red-600 text-5xl">cancel</span>
+        <div class="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-700/30 rounded-lg p-4 mb-8 text-sm text-amber-800 dark:text-amber-200">
+            <strong>No es necesario que vuelvas a pagar.</strong> Si el banco rechaza tu pago, te avisamos para reintentarlo.
         </div>
-        <h1 class="text-2xl font-black mb-2">Pago rechazado</h1>
-        <p class="text-slate-600 mb-2" id="motivo-rechazo">No pudimos procesar tu pago.</p>
-        <p class="text-slate-500 text-sm mb-8">Puedes intentar de nuevo con otro método de pago.</p>
-        <a href="/marketplace" class="block w-full bg-primary text-white font-bold py-4 rounded-full mb-3">
-            Reintentar
-        </a>
-    </div>
-</div>
 
-<script src="/static/js/vivero.js"></script>
+        <a href="/comprador" class="inline-block bg-primary hover:bg-primary/90 text-white font-bold py-3 px-8 rounded-full">
+            Volver al dashboard
+        </a>
+    </section>
+
+    <!-- ═══ ESTADO: RECHAZADO ═══ -->
+    <section id="estado-rechazado" class="hidden text-center">
+        <div class="inline-flex items-center justify-center w-20 h-20 bg-red-100 dark:bg-red-900/30 rounded-full mb-6">
+            <span class="material-symbols-outlined text-5xl text-red-600 dark:text-red-400">error</span>
+        </div>
+        <h1 class="text-3xl md:text-4xl font-black tracking-tight mb-3">Pago rechazado</h1>
+        <p class="text-lg text-slate-600 dark:text-slate-400 mb-2">
+            Tu banco no autorizó la transacción.
+        </p>
+        <p id="razon-rechazo" class="text-sm text-slate-500 mb-8 italic"></p>
+
+        <div class="bg-slate-50 dark:bg-slate-800/50 rounded-lg p-4 mb-8 text-sm text-slate-600 dark:text-slate-400 text-left">
+            <p class="font-semibold mb-2">¿Qué puedo hacer?</p>
+            <ul class="space-y-1 list-disc list-inside">
+                <li>Verificar saldo y cupo de tu tarjeta</li>
+                <li>Probar con otro medio de pago</li>
+                <li>Contactar a tu banco si el problema persiste</li>
+                <li>Escribirnos por WhatsApp para ayudarte</li>
+            </ul>
+        </div>
+
+        <div class="flex flex-col sm:flex-row gap-3 justify-center">
+            <a id="cta-reintentar" href="/mi-cuenta/suscripcion"
+               class="bg-primary hover:bg-primary/90 text-white font-bold py-3 px-8 rounded-full">
+                Reintentar pago
+            </a>
+            <a href="https://wa.me/573102246099" target="_blank" rel="noopener"
+               class="bg-white dark:bg-slate-800 border border-primary/20 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold py-3 px-8 rounded-full">
+                Contactar por WhatsApp
+            </a>
+        </div>
+    </section>
+
+    <!-- ═══ ESTADO: SIN INFO (entró directo) ═══ -->
+    <section id="estado-sin-info" class="hidden text-center">
+        <div class="inline-flex items-center justify-center w-20 h-20 bg-slate-200 dark:bg-slate-700 rounded-full mb-6">
+            <span class="material-symbols-outlined text-5xl text-slate-600 dark:text-slate-400">help</span>
+        </div>
+        <h1 class="text-3xl md:text-4xl font-black tracking-tight mb-3">Sin información de pago</h1>
+        <p class="text-lg text-slate-600 dark:text-slate-400 mb-8">
+            No pudimos identificar un pago reciente. Si acabás de pagar, revisá tu WhatsApp o tu correo.
+        </p>
+        <a href="/comprador" class="inline-block bg-primary hover:bg-primary/90 text-white font-bold py-3 px-8 rounded-full">
+            Volver al dashboard
+        </a>
+    </section>
+
+</main>
+
 <script>
-(async function() {
-    // Pre-redirección: ePayco vuelve con varios params en la URL
+// Helpers
+function formatCOP(amount) {
+    const n = Number(amount) || 0;
+    return '$' + n.toLocaleString('es-CO') + ' COP';
+}
+
+function mostrar(seccion) {
+    document.getElementById(seccion).classList.remove('hidden');
+}
+
+// Lee los query params que envia ePayco al redirect
+(function init() {
     const params = new URLSearchParams(window.location.search);
-    const refPayco = params.get('ref_payco');
-    const factura = params.get('x_id_factura') || params.get('x_id_invoice') || '';
+    const xResponse = (params.get('x_response') || params.get('response') || '').toLowerCase().trim();
+    const refPayco = params.get('x_ref_payco') || params.get('ref_payco') || params.get('x_id_factura') || '';
+    const amount = params.get('x_amount') || params.get('amount') || '';
+    const razonRechazo = params.get('x_response_reason_text') || '';
 
-    function show(stateId) {
-        ['loading', 'aprobado', 'pendiente', 'rechazado'].forEach(id => {
-            document.getElementById(id).classList.add('hidden');
-        });
-        document.getElementById(stateId).classList.remove('hidden');
-    }
-
-    // Si no tenemos referencia, mostramos pendiente
-    if (!factura && !refPayco) {
-        show('pendiente');
+    // Caso: no hay info de pago en query
+    if (!xResponse) {
+        mostrar('estado-sin-info');
         return;
     }
 
-    // Polling al backend hasta que la confirmación llegue (máx 15s, intervalo 2s)
-    let attempts = 0;
-    const maxAttempts = 8;
-    const interval = setInterval(async () => {
-        attempts++;
-        try {
-            // Buscamos por referencia en /api/pagos/estado vía endpoint helper
-            // (en producción tendríamos /api/pagos/por-referencia/{factura})
-            const me = await VO.me().catch(() => null);
-            if (!me) {
-                clearInterval(interval);
-                show('pendiente');
-                return;
-            }
-            // Por simplicidad ahora mostramos según parámetros directos de ePayco
-            const transactionState = params.get('x_response') || '';
-            if (transactionState.toLowerCase() === 'aceptada') {
-                document.getElementById('monto-aprobado').textContent = VO.formatCOPFull(params.get('x_amount') || 0);
-                document.getElementById('ref-aprobado').textContent = factura || refPayco || '—';
-                clearInterval(interval);
-                show('aprobado');
-            } else if (transactionState.toLowerCase() === 'rechazada' || transactionState.toLowerCase() === 'fallida') {
-                document.getElementById('motivo-rechazo').textContent =
-                    params.get('x_response_reason_text') || 'No pudimos procesar tu pago.';
-                clearInterval(interval);
-                show('rechazado');
-            } else if (attempts >= maxAttempts) {
-                clearInterval(interval);
-                show('pendiente');
-            }
-        } catch (e) {
-            if (attempts >= maxAttempts) {
-                clearInterval(interval);
-                show('pendiente');
-            }
+    // Setear referencia
+    if (refPayco) {
+        const elRef = document.getElementById('ref-aprobado');
+        if (elRef) elRef.textContent = refPayco;
+    }
+    if (amount) {
+        const elMonto = document.getElementById('monto-aprobado');
+        if (elMonto) elMonto.textContent = formatCOP(amount);
+    }
+
+    // Decidir según estado ePayco
+    if (xResponse === 'aceptada' || xResponse === 'aprobada' || xResponse === 'approved') {
+        mostrar('estado-aprobado');
+
+        // Ajustar CTA según si está logueado
+        const token = localStorage.getItem('vivero_access_token');
+        if (!token) {
+            const cta = document.getElementById('cta-aprobado');
+            cta.href = '/auth/ingresar';
+            cta.textContent = 'Iniciar sesión';
         }
-    }, 2000);
+    } else if (xResponse === 'pendiente' || xResponse === 'pending') {
+        mostrar('estado-pendiente');
+    } else if (xResponse === 'rechazada' || xResponse === 'fallida' || xResponse === 'rejected' || xResponse === 'failed') {
+        mostrar('estado-rechazado');
+        if (razonRechazo) {
+            document.getElementById('razon-rechazo').textContent = '"' + razonRechazo + '"';
+        }
+    } else {
+        // Estado desconocido: mostrar pendiente (más conservador)
+        mostrar('estado-pendiente');
+    }
 })();
 </script>
 </body>
