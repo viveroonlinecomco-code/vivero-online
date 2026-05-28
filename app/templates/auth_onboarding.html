@@ -206,6 +206,17 @@
                     <input id="f-nit" type="text" inputmode="numeric" placeholder="900123456"
                         class="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition">
                 </div>
+                <div>
+                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">WhatsApp de contacto *</label>
+                <div class="flex gap-2">
+                    <div class="flex items-center px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT shadow-sm">
+                        <span class="text-slate-700 dark:text-slate-300 font-semibold text-base">🇨🇴 +57</span>
+                    </div>
+                    <input id="f-whatsapp" type="tel" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="300 123 4567" required
+                        class="flex-1 px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition">
+                </div>
+                <p class="mt-2 text-xs text-slate-500">Lo usaremos para contactarte sobre tus pedidos.</p>
+            </div>
             </div>
 
             <!-- ============ COMPRADOR: Sobre tu trabajo ============ -->
@@ -456,9 +467,20 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
         // Payload alineado con los nombres de campo de OnboardingRequest:
         // rol, nombre, municipio, nit, habeas_data, nombre_vivero, empresa,
         // tipo_comprador, preferencias.
+        const whatsappDigits = document.getElementById('f-whatsapp').value.replace(/\D/g, '');
+        if (whatsappDigits.length !== 10) {
+            errorBox.textContent = 'El WhatsApp debe tener 10 dígitos (ej: 3001234567).';
+            errorBox.classList.remove('hidden');
+            submitBtn.disabled = false;
+            btnText.textContent = 'Finalizar registro';
+            btnSpinner.classList.add('hidden');
+            return;
+        }
+
         const payload = {
             rol: selectedRole,
             nombre: document.getElementById('f-nombre').value.trim(),
+            whatsapp: '+57' + whatsappDigits,
             municipio: document.getElementById('f-municipio').value,
             nit: document.getElementById('f-nit').value.trim() || null,
             habeas_data: true,
