@@ -1,4 +1,4 @@
-"""Schemas Pydantic para autenticación: OTP + onboarding."""
+"""Schemas Pydantic para autenticación: OTP por email + onboarding."""
 from typing import Optional, List, Literal
 from pydantic import BaseModel, Field, field_validator
 
@@ -12,13 +12,16 @@ TIPOS_COMPRADOR_VALIDOS = {
     "paisajista", "constructora", "conjunto", "empresa", "otro",
 }
 
+EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+WHATSAPP_PATTERN = r"^\+?\d{10,15}$"
+
 
 # ─────────────────── OTP SEND / VERIFY ───────────────────
 
 class OtpSendRequest(BaseModel):
-    """Request para enviar OTP por WhatsApp."""
-    whatsapp: str = Field(..., pattern=r"^\+?\d{10,15}$",
-                          description="Número internacional, con o sin '+'")
+    """Request para enviar OTP por email."""
+    email: str = Field(..., pattern=EMAIL_PATTERN,
+                       description="Email del usuario")
 
 
 class OtpSendResponse(BaseModel):
@@ -30,9 +33,9 @@ class OtpSendResponse(BaseModel):
 
 class OtpVerifyRequest(BaseModel):
     """Request para validar el código OTP recibido."""
-    whatsapp: str = Field(..., pattern=r"^\+?\d{10,15}$")
+    email: str = Field(..., pattern=EMAIL_PATTERN)
     code: str = Field(..., min_length=4, max_length=10,
-                      description="Código de 6 dígitos enviado por Twilio")
+                      description="Código de 6 dígitos enviado por email")
 
 
 class OtpVerifyResponse(BaseModel):
@@ -41,7 +44,7 @@ class OtpVerifyResponse(BaseModel):
     access_token: str
     refresh_token: str
     user_id: str
-    whatsapp: str
+    email: str
     needs_onboarding: bool
     rol: Optional[str] = None
 
@@ -49,15 +52,7 @@ class OtpVerifyResponse(BaseModel):
 # ─────────────────── ONBOARDING ───────────────────
 
 class CompradorPreferencias(BaseModel):
-    """Perfil enriquecido del comprador — schema soft (se persiste como JSONB).
-
-    Diseño deliberado: en vez de columnas estructuradas en `clientes`,
-    todo va anidado en `clientes.preferencias` JSONB. Esto permite al
-    equipo comercial agregar nuevas preguntas (interes_nativas,
-    volumen_mensual_estimado, frecuencia_compra, estilo_paisajismo, etc.)
-    sin migraciones SQL — solo se descomenta acá y se agrega el control
-    al template.
-    """
+    """Perfil enriquecido del comprador — schema soft (se persiste como JSONB)."""
     descripcion: Optional[str] = Field(None, max_length=280,
                                        description="Bio corta del comprador")
     web: Optional[str] = Field(None, max_length=200,
@@ -66,20 +61,12 @@ class CompradorPreferencias(BaseModel):
                                      description="Handle de IG, con o sin @")
     tipos_proyectos: List[str] = Field(
         default_factory=list,
-        description="Tipos de proyectos que maneja: residencial, comercial, "
-                    "urbano, institucional, otro",
+        description="Tipos de proyectos: residencial, comercial, urbano, institucional, otro",
     )
     municipios_operacion: List[str] = Field(
         default_factory=list,
         description="Municipios donde opera el comprador (no solo su sede)",
     )
-
-    # ── Campos futuros que el equipo comercial puede activar sin tocar DB.
-    #    Solo descomentar acá + sumar control al form en auth_onboarding.html ──
-    # interes_nativas: Optional[bool] = None
-    # volumen_mensual_estimado: Optional[Literal["bajo", "medio", "alto"]] = None
-    # frecuencia_compra: Optional[Literal["puntual", "mensual", "trimestral"]] = None
-    # estilo_paisajismo: Optional[str] = None
 
     @field_validator("tipos_proyectos")
     @classmethod
@@ -96,13 +83,14 @@ class CompradorPreferencias(BaseModel):
 class OnboardingRequest(BaseModel):
     """Datos para completar el onboarding tras OTP verificado.
 
-    Convención de nombres de campo: mantiene los que ya usabas en `flow.py`
-    (`nombre`, `empresa`, `tipo_comprador`) — no se renombran para no
-    romper el código existente.
+    NUEVO: el WhatsApp se captura acá (antes venía del token del login SMS).
+    Es el dato de contacto del negocio que tu bot usará después.
     """
     rol: Literal["viverista", "comprador"]
     nombre: str = Field(..., min_length=2, max_length=120,
                         description="Nombre completo del usuario")
+    whatsapp: str = Field(..., pattern=WHATSAPP_PATTERN,
+                          description="WhatsApp de contacto del negocio")
     municipio: str = Field(..., min_length=1,
                            description="Municipio de sede del usuario")
     nit: Optional[str] = Field(None, max_length=30,
@@ -129,8 +117,7 @@ class OnboardingRequest(BaseModel):
     def tipo_comprador_valido(cls, v):
         if v is not None and v not in TIPOS_COMPRADOR_VALIDOS:
             raise ValueError(
-                f"tipo_comprador inválido. "
-                f"Válidos: {sorted(TIPOS_COMPRADOR_VALIDOS)}"
+                f"tipo_comprador inválido. Válidos: {sorted(TIPOS_COMPRADOR_VALIDOS)}"
             )
         return v
 
@@ -143,11 +130,7 @@ class OnboardingRequest(BaseModel):
 
 
 class OnboardingResponse(BaseModel):
-    """Confirmación de onboarding completado.
-
-    Devuelve `vivero_id` para viveristas y `cliente_id` para compradores —
-    el otro queda en None.
-    """
+    """Confirmación de onboarding completado."""
     ok: bool
     rol: str
     vivero_id: Optional[int] = None
