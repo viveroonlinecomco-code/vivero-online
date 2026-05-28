@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<meta name="description" content="ViveroOnline · Suscripción al plan Inteligencia">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<script>
+    tailwind.config = {
+        darkMode: "class",
+        theme: { extend: {
+            colors: { "primary": "#325926", "background-light": "#f7f7f6", "background-dark": "#171d15" },
+            fontFamily: { "display": ["Inter", "sans-serif"] },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+        }},
+    }
+</script>
+<title>Suscripción · ViveroOnline</title>
+<script src="/static/js/vivero.js"></script>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100">
+
+<header class="border-b border-primary/10 bg-white/80 dark:bg-slate-900/80 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between">
+        <a href="/mi-cuenta/inteligencia" class="flex items-center gap-2">
+            <span class="material-symbols-outlined text-primary text-2xl">arrow_back</span>
+            <span class="font-bold tracking-tight">Volver a Inteligencia</span>
+        </a>
+    </div>
+</header>
+
+<main class="max-w-3xl mx-auto px-6 py-8">
+
+    <!-- Loading inicial -->
+    <div id="loading" class="text-center py-24">
+        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <p class="mt-4 text-slate-500 text-sm">Cargando tu suscripción…</p>
+    </div>
+
+    <!-- ═══ ESTADO 1: SUSCRIPCIÓN ACTIVA ═══ -->
+    <section id="estado-activa" class="hidden">
+        <div class="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-700 rounded-full text-xs font-bold mb-6">
+            <span class="material-symbols-outlined text-sm">verified</span>
+            PLAN INTELIGENCIA · ACTIVO
+        </div>
+
+        <h1 class="text-3xl md:text-4xl font-black tracking-tight mb-3">
+            Tu plan está activo
+        </h1>
+        <p class="text-slate-600 dark:text-slate-400 mb-8">
+            Gracias por confiar en ViveroOnline. Tu acceso al dashboard y al feed SECOP está habilitado.
+        </p>
+
+        <!-- Detalles -->
+        <div class="bg-white dark:bg-slate-900 border border-primary/10 rounded-lg p-6 shadow-sm mb-6 space-y-4">
+            <div class="flex items-center justify-between border-b border-primary/5 pb-3">
+                <span class="text-sm font-semibold text-slate-500">Plan</span>
+                <span class="font-bold capitalize" id="sub-plan">—</span>
+            </div>
+            <div class="flex items-center justify-between border-b border-primary/5 pb-3">
+                <span class="text-sm font-semibold text-slate-500">Monto mensual</span>
+                <span class="font-bold">$79.900 COP</span>
+            </div>
+            <div class="flex items-center justify-between border-b border-primary/5 pb-3">
+                <span class="text-sm font-semibold text-slate-500">Fecha de inicio</span>
+                <span id="sub-fecha-inicio">—</span>
+            </div>
+            <div class="flex items-center justify-between">
+                <span class="text-sm font-semibold text-slate-500">Próximo cobro</span>
+                <span id="sub-proximo-cobro" class="font-bold text-primary">—</span>
+            </div>
+        </div>
+
+        <!-- Acciones -->
+        <div class="flex flex-col sm:flex-row gap-3">
+            <a href="/mi-cuenta/inteligencia"
+               class="flex-1 text-center bg-primary hover:bg-primary/90 text-white font-bold py-3 px-6 rounded-full">
+                Ir al dashboard
+            </a>
+            <button id="btn-cancelar" type="button"
+                    class="flex-1 bg-white dark:bg-slate-800 border border-primary/20 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold py-3 px-6 rounded-full">
+                Cancelar suscripción
+            </button>
+        </div>
+
+        <p class="text-xs text-slate-400 mt-4 text-center">
+            Al cancelar mantenés acceso hasta tu próxima fecha de cobro.
+        </p>
+    </section>
+
+    <!-- ═══ ESTADO 2: SIN SUSCRIPCIÓN (ACTIVAR) ═══ -->
+    <section id="estado-inactiva" class="hidden">
+        <div class="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary rounded-full text-xs font-bold mb-6">
+            <span class="material-symbols-outlined text-sm">stars</span>
+            PLAN INTELIGENCIA
+        </div>
+
+        <h1 class="text-3xl md:text-4xl font-black tracking-tight mb-3">
+            Activá tu plan Inteligencia
+        </h1>
+        <p class="text-lg text-slate-600 dark:text-slate-400 mb-8">
+            Acceso al dashboard de mercado y al feed automático de licitaciones SECOP relevantes.
+        </p>
+
+        <!-- Features compactas -->
+        <ul class="space-y-3 mb-8">
+            <li class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-primary">check_circle</span>
+                <span>Dashboard de mercado en tiempo real (GMV, demanda, top especies)</span>
+            </li>
+            <li class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-primary">check_circle</span>
+                <span>Feed automático de oportunidades SECOP filtradas por IA</span>
+            </li>
+            <li class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-primary">check_circle</span>
+                <span>Filtros por especie y municipio</span>
+            </li>
+            <li class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-primary">check_circle</span>
+                <span>Cancelá cuando quieras. Sin permanencia.</span>
+            </li>
+        </ul>
+
+        <!-- Caja de precio + CTA -->
+        <div class="bg-primary text-white rounded-lg p-8 text-center">
+            <p class="text-sm uppercase tracking-widest mb-2 text-white/70">Precio</p>
+            <p class="text-5xl font-black mb-1">$79.900</p>
+            <p class="text-white/80 mb-6 text-sm">COP / mes · sin permanencia</p>
+            <button id="btn-pagar" type="button"
+                    class="inline-flex items-center gap-2 bg-white text-primary font-bold py-3 px-8 rounded-full hover:bg-white/90 transition">
+                <span class="material-symbols-outlined">credit_card</span>
+                Pagar ahora
+            </button>
+            <p class="text-white/70 text-xs mt-4">Pago seguro · Tarjetas y PSE</p>
+        </div>
+    </section>
+
+    <!-- ═══ MODAL: ePayco no configurado / WhatsApp ═══ -->
+    <div id="modal-whatsapp" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 rounded-lg max-w-md w-full p-6 shadow-xl">
+            <div class="flex items-start justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-3xl text-primary">schedule</span>
+                    <h3 class="text-xl font-black">Activación próxima</h3>
+                </div>
+                <button onclick="cerrarModal('modal-whatsapp')" class="text-slate-400 hover:text-slate-600">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <p class="text-slate-600 dark:text-slate-400 mb-6">
+                Estamos terminando de habilitar el pago con tarjeta y PSE.
+                Por ahora podés activar tu plan contactándonos por WhatsApp — te respondemos en menos de 1 hora.
+            </p>
+            <div class="space-y-3">
+                <a id="link-whatsapp" href="#" target="_blank" rel="noopener"
+                   class="block w-full text-center bg-[#25D366] hover:bg-[#1ebe57] text-white font-bold py-3 px-6 rounded-full">
+                    <span class="material-symbols-outlined align-middle mr-2">chat</span>
+                    Abrir WhatsApp
+                </a>
+                <button onclick="cerrarModal('modal-whatsapp')"
+                        class="block w-full text-center text-slate-500 font-semibold py-2">
+                    Cancelar
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══ MODAL: Confirmar cancelación ═══ -->
+    <div id="modal-cancelar" class="hidden fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-900 rounded-lg max-w-md w-full p-6 shadow-xl">
+            <div class="flex items-start justify-between mb-4">
+                <div class="flex items-center gap-3">
+                    <span class="material-symbols-outlined text-3xl text-red-500">warning</span>
+                    <h3 class="text-xl font-black">¿Cancelar tu suscripción?</h3>
+                </div>
+                <button onclick="cerrarModal('modal-cancelar')" class="text-slate-400 hover:text-slate-600">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <p class="text-slate-600 dark:text-slate-400 mb-6">
+                Mantenés acceso al plan Inteligencia hasta tu próxima fecha de cobro.
+                Después de esa fecha, perdés acceso al dashboard de mercado y al feed SECOP.
+            </p>
+            <div class="space-y-3">
+                <button id="btn-confirmar-cancelar" type="button"
+                        class="block w-full text-center bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-6 rounded-full">
+                    Sí, cancelar suscripción
+                </button>
+                <button onclick="cerrarModal('modal-cancelar')"
+                        class="block w-full text-center text-slate-500 font-semibold py-2">
+                    No, mantener activa
+                </button>
+            </div>
+        </div>
+    </div>
+
+</main>
+
+<script>
+// ─────────── HELPERS ───────────
+function formatFecha(fechaIso) {
+    if (!fechaIso) return '—';
+    try {
+        const d = new Date(fechaIso);
+        return d.toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric' });
+    } catch (e) {
+        return fechaIso;
+    }
+}
+
+function cerrarModal(id) {
+    document.getElementById(id).classList.add('hidden');
+}
+
+function abrirModal(id) {
+    document.getElementById(id).classList.remove('hidden');
+}
+
+// ─────────── INIT ───────────
+(async function init() {
+    if (!VO.requireAuth()) return;
+
+    try {
+        const data = await VO.api('/api/suscripcion/estado');
+        document.getElementById('loading').classList.add('hidden');
+
+        if (data.tiene_suscripcion) {
+            mostrarEstadoActiva(data);
+        } else {
+            mostrarEstadoInactiva();
+        }
+    } catch (err) {
+        console.error('Error cargando estado:', err);
+        document.getElementById('loading').classList.add('hidden');
+        mostrarEstadoInactiva(); // Conservador: mostrar activación
+    }
+})();
+
+function mostrarEstadoActiva(data) {
+    document.getElementById('estado-activa').classList.remove('hidden');
+    document.getElementById('sub-plan').textContent = data.plan || 'inteligencia';
+    document.getElementById('sub-fecha-inicio').textContent = formatFecha(data.fecha_inicio);
+    document.getElementById('sub-proximo-cobro').textContent = formatFecha(data.fecha_proximo_cobro);
+
+    // Wire-up: cancelar
+    document.getElementById('btn-cancelar').addEventListener('click', () => abrirModal('modal-cancelar'));
+    document.getElementById('btn-confirmar-cancelar').addEventListener('click', confirmarCancelacion);
+}
+
+function mostrarEstadoInactiva() {
+    document.getElementById('estado-inactiva').classList.remove('hidden');
+    document.getElementById('btn-pagar').addEventListener('click', iniciarPago);
+}
+
+async function iniciarPago() {
+    const btn = document.getElementById('btn-pagar');
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span> Procesando…';
+
+    try {
+        const data = await VO.api('/api/suscripcion/iniciar-pago', { method: 'POST' });
+        // Si llega acá, ePayco está configurado y nos dio un payload de checkout
+        // FUTURO: cargar el SDK de ePayco y abrir el modal de pago con data.checkout_payload
+        // Por ahora redirigimos a la página de resultado (que va a hacer polling del estado)
+        console.log('Checkout payload recibido:', data);
+        alert('Pago iniciado. Pronto integramos el modal ePayco. Por ahora consultá con el admin.');
+    } catch (err) {
+        btn.disabled = false;
+        btn.innerHTML = original;
+
+        // Detectamos error 503 epayco_not_configured
+        const msg = (err && err.message) ? err.message.toLowerCase() : '';
+        if (msg.includes('epayco_not_configured') || msg.includes('activacion') || msg.includes('activación') || msg.includes('whatsapp')) {
+            // Setear link de WhatsApp y abrir modal
+            const waUrl = 'https://wa.me/573102246099?text=' + encodeURIComponent('Hola, quiero suscribirme al plan Inteligencia de ViveroOnline');
+            document.getElementById('link-whatsapp').href = waUrl;
+            abrirModal('modal-whatsapp');
+        } else {
+            console.error('Error en iniciarPago:', err);
+            alert('No pudimos iniciar el pago. Intentá de nuevo o contactanos por WhatsApp.');
+        }
+    }
+}
+
+async function confirmarCancelacion() {
+    const btn = document.getElementById('btn-confirmar-cancelar');
+    btn.disabled = true;
+    btn.textContent = 'Procesando…';
+
+    try {
+        await VO.api('/api/suscripcion/cancelar', { method: 'POST' });
+        cerrarModal('modal-cancelar');
+        alert('Tu suscripción fue cancelada. Mantenés acceso hasta tu próxima fecha de cobro.');
+        // Recargar para reflejar nuevo estado
+        location.reload();
+    } catch (err) {
+        console.error('Error cancelando:', err);
+        alert('No pudimos cancelar. Contactanos por WhatsApp.');
+        btn.disabled = false;
+        btn.textContent = 'Sí, cancelar suscripción';
+    }
+}
+</script>
+</body>
+</html>

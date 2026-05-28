@@ -93,6 +93,13 @@ async def page_pagos_resultado():
 @router.get("/mi-cuenta/inteligencia", response_class=HTMLResponse)
 async def page_mi_cuenta_inteligencia():
     return _tpl("mi_cuenta_inteligencia.html")
+
+
+
+
+@router.get("/mi-cuenta/suscripcion", response_class=HTMLResponse)
+async def page_mi_cuenta_suscripcion():
+    return _tpl("mi_cuenta_suscripcion.html")
     
 # ─────────────────── LEGAL ───────────────────
 
