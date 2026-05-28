@@ -103,7 +103,7 @@ async def listar_marketplace_publico(
     Cualquier visitante puede ver: planta, foto, precio mayorista,
     stock, vivero (nombre), municipio, distancia.
 
-    NO se exponen contactos del vivero (teléfono, WhatsApp) — eso requiere
+    NO se exponen contactos del vivero (teléfono, WhatsApp, direccion) — eso requiere
     autenticación vía /api/marketplace.
     """
     db = admin()
@@ -181,16 +181,16 @@ async def detalle_item_publico(inventario_id: int):
     """Detalle público de un item del marketplace. SIN auth.
 
     Devuelve datos botánicos + precio + stock + vivero (nombre, ciudad, coords,
-    historia, foto principal, galería de fotos, dirección general).
+    historia, foto principal).
 
-    NO devuelve teléfono ni WhatsApp del vivero — para eso hay que loguearse.
+    NO devuelve direccion teléfono ni WhatsApp del vivero — para eso hay que loguearse.
     """
     db = admin()
     resp = db.table("inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, precio_detal, "
         "stock, unidad_medida, estado_planta, foto_ia_url, notas, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico, familia_botanica, requerimientos_ia, clima_ideal), "
-        "viveros(nombre_vivero, ciudad, latitud, longitud, historia, foto_url, fotos_galeria, direccion)"
+        "viveros(nombre_vivero, ciudad, historia, foto_url)"
     ).eq("inventario_id", inventario_id).limit(1).execute()
 
     if not resp.data:
