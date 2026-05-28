@@ -50,17 +50,17 @@
     <!-- Hero -->
     <div class="flex-1">
         <div class="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-6">
-            <span class="material-symbols-outlined text-primary text-3xl">sms</span>
+            <span class="material-symbols-outlined text-primary text-3xl">mail</span>
         </div>
 
         <h1 class="text-3xl font-black leading-tight tracking-tight mb-3">
             Verifica tu<br>
-            <span class="text-primary">WhatsApp</span>
+            <span class="text-primary">correo</span>
         </h1>
         <p class="text-slate-600 dark:text-slate-400 text-base mb-2">
             Ingresa el código de 6 dígitos que enviamos a
         </p>
-        <p id="phone-display" class="font-bold mb-10">+57 ···</p>
+        <p id="email-display" class="font-bold mb-10">···</p>
 
         <!-- OTP inputs -->
         <form id="otp-form" class="space-y-6">
@@ -92,14 +92,17 @@
                 Reenviar <span id="timer"></span>
             </button>
         </div>
+        <p class="mt-3 text-center text-xs text-slate-400">
+            Revisá tu carpeta de spam si no lo ves en unos minutos.
+        </p>
     </div>
 </div>
 
 <script>
-const whatsapp = sessionStorage.getItem('vivero_whatsapp');
-if (!whatsapp) window.location.href = '/auth/ingresar';
+const email = sessionStorage.getItem('vivero_email');
+if (!email) window.location.href = '/auth/ingresar';
 
-document.getElementById('phone-display').textContent = whatsapp || '';
+document.getElementById('email-display').textContent = email || '';
 
 const inputs = [...document.querySelectorAll('.otp-input')];
 const errorBox = document.getElementById('error-box');
@@ -122,14 +125,11 @@ function setLoading(loading) {
     btnSpinner.classList.toggle('hidden', !loading);
 }
 
-// Auto-advance + backspace navigation
 inputs.forEach((inp, i) => {
     inp.addEventListener('input', (e) => {
         const v = e.target.value.replace(/\D/g, '').slice(0,1);
         e.target.value = v;
         if (v && i < inputs.length - 1) inputs[i+1].focus();
-
-        // Auto-submit when all 6 digits are entered
         const code = inputs.map(x => x.value).join('');
         if (code.length === 6) form.dispatchEvent(new Event('submit'));
     });
@@ -167,17 +167,15 @@ form.addEventListener('submit', async (e) => {
         const res = await fetch('/api/auth/otp/verify', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ whatsapp, code }),
+            body: JSON.stringify({ email, code }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'Código inválido.');
 
-        // Guardar tokens
         localStorage.setItem('vivero_access_token', data.access_token);
         localStorage.setItem('vivero_refresh_token', data.refresh_token);
-        sessionStorage.removeItem('vivero_whatsapp');
+        sessionStorage.removeItem('vivero_email');
 
-        // Redirigir según si es nuevo usuario o no
         if (data.needs_onboarding) {
             window.location.href = '/auth/onboarding';
         } else if (data.rol === 'viverista') {
@@ -197,7 +195,6 @@ form.addEventListener('submit', async (e) => {
     }
 });
 
-// Resend timer (30s cooldown)
 let cooldown = 30;
 function tick() {
     if (cooldown > 0) {
@@ -217,7 +214,7 @@ resendBtn.addEventListener('click', async () => {
         await fetch('/api/auth/otp/send', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ whatsapp }),
+            body: JSON.stringify({ email }),
         });
         cooldown = 30;
         tick();
