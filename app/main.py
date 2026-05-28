@@ -46,11 +46,13 @@ app.add_middleware(
         "http://localhost:3000",
         "http://localhost:8000",
     ],
+    # Preview deployments de Vercel (cada rama/PR tiene URL distinta)
+    allow_origin_regex=r"https://vivero-online(-ia)?.*-elenas-projects-0d05ec06\.vercel\.app",
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
+    max_age=600,
 )
-
 # Montar /static/ para CSS, JS, imágenes
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
