@@ -44,33 +44,26 @@
             <span class="text-primary">Marketplace de Plantas IA</span>
         </h1>
         <p class="text-slate-600 dark:text-slate-400 text-base mb-10">
-            Ingresa tu número de WhatsApp para recibir un código de verificación.
+            Ingresa tu email para recibir un código de verificación.
         </p>
 
         <!-- Form -->
-        <form id="phone-form" class="space-y-5">
+        <form id="email-form" class="space-y-5">
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                    Número de WhatsApp
+                    Correo electrónico
                 </label>
-                <div class="flex gap-2">
-                    <div class="flex items-center px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT shadow-sm">
-                        <span class="text-slate-700 dark:text-slate-300 font-semibold text-base">🇨🇴 +57</span>
-                    </div>
-                    <input
-                        id="phone-input"
-                        type="tel"
-                        inputmode="numeric"
-                        autocomplete="tel-national"
-                        pattern="[0-9]{10}"
-                        maxlength="10"
-                        placeholder="300 123 4567"
-                        required
-                        class="flex-1 px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT text-base font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition"
-                    >
-                </div>
+                <input
+                    id="email-input"
+                    type="email"
+                    inputmode="email"
+                    autocomplete="email"
+                    placeholder="tucorreo@ejemplo.com"
+                    required
+                    class="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT text-base font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition"
+                >
                 <p class="mt-2 text-xs text-slate-500 dark:text-slate-500">
-                    Te enviaremos un código de 6 dígitos por WhatsApp.
+                    Te enviaremos un código de 6 dígitos a tu correo.
                 </p>
             </div>
 
@@ -102,13 +95,15 @@
 </div>
 
 <script>
-const form = document.getElementById('phone-form');
-const input = document.getElementById('phone-input');
+const form = document.getElementById('email-form');
+const input = document.getElementById('email-input');
 const errorBox = document.getElementById('error-box');
 const btn = document.getElementById('submit-btn');
 const btnText = document.getElementById('btn-text');
 const btnSpinner = document.getElementById('btn-spinner');
 const btnArrow = document.getElementById('btn-arrow');
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
 function showError(msg) {
     errorBox.textContent = msg;
@@ -127,26 +122,25 @@ form.addEventListener('submit', async (e) => {
     e.preventDefault();
     hideError();
 
-    const phone = input.value.replace(/\D/g, '');
-    if (phone.length !== 10) {
-        showError('El número debe tener 10 dígitos (ej: 3001234567).');
+    const email = input.value.trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) {
+        showError('Ingresá un email válido (ej: tucorreo@ejemplo.com).');
         return;
     }
 
-    const whatsapp = '+57' + phone;
     setLoading(true);
 
     try {
         const res = await fetch('/api/auth/otp/send', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ whatsapp }),
+            body: JSON.stringify({ email }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'No se pudo enviar el código.');
 
-        // Guarda el número para la siguiente pantalla
-        sessionStorage.setItem('vivero_whatsapp', whatsapp);
+        // Guarda el email para la siguiente pantalla
+        sessionStorage.setItem('vivero_email', email);
         window.location.href = '/auth/otp';
     } catch (err) {
         showError(err.message);
