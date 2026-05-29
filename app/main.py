@@ -1,6 +1,9 @@
 """Aplicación FastAPI principal - ViveroOnline.com.co"""
+from collections import defaultdict
 from pathlib import Path
-from fastapi import FastAPI
+from time import time
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,7 +24,6 @@ from app.routes import inteligencia as inteligencia_routes
 from app.routes import suscripcion as suscripcion_routes
 from app.routes import pages as pages_routes
 
-
 settings = get_settings()
 STATIC_DIR = Path(__file__).parent / "static"
 
@@ -35,7 +37,8 @@ app = FastAPI(
 )
 
 # Archivos estáticos (JS, CSS, imágenes del proyecto)
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+if STATIC_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # CORS - dominios permitidos
 app.add_middleware(
@@ -53,13 +56,80 @@ app.add_middleware(
     allow_headers=["*"],
     max_age=600,
 )
-# Montar /static/ para CSS, JS, imágenes
-if STATIC_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+
+# ─────────────────── RATE LIMITING ───────────────────
+# Protege endpoints sensibles contra abuso (bots, brute-force, spam).
+# Storage in-memory: funciona dentro de una instancia warm de Vercel.
+# Cold start resetea contadores. Suficiente para validación temprana.
+# Para tráfico serio: migrar a Upstash Redis (storage compartido).
+
+# (max_requests, window_seconds) por path
+RATE_LIMITS: dict[str, tuple[int, int]] = {
+    "/api/auth/otp/send":             (5, 60),   # 5/min  - evita spam de emails
+    "/api/auth/otp/verify":           (10, 60),  # 10/min - evita brute-force del código
+    "/api/suscripcion/iniciar-pago":  (5, 60),   # 5/min  - evita crear pagos basura
+    "/api/pagos/webhook/epayco":      (30, 60),  # 30/min - tolerante a reintentos legítimos
+}
+
+# Buckets en memoria: {ip:path -> [timestamps]}
+_rate_buckets: dict[str, list[float]] = defaultdict(list)
+_last_cleanup = [time()]  # mutable para mutar dentro del middleware
+
+
+def _client_ip(request: Request) -> str:
+    """Obtiene la IP del cliente respetando proxies de Vercel."""
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    limit = RATE_LIMITS.get(request.url.path)
+    if limit is None:
+        return await call_next(request)
+
+    max_req, window = limit
+    ip = _client_ip(request)
+    key = f"{ip}:{request.url.path}"
+    now = time()
+
+    # Limpieza de timestamps viejos del bucket actual
+    _rate_buckets[key] = [t for t in _rate_buckets[key] if now - t < window]
+
+    # Limpieza global cada 5 min para no acumular IPs muertas
+    if now - _last_cleanup[0] > 300:
+        for k in list(_rate_buckets.keys()):
+            if not _rate_buckets[k] or now - _rate_buckets[k][-1] > 600:
+                _rate_buckets.pop(k, None)
+        _last_cleanup[0] = now
+
+    if len(_rate_buckets[key]) >= max_req:
+        # Cuánto falta para que se libere el slot más viejo
+        retry_after = max(1, int(window - (now - _rate_buckets[key][0])))
+        return JSONResponse(
+            status_code=429,
+            content={
+                "ok": False,
+                "detail": "Demasiadas solicitudes. Esperá un momento e intentá de nuevo.",
+            },
+            headers={
+                "Retry-After": str(retry_after),
+                "X-RateLimit-Limit": str(max_req),
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Reset": str(int(now + retry_after)),
+            },
+        )
+
+    _rate_buckets[key].append(now)
+    response = await call_next(request)
+    response.headers["X-RateLimit-Limit"] = str(max_req)
+    response.headers["X-RateLimit-Remaining"] = str(max_req - len(_rate_buckets[key]))
+    return response
 
 
 # ─────────────────── HEALTH ───────────────────
-
 @app.get("/api/health", tags=["system"])
 async def health():
     return {
@@ -71,7 +141,6 @@ async def health():
 
 
 # ─────────────────── ROUTERS ───────────────────
-
 # API endpoints
 app.include_router(auth_routes.router)
 app.include_router(catalogo_routes.router)
@@ -86,13 +155,11 @@ app.include_router(suscripcion_routes.router)
 app.include_router(pagos_routes.router)
 app.include_router(public_routes.router)
 app.include_router(ingesta_routes.router)
-
 # HTML pages (deben ir al final para no capturar /api/*)
 app.include_router(pages_routes.router)
 
 
 # ─────────────────── ERROR HANDLER ───────────────────
-
 @app.exception_handler(Exception)
 async def unhandled_error(request, exc: Exception):
     """Fallback para que nunca devolvamos un 500 sin contexto."""
