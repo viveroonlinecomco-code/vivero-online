@@ -5,15 +5,19 @@ Uso:
     async def catalogo(user: UserContext = Depends(require_user)):
         ...
 
-Nota sobre el flujo de tokens:
-    El JWT se emite en `verify_otp` ANTES de que exista el perfil del usuario
-    (el onboarding viene después). Por eso un token recién emitido puede
-    no tener `rol`, `vivero_id` o `cliente_id` en sus claims.
+Filosofía: "DB > JWT" para rol y datos de perfil
+    El JWT lleva los claims del momento en que se emitió, pero el perfil
+    del usuario en BD puede cambiar después (ej. admin asciende a un
+    usuario, el usuario completa onboarding, etc.). Si confiamos solo en
+    el JWT, quedaríamos atados a información desactualizada hasta que el
+    cliente refresque el token.
 
-    Si eso pasa, `require_user` enriquece el UserContext con datos de la
-    tabla `perfiles` para no rechazar prematuramente requests legítimos.
-    La siguiente vez que el cliente refresque el token, ya vendrán incluidos
-    desde `app_metadata` (que se actualiza en `complete_onboarding`).
+    Por eso `require_user` SIEMPRE consulta la tabla `perfiles` y usa esos
+    valores cuando existen. El JWT funciona como fallback si la query
+    falla. Mismo patrón que `/api/auth/me`.
+
+    Costo: 1 query extra a Supabase por request autenticado (~20-50ms
+    sobre `perfiles.id` que es primary key indexada).
 """
 from __future__ import annotations
 
@@ -33,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class UserContext:
-    """Contexto del usuario autenticado, extraído del JWT (+DB fallback)."""
+    """Contexto del usuario autenticado, con override desde DB."""
     user_id: str
     whatsapp: str
     rol: Optional[str]
@@ -50,9 +54,10 @@ async def require_user(
 ) -> UserContext:
     """Requiere un JWT válido. Lanza 401 si no hay o si es inválido.
 
-    Si el JWT no trae `rol` (token pre-onboarding o hook personalizado que
-    no lo expone en top-level), enriquece el UserContext con datos de la
-    tabla `perfiles`. La query DB solo corre cuando hace falta.
+    Después de validar el JWT, SIEMPRE consulta la tabla `perfiles` y
+    sobreescribe los valores del JWT con los de la BD (cuando existen).
+    Así el rol refleja el estado actual del usuario, no el que tenía
+    cuando se emitió el token.
     """
     if not creds or not creds.credentials:
         raise HTTPException(
@@ -71,7 +76,7 @@ async def require_user(
     app_meta = payload.get("app_metadata") or {}
     user_meta = payload.get("user_metadata") or {}
 
-    # Extraer claims: busca tanto en top-level (custom hook) como en app_metadata
+    # 1. Extraer claims del JWT como base (fallback si la BD falla)
     rol = payload.get("rol") or app_meta.get("rol")
     vivero_id = payload.get("vivero_id") or app_meta.get("vivero_id")
     cliente_id = payload.get("cliente_id") or app_meta.get("cliente_id")
@@ -82,36 +87,42 @@ async def require_user(
         or payload.get("phone", "")
     )
 
-    # Fallback DB si el JWT no expone rol — pasa cuando el token fue emitido
-    # antes del onboarding (verify_otp → token, después → complete_onboarding).
-    # Esto evita el 403 prematuro hasta que el cliente refresque el token.
-    if not rol:
-        try:
-            from app.services.supabase import admin
-            db = admin()
-            resp = db.table("perfiles").select(
-                "rol, vivero_id, cliente_id, whatsapp_numero"
-            ).eq("id", user_id).limit(1).execute()
-            if resp.data:
-                p = resp.data[0]
-                rol = p.get("rol")
-                if vivero_id is None:
-                    vivero_id = p.get("vivero_id")
-                if cliente_id is None:
-                    cliente_id = p.get("cliente_id")
-                if not whatsapp:
-                    whatsapp = p.get("whatsapp_numero") or ""
-                if rol:
-                    logger.info(
-                        "UserContext enriquecido desde DB para user_id=%s "
-                        "(JWT sin rol; DB rol=%s, vivero_id=%s, cliente_id=%s)",
-                        user_id, rol, vivero_id, cliente_id,
-                    )
-        except Exception as e:
-            logger.warning(
-                "No se pudo enriquecer UserContext desde DB para %s: %s",
-                user_id, e,
-            )
+    # 2. Consultar BD y sobreescribir si hay datos. La BD es source-of-truth;
+    # el JWT queda como fallback por si la query falla (proyecto pausado, red).
+    try:
+        from app.services.supabase import admin
+        db = admin()
+        resp = db.table("perfiles").select(
+            "rol, vivero_id, cliente_id, whatsapp_numero"
+        ).eq("id", user_id).limit(1).execute()
+        if resp.data:
+            p = resp.data[0]
+            db_rol = p.get("rol")
+            db_vivero_id = p.get("vivero_id")
+            db_cliente_id = p.get("cliente_id")
+            db_whatsapp = p.get("whatsapp_numero")
+
+            # Log si hay discrepancia (útil para detectar JWTs desactualizados)
+            if rol and db_rol and rol != db_rol:
+                logger.info(
+                    "Rol del JWT (%s) difiere de DB (%s) para user_id=%s — usando DB",
+                    rol, db_rol, user_id,
+                )
+
+            # DB > JWT: solo sobreescribir si la BD tiene valor
+            if db_rol:
+                rol = db_rol
+            if db_vivero_id is not None:
+                vivero_id = db_vivero_id
+            if db_cliente_id is not None:
+                cliente_id = db_cliente_id
+            if db_whatsapp:
+                whatsapp = db_whatsapp
+    except Exception as e:
+        logger.warning(
+            "No se pudo enriquecer UserContext desde DB para %s (usando JWT): %s",
+            user_id, e,
+        )
 
     return UserContext(
         user_id=user_id,
