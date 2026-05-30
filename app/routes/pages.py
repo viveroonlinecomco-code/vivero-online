@@ -105,7 +105,11 @@ async def page_mi_cuenta_inteligencia():
 @router.get("/mi-cuenta/suscripcion", response_class=HTMLResponse)
 async def page_mi_cuenta_suscripcion():
     return _tpl("mi_cuenta_suscripcion.html")
-    
+
+@router.get("/checkout/{cotizacion_id}", response_class=HTMLResponse)
+async def app_checkout(cotizacion_id: int):
+    return _tpl("checkout.html")
+
 # ─────────────────── LEGAL ───────────────────
 
 @router.get("/habeas-data", response_class=HTMLResponse)

@@ -24,6 +24,7 @@ from app.routes import inteligencia as inteligencia_routes
 from app.routes import suscripcion as suscripcion_routes
 from app.routes import pages as pages_routes
 from app.routes.admin_ops import router as admin_ops_router
+from app.routes.pedidos import router as pedidos_router
 
 settings = get_settings()
 STATIC_DIR = Path(__file__).parent / "static"
@@ -157,6 +158,7 @@ app.include_router(pagos_routes.router)
 app.include_router(public_routes.router)
 app.include_router(ingesta_routes.router)
 app.include_router(admin_ops_router)
+app.include_router(pedidos_router)
 # HTML pages (deben ir al final para no capturar /api/*)
 app.include_router(pages_routes.router)
 

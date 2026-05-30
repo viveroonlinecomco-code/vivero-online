@@ -1,231 +1,255 @@
 <!DOCTYPE html>
-
 <html lang="es"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
 <script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    colors: {
-                        "primary": "#325926",
-                        "background-light": "#f7f7f6",
-                        "background-dark": "#171d15",
-                    },
-                    fontFamily: {
-                        "display": ["Inter"]
-                    },
-                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+    tailwind.config = {
+        darkMode: "class",
+        theme: {
+            extend: {
+                colors: {
+                    "primary": "#325926",
+                    "background-light": "#f7f7f6",
+                    "background-dark": "#171d15",
                 },
+                fontFamily: { "display": ["Inter"] },
+                borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
             },
-        }
-    </script>
-<title>Mi Vivero · ViveroOnline</title>
-<style>
-    body {
-      min-height: max(884px, 100dvh);
+        },
     }
-  </style>
-  </head>
+</script>
+<title>Mi Vivero · ViveroOnline</title>
+<style>body { min-height: max(884px, 100dvh); }</style>
+</head>
 <body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 min-h-screen pb-24">
-<!-- Header Section -->
+
+<!-- Header -->
 <header class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-primary/10">
-<div class="flex items-center p-4 justify-between max-w-lg mx-auto w-full">
-<div class="text-primary flex size-10 shrink-0 items-center">
-<span class="material-symbols-outlined text-3xl">psychology_alt</span>
-</div>
-<h1 class="text-slate-900 dark:text-slate-100 text-xl font-bold leading-tight tracking-tight flex-1 ml-3">Mi Vivero</h1>
-<div class="flex w-12 items-center justify-end">
-<button onclick="if(confirm('¿Cerrar sesión?')) VO.logout()" title="Cerrar sesión" class="flex items-center justify-center rounded-full h-10 w-10 bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
-<span class="material-symbols-outlined">logout</span>
-</button>
-</div>
-</div>
+    <div class="flex items-center p-4 justify-between max-w-lg mx-auto w-full">
+        <div class="text-primary flex size-10 shrink-0 items-center">
+            <span class="material-symbols-outlined text-3xl">psychology_alt</span>
+        </div>
+        <h1 class="text-slate-900 dark:text-slate-100 text-xl font-bold leading-tight tracking-tight flex-1 ml-3">Mi Vivero</h1>
+        <div class="flex w-12 items-center justify-end">
+            <button onclick="if(confirm('¿Cerrar sesión?')) VO.logout()" title="Cerrar sesión"
+                class="flex items-center justify-center rounded-full h-10 w-10 bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
+                <span class="material-symbols-outlined">logout</span>
+            </button>
+        </div>
+    </div>
 </header>
+
 <main class="max-w-lg mx-auto w-full px-4 pt-6 space-y-6">
-<!-- Stats Grid — KPIs cableados a APIs reales -->
-<section class="grid grid-cols-2 gap-4">
-<div class="flex flex-col gap-2 rounded-xl p-5 border border-primary/10 bg-white dark:bg-slate-900 shadow-sm">
-<p class="text-slate-500 dark:text-slate-400 text-sm font-medium">Inventario Total</p>
-<p class="text-slate-900 dark:text-slate-100 text-2xl font-bold"><span data-vo="inventario-total">0</span></p>
-<p class="text-slate-400 text-xs">Unidades en stock</p>
-</div>
-<div class="flex flex-col gap-2 rounded-xl p-5 border border-primary/10 bg-white dark:bg-slate-900 shadow-sm">
-<p class="text-slate-500 dark:text-slate-400 text-sm font-medium">Ventas del Mes</p>
-<p class="text-slate-900 dark:text-slate-100 text-2xl font-bold"><span data-vo="ventas-mes">$0</span></p>
-<p class="text-slate-400 text-xs">Confirmadas y pagadas</p>
-</div>
-</section>
-<!-- Predicción de Demanda -->
-<section class="space-y-3">
-<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold">Predicción de Demanda</h2>
-<div class="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-6">
-<div class="flex items-start gap-4">
-<span class="material-symbols-outlined text-primary text-3xl">monitoring</span>
-<div class="flex-1">
-<h3 class="font-bold text-slate-800 dark:text-slate-100">Predicción IA por temporada</h3>
-<p class="text-sm text-slate-500 mt-1">Próximamente vas a ver qué plantas se proyectan con alta demanda según el clima de la Sabana de Bogotá, basado en histórico de ventas. Mientras tanto, consultá al asistente IA desde el botón de cámara.</p>
-</div>
-</div>
-</div>
-</section>
-<!-- Mi Inventario — cards editables al tocar el botón ✏️ -->
-<section class="space-y-3">
-<div class="flex items-center justify-between">
-<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold">Mi Inventario</h2>
-<a href="/viverista/identificar" class="text-primary text-sm font-semibold">Agregar planta</a>
-</div>
-<div data-vo="lista-inventario" class="space-y-3">
-<div class="text-center py-6 text-slate-500 text-sm">
-<span class="material-symbols-outlined animate-spin">progress_activity</span>
-<p class="mt-2">Cargando inventario…</p>
-</div>
-</div>
-</section>
 
-<!-- Perfil del vivero — foto principal + galería + historia + dirección -->
-<section class="space-y-3">
-<div class="flex items-center justify-between">
-<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold">Perfil de mi vivero</h2>
-<span class="text-xs text-slate-400">Visible en el marketplace</span>
-</div>
-<div class="bg-white dark:bg-slate-900 rounded-xl border border-primary/10 shadow-sm p-5 space-y-4">
+    <!-- Stats Grid -->
+    <section class="grid grid-cols-2 gap-4">
+        <div class="flex flex-col gap-2 rounded-xl p-5 border border-primary/10 bg-white dark:bg-slate-900 shadow-sm">
+            <p class="text-slate-500 dark:text-slate-400 text-sm font-medium">Inventario Total</p>
+            <p class="text-slate-900 dark:text-slate-100 text-2xl font-bold"><span data-vo="inventario-total">0</span></p>
+            <p class="text-slate-400 text-xs">Unidades en stock</p>
+        </div>
+        <div class="flex flex-col gap-2 rounded-xl p-5 border border-primary/10 bg-white dark:bg-slate-900 shadow-sm">
+            <p class="text-slate-500 dark:text-slate-400 text-sm font-medium">Ventas del Mes</p>
+            <p class="text-slate-900 dark:text-slate-100 text-2xl font-bold"><span data-vo="ventas-mes">$0</span></p>
+            <p class="text-slate-400 text-xs">Confirmadas y pagadas</p>
+        </div>
+    </section>
 
-<!-- Foto principal del vivero (portada) -->
-<div class="space-y-2">
-<label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Foto principal (portada)</label>
-<div class="relative">
-<div data-vo="foto-preview" class="w-full h-40 rounded-lg bg-primary/5 bg-cover bg-center flex items-center justify-center border-2 border-dashed border-primary/20 overflow-hidden">
-<span data-vo="foto-placeholder" class="material-symbols-outlined text-primary/40 text-5xl">add_a_photo</span>
-<div data-vo="foto-spinner" class="hidden absolute inset-0 bg-black/40 flex items-center justify-center">
-<span class="material-symbols-outlined animate-spin text-white text-4xl">progress_activity</span>
-</div>
-</div>
-<input type="file" data-vo="foto-input" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer" title="Subir foto del vivero"/>
-</div>
-<p class="text-xs text-slate-500">Click en la imagen para subir. Máx 10MB. Es la portada de tu vivero en el marketplace.</p>
-</div>
+    <!-- ══════════════════════════════════════════════
+         PEDIDOS PENDIENTES — sección nueva
+         ══════════════════════════════════════════════ -->
+    <section class="space-y-3" id="seccion-pedidos">
+        <div class="flex items-center justify-between">
+            <h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold flex items-center gap-2">
+                Pedidos pendientes
+                <span id="badge-pedidos" class="hidden text-[10px] bg-amber-400 text-white font-bold px-2 py-0.5 rounded-full"></span>
+            </h2>
+            <button onclick="cargarPedidosPendientes()"
+                class="text-xs text-primary font-semibold hover:underline flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm">refresh</span>
+                Refrescar
+            </button>
+        </div>
+        <div id="lista-pedidos">
+            <div class="text-center py-4 text-slate-400 text-sm">
+                <span class="material-symbols-outlined animate-spin">progress_activity</span>
+                <p class="mt-1 text-xs">Cargando pedidos…</p>
+            </div>
+        </div>
+    </section>
 
-<!-- Galería de fotos adicionales (max 3) -->
-<div class="space-y-2">
-<label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Galería (hasta 3 fotos adicionales)</label>
-<div data-vo="galeria-container" class="grid grid-cols-3 gap-2">
-<!-- Slots renderizados dinámicamente por JS -->
-<div class="aspect-square rounded-lg bg-primary/5 animate-pulse"></div>
-<div class="aspect-square rounded-lg bg-primary/5 animate-pulse"></div>
-<div class="aspect-square rounded-lg bg-primary/5 animate-pulse"></div>
-</div>
-<p class="text-xs text-slate-500">Compartí fotos del invernadero, plantas, equipo de trabajo, etc.</p>
-</div>
+    <!-- Predicción de Demanda -->
+    <section class="space-y-3">
+        <h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold">Predicción de Demanda</h2>
+        <div class="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-6">
+            <div class="flex items-start gap-4">
+                <span class="material-symbols-outlined text-primary text-3xl">monitoring</span>
+                <div class="flex-1">
+                    <h3 class="font-bold text-slate-800 dark:text-slate-100">Predicción IA por temporada</h3>
+                    <p class="text-sm text-slate-500 mt-1">Próximamente vas a ver qué plantas se proyectan con alta demanda según el clima de la Sabana de Bogotá. Mientras tanto, consultá al asistente IA desde el botón de cámara.</p>
+                </div>
+            </div>
+        </div>
+    </section>
 
-<div class="space-y-2">
-<label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Historia del vivero</label>
-<textarea data-vo="historia-input" rows="5" maxlength="2000" placeholder="Contale a tus compradores quién sos, hace cuántos años producís, en qué especies te especializás, qué prácticas usás (orgánico, hidropónico, etc)..." class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"></textarea>
-<p class="text-xs text-slate-500 text-right"><span data-vo="historia-charcount">0</span>/2000 caracteres</p>
-</div>
+    <!-- Mi Inventario -->
+    <section class="space-y-3">
+        <div class="flex items-center justify-between">
+            <h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold">Mi Inventario</h2>
+            <a href="/viverista/identificar" class="text-primary text-sm font-semibold">Agregar planta</a>
+        </div>
+        <div data-vo="lista-inventario" class="space-y-3">
+            <div class="text-center py-6 text-slate-500 text-sm">
+                <span class="material-symbols-outlined animate-spin">progress_activity</span>
+                <p class="mt-2">Cargando inventario…</p>
+            </div>
+        </div>
+    </section>
 
-<div class="space-y-2">
-<label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Dirección</label>
-<input type="text" data-vo="direccion-input" maxlength="500" placeholder="Ej: Vereda Canelón, Km 2 vía Cajicá-Tabio" class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"/>
-<p class="text-xs text-slate-500">Visible para compradores. Útil para coordinar entregas.</p>
-</div>
+    <!-- Perfil del vivero -->
+    <section class="space-y-3">
+        <div class="flex items-center justify-between">
+            <h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold">Perfil de mi vivero</h2>
+            <span class="text-xs text-slate-400">Visible en el marketplace</span>
+        </div>
+        <div class="bg-white dark:bg-slate-900 rounded-xl border border-primary/10 shadow-sm p-5 space-y-4">
 
-<button data-vo="guardar-perfil" class="w-full py-3 bg-primary text-white rounded-full font-semibold hover:bg-primary/90 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-<span class="material-symbols-outlined">save</span>
-<span>Guardar perfil</span>
-</button>
-</div>
-</section>
+            <!-- Foto principal -->
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Foto principal (portada)</label>
+                <div class="relative">
+                    <div data-vo="foto-preview" class="w-full h-40 rounded-lg bg-primary/5 bg-cover bg-center flex items-center justify-center border-2 border-dashed border-primary/20 overflow-hidden">
+                        <span data-vo="foto-placeholder" class="material-symbols-outlined text-primary/40 text-5xl">add_a_photo</span>
+                        <div data-vo="foto-spinner" class="hidden absolute inset-0 bg-black/40 flex items-center justify-center">
+                            <span class="material-symbols-outlined animate-spin text-white text-4xl">progress_activity</span>
+                        </div>
+                    </div>
+                    <input type="file" data-vo="foto-input" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer" title="Subir foto del vivero"/>
+                </div>
+                <p class="text-xs text-slate-500">Click en la imagen para subir. Máx 10MB.</p>
+            </div>
+
+            <!-- Galería -->
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Galería (hasta 3 fotos adicionales)</label>
+                <div data-vo="galeria-container" class="grid grid-cols-3 gap-2">
+                    <div class="aspect-square rounded-lg bg-primary/5 animate-pulse"></div>
+                    <div class="aspect-square rounded-lg bg-primary/5 animate-pulse"></div>
+                    <div class="aspect-square rounded-lg bg-primary/5 animate-pulse"></div>
+                </div>
+                <p class="text-xs text-slate-500">Compartí fotos del invernadero, plantas, equipo de trabajo, etc.</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Historia del vivero</label>
+                <textarea data-vo="historia-input" rows="5" maxlength="2000"
+                    placeholder="Contale a tus compradores quién sos, hace cuántos años producís, en qué especies te especializás..."
+                    class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"></textarea>
+                <p class="text-xs text-slate-500 text-right"><span data-vo="historia-charcount">0</span>/2000 caracteres</p>
+            </div>
+
+            <div class="space-y-2">
+                <label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Dirección</label>
+                <input type="text" data-vo="direccion-input" maxlength="500" placeholder="Ej: Vereda Canelón, Km 2 vía Cajicá-Tabio"
+                    class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"/>
+                <p class="text-xs text-slate-500">Visible para compradores con suscripción activa.</p>
+            </div>
+
+            <button data-vo="guardar-perfil"
+                class="w-full py-3 bg-primary text-white rounded-full font-semibold hover:bg-primary/90 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                <span class="material-symbols-outlined">save</span>
+                <span>Guardar perfil</span>
+            </button>
+        </div>
+    </section>
 </main>
 
-<!-- Floating Action Button -->
-<button data-vo="fab-camara" class="fixed bottom-24 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/40 hover:scale-105 active:scale-95 transition-transform z-40">
-<span class="material-symbols-outlined text-3xl">photo_camera</span>
+<!-- FAB cámara -->
+<button data-vo="fab-camara"
+    class="fixed bottom-24 right-6 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-white shadow-lg shadow-primary/40 hover:scale-105 active:scale-95 transition-transform z-40">
+    <span class="material-symbols-outlined text-3xl">photo_camera</span>
 </button>
 
-<!-- Bottom Navigation Bar -->
+<!-- Bottom Nav -->
 <nav class="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-950 border-t border-primary/10 px-4 pb-6 pt-2 z-40">
-<div class="max-w-lg mx-auto flex justify-around">
-<a class="flex flex-col items-center gap-1 text-primary" href="/viverista">
-<span class="material-symbols-outlined">grid_view</span>
-<p class="text-[10px] font-bold">Inicio</p>
-</a>
-<a class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500" href="/viverista/identificar">
-<span class="material-symbols-outlined">potted_plant</span>
-<p class="text-[10px] font-medium">Inventario</p>
-</a>
-<a class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500" href="/marketplace">
-<span class="material-symbols-outlined">storefront</span>
-<p class="text-[10px] font-medium">Marketplace</p>
-</a>
-<a class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500" href="https://mail.google.com/mail/?view=cm&amp;fs=1&amp;to=viveroonline.com.co@gmail.com&amp;su=Soporte%20ViveroOnline" target="_blank" rel="noopener noreferrer">
-<span class="material-symbols-outlined">support_agent</span>
-<p class="text-[10px] font-medium">Soporte</p>
-</a>
-</div>
+    <div class="max-w-lg mx-auto flex justify-around">
+        <a class="flex flex-col items-center gap-1 text-primary" href="/viverista">
+            <span class="material-symbols-outlined">grid_view</span>
+            <p class="text-[10px] font-bold">Inicio</p>
+        </a>
+        <a class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500" href="/viverista/identificar">
+            <span class="material-symbols-outlined">potted_plant</span>
+            <p class="text-[10px] font-medium">Inventario</p>
+        </a>
+        <a class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500" href="/marketplace">
+            <span class="material-symbols-outlined">storefront</span>
+            <p class="text-[10px] font-medium">Marketplace</p>
+        </a>
+        <a class="flex flex-col items-center gap-1 text-slate-400 dark:text-slate-500"
+            href="https://mail.google.com/mail/?view=cm&fs=1&to=viveroonline.com.co@gmail.com&su=Soporte%20ViveroOnline"
+            target="_blank" rel="noopener noreferrer">
+            <span class="material-symbols-outlined">support_agent</span>
+            <p class="text-[10px] font-medium">Soporte</p>
+        </a>
+    </div>
 </nav>
 
 <!-- Modal Editar Inventario -->
 <div data-vo="modal-editar" class="hidden fixed inset-0 bg-black/50 z-50 items-end sm:items-center justify-center p-0 sm:p-4">
-<div class="bg-white dark:bg-slate-900 rounded-t-xl sm:rounded-xl max-w-md w-full max-h-[92vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
-
-<div class="flex items-center justify-between">
-<h3 class="text-lg font-bold">Editar planta</h3>
-<button data-vo="modal-cerrar" class="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-full w-8 h-8 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition">
-<span class="material-symbols-outlined">close</span>
-</button>
-</div>
-
-<div class="flex items-center gap-3">
-<div data-vo="modal-foto" class="w-16 h-16 rounded-lg bg-primary/10 bg-cover bg-center flex-shrink-0"></div>
-<div class="flex-1 min-w-0">
-<p data-vo="modal-nombre" class="font-semibold truncate"></p>
-<p data-vo="modal-altura" class="text-xs text-slate-500"></p>
-</div>
-</div>
-
-<div class="space-y-3">
-<div>
-<label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">Stock disponible</label>
-<input type="number" min="0" data-vo="modal-stock" class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"/>
-</div>
-<div>
-<label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">Precio mayorista (COP)</label>
-<input type="number" min="0" step="100" data-vo="modal-precio" class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"/>
-</div>
-<div>
-<label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">Estado</label>
-<select data-vo="modal-estado" class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
-<option value="disponible">Disponible (visible en marketplace)</option>
-<option value="agotado">Agotado (oculto temporalmente)</option>
-<option value="reservado">Reservado</option>
-<option value="en_crecimiento">En crecimiento</option>
-</select>
-</div>
-</div>
-
-<div class="flex gap-2 pt-2">
-<button data-vo="modal-cancelar" class="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-full font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 transition">Cancelar</button>
-<button data-vo="modal-guardar" class="flex-1 py-3 bg-primary text-white rounded-full font-semibold hover:bg-primary/90 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1">
-<span class="material-symbols-outlined text-base">save</span>
-<span>Guardar</span>
-</button>
-</div>
-
-<button data-vo="modal-eliminar" class="w-full py-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-sm font-medium flex items-center justify-center gap-1 transition disabled:opacity-50 disabled:cursor-not-allowed">
-<span class="material-symbols-outlined text-base">delete</span>
-<span>Eliminar item del inventario</span>
-</button>
-
-</div>
+    <div class="bg-white dark:bg-slate-900 rounded-t-xl sm:rounded-xl max-w-md w-full max-h-[92vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
+        <div class="flex items-center justify-between">
+            <h3 class="text-lg font-bold">Editar planta</h3>
+            <button data-vo="modal-cerrar" class="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-full w-8 h-8 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="flex items-center gap-3">
+            <div data-vo="modal-foto" class="w-16 h-16 rounded-lg bg-primary/10 bg-cover bg-center flex-shrink-0"></div>
+            <div class="flex-1 min-w-0">
+                <p data-vo="modal-nombre" class="font-semibold truncate"></p>
+                <p data-vo="modal-altura" class="text-xs text-slate-500"></p>
+            </div>
+        </div>
+        <div class="space-y-3">
+            <div>
+                <label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">Stock disponible</label>
+                <input type="number" min="0" data-vo="modal-stock"
+                    class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"/>
+            </div>
+            <div>
+                <label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">Precio mayorista (COP)</label>
+                <input type="number" min="0" step="100" data-vo="modal-precio"
+                    class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"/>
+            </div>
+            <div>
+                <label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">Estado</label>
+                <select data-vo="modal-estado"
+                    class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <option value="disponible">Disponible (visible en marketplace)</option>
+                    <option value="agotado">Agotado (oculto temporalmente)</option>
+                    <option value="reservado">Reservado</option>
+                    <option value="en_crecimiento">En crecimiento</option>
+                </select>
+            </div>
+        </div>
+        <div class="flex gap-2 pt-2">
+            <button data-vo="modal-cancelar" class="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-full font-semibold hover:bg-slate-200 dark:hover:bg-slate-600 transition">Cancelar</button>
+            <button data-vo="modal-guardar" class="flex-1 py-3 bg-primary text-white rounded-full font-semibold hover:bg-primary/90 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1">
+                <span class="material-symbols-outlined text-base">save</span>
+                <span>Guardar</span>
+            </button>
+        </div>
+        <button data-vo="modal-eliminar" class="w-full py-2.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg text-sm font-medium flex items-center justify-center gap-1 transition disabled:opacity-50 disabled:cursor-not-allowed">
+            <span class="material-symbols-outlined text-base">delete</span>
+            <span>Eliminar item del inventario</span>
+        </button>
+    </div>
 </div>
 
 <script src="/static/js/vivero.js"></script>
-
 <script>
 if (!VO.requireAuth()) throw new Error('auth');
 
@@ -233,13 +257,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
         const me = await VO.me();
 
-        // Guard principal: solo viverista o admin pueden ver el dashboard
         if (me.rol !== 'viverista' && me.rol !== 'admin') {
             window.location.href = me.rol === 'comprador' ? '/comprador' : '/';
             return;
         }
 
-        // Cablear FAB de cámara con doble verificación de rol
         const fab = document.querySelector('[data-vo="fab-camara"]');
         if (fab) {
             fab.addEventListener('click', () => {
@@ -251,7 +273,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // Cargar catálogo, transacciones y perfil del vivero en paralelo
         const [cat, txn, perfil] = await Promise.all([
             VO.api('/api/catalogo').catch(() => ({ items: [] })),
             VO.api('/api/transacciones').catch(() => ({ items: [] })),
@@ -272,7 +293,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const vm = document.querySelector('[data-vo="ventas-mes"]');
         if (vm) vm.textContent = VO.formatCOPFull(ventasMes);
 
-        // Lista de inventario con botón ✏️ por card
+        // Lista de inventario
         const list = document.querySelector('[data-vo="lista-inventario"]');
         if (list) {
             if ((cat.items || []).length === 0) {
@@ -321,7 +342,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                             </div>
                             <div class="flex flex-col items-end gap-1.5 shrink-0">
                                 <p class="font-bold text-primary text-sm whitespace-nowrap">${VO.formatCOPFull(i.precio_mayorista || 0)}</p>
-                                <button data-vo="editar-item" data-item="${itemJSON}" class="text-primary hover:bg-primary/10 rounded-full w-9 h-9 flex items-center justify-center transition" title="Editar">
+                                <button data-vo="editar-item" data-item="${itemJSON}"
+                                    class="text-primary hover:bg-primary/10 rounded-full w-9 h-9 flex items-center justify-center transition" title="Editar">
                                     <span class="material-symbols-outlined text-lg">edit</span>
                                 </button>
                             </div>
@@ -331,9 +353,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
 
-        // ──────────────────────────────────────────────────
-        // Modal Editar Inventario
-        // ──────────────────────────────────────────────────
+        // ── Modal Editar Inventario ──────────────────────────
 
         const modal = document.querySelector('[data-vo="modal-editar"]');
         const modalNombre = document.querySelector('[data-vo="modal-nombre"]');
@@ -346,21 +366,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         const btnEliminar = document.querySelector('[data-vo="modal-eliminar"]');
         const btnCerrar = document.querySelector('[data-vo="modal-cerrar"]');
         const btnCancelar = document.querySelector('[data-vo="modal-cancelar"]');
-
         let currentItem = null;
 
         function openModal(item) {
             currentItem = item;
             if (modalNombre) modalNombre.textContent = item.nombre_comun || 'Planta';
-            if (modalAltura) {
-                modalAltura.textContent = item.altura_cm
-                    ? `${item.altura_cm} cm de altura`
-                    : (item.nombre_cientifico || '');
-            }
-            if (modalFoto) {
-                modalFoto.style.backgroundImage = item.foto_ia_url
-                    ? `url(${JSON.stringify(item.foto_ia_url)})` : '';
-            }
+            if (modalAltura) modalAltura.textContent = item.altura_cm ? `${item.altura_cm} cm de altura` : (item.nombre_cientifico || '');
+            if (modalFoto) modalFoto.style.backgroundImage = item.foto_ia_url ? `url(${JSON.stringify(item.foto_ia_url)})` : '';
             if (modalStock) modalStock.value = item.stock || 0;
             if (modalPrecio) modalPrecio.value = item.precio_mayorista || 0;
             if (modalEstado) modalEstado.value = item.estado_planta || 'disponible';
@@ -378,13 +390,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         document.querySelectorAll('[data-vo="editar-item"]').forEach(btn => {
             btn.addEventListener('click', (ev) => {
-                ev.preventDefault();
-                ev.stopPropagation();
+                ev.preventDefault(); ev.stopPropagation();
                 try {
                     const item = JSON.parse(decodeURIComponent(btn.dataset.item));
                     openModal(item);
                 } catch (e) {
-                    console.error('Error parsing item data:', e);
                     VO.showToast('No se pudo abrir el editor', 'error');
                 }
             });
@@ -392,11 +402,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (btnCerrar) btnCerrar.addEventListener('click', closeModal);
         if (btnCancelar) btnCancelar.addEventListener('click', closeModal);
-        if (modal) {
-            modal.addEventListener('click', (ev) => {
-                if (ev.target === modal) closeModal();
-            });
-        }
+        if (modal) modal.addEventListener('click', (ev) => { if (ev.target === modal) closeModal(); });
 
         if (btnGuardar) {
             btnGuardar.addEventListener('click', async () => {
@@ -407,24 +413,22 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (isNaN(stock) || stock < 0) { VO.showToast('Stock inválido (mínimo 0)', 'error'); return; }
                 if (isNaN(precio) || precio < 0) { VO.showToast('Precio inválido (mínimo 0)', 'error'); return; }
                 btnGuardar.disabled = true;
-                const originalHTML = btnGuardar.innerHTML;
+                const orig = btnGuardar.innerHTML;
                 btnGuardar.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span><span>Guardando…</span>';
                 try {
-                    const token = VO.getToken();
                     const res = await fetch(`/api/catalogo/inventario/${currentItem.inventario_id}`, {
                         method: 'PATCH',
-                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ stock: stock, precio_mayorista: precio, estado_planta: estado }),
+                        headers: { 'Authorization': `Bearer ${VO.getToken()}`, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ stock, precio_mayorista: precio, estado_planta: estado }),
                     });
                     if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Error al guardar'); }
                     VO.showToast('Inventario actualizado ✓', 'success');
                     closeModal();
                     setTimeout(() => window.location.reload(), 600);
                 } catch (e) {
-                    console.error('Error actualizando inventario:', e);
                     VO.showToast(e.message || 'No se pudo guardar', 'error');
                     btnGuardar.disabled = false;
-                    btnGuardar.innerHTML = originalHTML;
+                    btnGuardar.innerHTML = orig;
                 }
             });
         }
@@ -432,33 +436,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (btnEliminar) {
             btnEliminar.addEventListener('click', async () => {
                 if (!currentItem) return;
-                const nombre = currentItem.nombre_comun || 'esta planta';
-                if (!confirm(`¿Eliminar "${nombre}" de tu inventario?\n\nEsta acción no se puede deshacer.`)) return;
+                if (!confirm(`¿Eliminar "${currentItem.nombre_comun || 'esta planta'}" de tu inventario?`)) return;
                 btnEliminar.disabled = true;
-                const originalHTML = btnEliminar.innerHTML;
+                const orig = btnEliminar.innerHTML;
                 btnEliminar.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span><span>Eliminando…</span>';
                 try {
-                    const token = VO.getToken();
                     const res = await fetch(`/api/catalogo/inventario/${currentItem.inventario_id}`, {
                         method: 'DELETE',
-                        headers: { 'Authorization': `Bearer ${token}` },
+                        headers: { 'Authorization': `Bearer ${VO.getToken()}` },
                     });
                     if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Error al eliminar'); }
                     VO.showToast('Item eliminado del inventario', 'success');
                     closeModal();
                     setTimeout(() => window.location.reload(), 600);
                 } catch (e) {
-                    console.error('Error eliminando:', e);
                     VO.showToast(e.message || 'No se pudo eliminar', 'error');
                     btnEliminar.disabled = false;
-                    btnEliminar.innerHTML = originalHTML;
+                    btnEliminar.innerHTML = orig;
                 }
             });
         }
 
-        // ──────────────────────────────────────────────────
-        // Perfil del vivero — foto + galería + historia + dirección
-        // ──────────────────────────────────────────────────
+        // ── Perfil del vivero ──────────────────────────────
 
         const historiaInput = document.querySelector('[data-vo="historia-input"]');
         const direccionInput = document.querySelector('[data-vo="direccion-input"]');
@@ -469,74 +468,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         const fotoInput = document.querySelector('[data-vo="foto-input"]');
         const btnGuardarPerfil = document.querySelector('[data-vo="guardar-perfil"]');
 
-        // Pre-cargar historia + dirección + foto principal
         if (perfil) {
-            if (historiaInput) {
-                historiaInput.value = perfil.historia || '';
-                if (charcount) charcount.textContent = (perfil.historia || '').length;
-            }
+            if (historiaInput) { historiaInput.value = perfil.historia || ''; if (charcount) charcount.textContent = (perfil.historia || '').length; }
             if (direccionInput) direccionInput.value = perfil.direccion || '';
-            if (fotoPreview && perfil.foto_url) {
-                fotoPreview.style.backgroundImage = `url('${perfil.foto_url}')`;
-                if (fotoPlaceholder) fotoPlaceholder.style.display = 'none';
-            }
+            if (fotoPreview && perfil.foto_url) { fotoPreview.style.backgroundImage = `url('${perfil.foto_url}')`; if (fotoPlaceholder) fotoPlaceholder.style.display = 'none'; }
         }
+        if (historiaInput && charcount) historiaInput.addEventListener('input', () => charcount.textContent = historiaInput.value.length);
 
-        if (historiaInput && charcount) {
-            historiaInput.addEventListener('input', () => {
-                charcount.textContent = historiaInput.value.length;
-            });
-        }
-
-        // Subir foto principal (portada)
         if (fotoInput) {
             fotoInput.addEventListener('change', async (ev) => {
                 const file = ev.target.files[0];
                 if (!file) return;
-                if (file.size > 10 * 1024 * 1024) {
-                    VO.showToast('Imagen muy grande. Máx 10MB.', 'error');
-                    fotoInput.value = '';
-                    return;
-                }
+                if (file.size > 10 * 1024 * 1024) { VO.showToast('Imagen muy grande. Máx 10MB.', 'error'); fotoInput.value = ''; return; }
                 const reader = new FileReader();
-                reader.onload = (e) => {
-                    if (fotoPreview) {
-                        fotoPreview.style.backgroundImage = `url('${e.target.result}')`;
-                        if (fotoPlaceholder) fotoPlaceholder.style.display = 'none';
-                    }
-                };
+                reader.onload = (e) => { if (fotoPreview) { fotoPreview.style.backgroundImage = `url('${e.target.result}')`; if (fotoPlaceholder) fotoPlaceholder.style.display = 'none'; } };
                 reader.readAsDataURL(file);
                 if (fotoSpinner) fotoSpinner.classList.remove('hidden');
-
                 try {
                     const formData = new FormData();
                     formData.append('imagen', file);
-                    const token = VO.getToken();
-                    const res = await fetch('/api/viveros/me/foto', {
-                        method: 'POST',
-                        headers: { 'Authorization': `Bearer ${token}` },
-                        body: formData,
-                    });
+                    const res = await fetch('/api/viveros/me/foto', { method: 'POST', headers: { 'Authorization': `Bearer ${VO.getToken()}` }, body: formData });
                     if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Error al subir foto'); }
                     const result = await res.json();
-                    if (fotoPreview && result.foto_url) {
-                        fotoPreview.style.backgroundImage = `url('${result.foto_url}')`;
-                    }
+                    if (fotoPreview && result.foto_url) fotoPreview.style.backgroundImage = `url('${result.foto_url}')`;
                     VO.showToast('Foto principal subida ✓', 'success');
                 } catch (e) {
-                    console.error('Error subiendo foto principal:', e);
                     VO.showToast(e.message || 'No se pudo subir la foto', 'error');
-                    try {
-                        const refreshed = await VO.api('/api/viveros/me');
-                        if (fotoPreview) {
-                            if (refreshed.foto_url) {
-                                fotoPreview.style.backgroundImage = `url('${refreshed.foto_url}')`;
-                            } else {
-                                fotoPreview.style.backgroundImage = '';
-                                if (fotoPlaceholder) fotoPlaceholder.style.display = '';
-                            }
-                        }
-                    } catch (_) {}
                 } finally {
                     if (fotoSpinner) fotoSpinner.classList.add('hidden');
                     fotoInput.value = '';
@@ -544,36 +501,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // Guardar historia + dirección
         if (btnGuardarPerfil) {
             btnGuardarPerfil.addEventListener('click', async () => {
                 const historia = historiaInput ? historiaInput.value : null;
                 const direccion = direccionInput ? direccionInput.value : null;
                 btnGuardarPerfil.disabled = true;
-                const originalHTML = btnGuardarPerfil.innerHTML;
+                const orig = btnGuardarPerfil.innerHTML;
                 btnGuardarPerfil.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span><span>Guardando…</span>';
                 try {
-                    const token = VO.getToken();
-                    const res = await fetch('/api/viveros/me', {
-                        method: 'PATCH',
-                        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ historia, direccion }),
-                    });
+                    const res = await fetch('/api/viveros/me', { method: 'PATCH', headers: { 'Authorization': `Bearer ${VO.getToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ historia, direccion }) });
                     if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Error al guardar'); }
                     VO.showToast('Perfil del vivero actualizado ✓', 'success');
                 } catch (e) {
-                    console.error('Error guardando perfil:', e);
                     VO.showToast(e.message || 'No se pudo guardar', 'error');
                 } finally {
                     btnGuardarPerfil.disabled = false;
-                    btnGuardarPerfil.innerHTML = originalHTML;
+                    btnGuardarPerfil.innerHTML = orig;
                 }
             });
         }
 
-        // ──────────────────────────────────────────────────
-        // Galería de fotos adicionales (max 3)
-        // ──────────────────────────────────────────────────
+        // ── Galería ────────────────────────────────────────
 
         const MAX_GALERIA = 3;
         const galeriaContainer = document.querySelector('[data-vo="galeria-container"]');
@@ -582,8 +530,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!galeriaContainer) return;
             const fotosArr = Array.isArray(fotos) ? fotos : [];
             galeriaContainer.innerHTML = '';
-
-            // Renderizar fotos existentes
             fotosArr.forEach((url, idx) => {
                 const div = document.createElement('div');
                 div.className = 'relative aspect-square rounded-lg bg-cover bg-center overflow-hidden';
@@ -597,21 +543,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 div.appendChild(btn);
                 galeriaContainer.appendChild(div);
             });
-
-            // Renderizar slots vacíos
             const empty = MAX_GALERIA - fotosArr.length;
             for (let i = 0; i < empty; i++) {
                 const label = document.createElement('label');
                 label.className = 'relative aspect-square rounded-lg bg-primary/5 border-2 border-dashed border-primary/20 flex items-center justify-center cursor-pointer hover:bg-primary/10 transition overflow-hidden';
-                label.innerHTML = `
-                    <span class="material-symbols-outlined text-primary/40 text-3xl">add_a_photo</span>
-                    <div data-vo="galeria-spinner" class="hidden absolute inset-0 bg-black/40 items-center justify-center">
-                        <span class="material-symbols-outlined animate-spin text-white text-2xl">progress_activity</span>
-                    </div>
-                `;
+                label.innerHTML = `<span class="material-symbols-outlined text-primary/40 text-3xl">add_a_photo</span><div data-vo="galeria-spinner" class="hidden absolute inset-0 bg-black/40 items-center justify-center"><span class="material-symbols-outlined animate-spin text-white text-2xl">progress_activity</span></div>`;
                 const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'image/*';
+                input.type = 'file'; input.accept = 'image/*';
                 input.className = 'absolute inset-0 opacity-0 cursor-pointer';
                 input.addEventListener('change', (ev) => handleUploadGaleria(ev, label));
                 label.appendChild(input);
@@ -622,36 +560,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         async function handleUploadGaleria(ev, labelEl) {
             const file = ev.target.files[0];
             if (!file) return;
-            if (file.size > 10 * 1024 * 1024) {
-                VO.showToast('Imagen muy grande. Máx 10MB.', 'error');
-                ev.target.value = '';
-                return;
-            }
+            if (file.size > 10 * 1024 * 1024) { VO.showToast('Imagen muy grande. Máx 10MB.', 'error'); ev.target.value = ''; return; }
             const spinner = labelEl ? labelEl.querySelector('[data-vo="galeria-spinner"]') : null;
-            if (spinner) {
-                spinner.classList.remove('hidden');
-                spinner.classList.add('flex');
-            }
+            if (spinner) { spinner.classList.remove('hidden'); spinner.classList.add('flex'); }
             try {
                 const formData = new FormData();
                 formData.append('imagen', file);
-                const token = VO.getToken();
-                const res = await fetch('/api/viveros/me/fotos', {
-                    method: 'POST',
-                    headers: { 'Authorization': `Bearer ${token}` },
-                    body: formData,
-                });
+                const res = await fetch('/api/viveros/me/fotos', { method: 'POST', headers: { 'Authorization': `Bearer ${VO.getToken()}` }, body: formData });
                 if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Error al subir foto'); }
                 const result = await res.json();
                 VO.showToast('Foto agregada a la galería ✓', 'success');
                 renderGaleria(result.fotos_galeria || []);
             } catch (e) {
-                console.error('Error subiendo foto galería:', e);
                 VO.showToast(e.message || 'No se pudo subir la foto', 'error');
-                if (spinner) {
-                    spinner.classList.add('hidden');
-                    spinner.classList.remove('flex');
-                }
+                if (spinner) { spinner.classList.add('hidden'); spinner.classList.remove('flex'); }
                 ev.target.value = '';
             }
         }
@@ -660,32 +582,158 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!confirm('¿Eliminar esta foto de la galería?')) return;
             if (btnEl) btnEl.disabled = true;
             try {
-                const token = VO.getToken();
-                const res = await fetch(`/api/viveros/me/fotos?index=${index}`, {
-                    method: 'DELETE',
-                    headers: { 'Authorization': `Bearer ${token}` },
-                });
+                const res = await fetch(`/api/viveros/me/fotos?index=${index}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${VO.getToken()}` } });
                 if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Error al eliminar foto'); }
                 const result = await res.json();
                 VO.showToast('Foto eliminada de la galería', 'success');
                 renderGaleria(result.fotos_galeria || []);
             } catch (e) {
-                console.error('Error eliminando foto galería:', e);
                 VO.showToast(e.message || 'No se pudo eliminar', 'error');
                 if (btnEl) btnEl.disabled = false;
             }
         }
 
-        // Render inicial de la galería
         renderGaleria(perfil ? (perfil.fotos_galeria || []) : []);
 
     } catch (e) {
         console.error('Error cargando dashboard viverista:', e);
-        if (typeof VO.showToast === 'function') {
-            VO.showToast('Error al cargar datos', 'error');
-        }
+        if (typeof VO.showToast === 'function') VO.showToast('Error al cargar datos', 'error');
     }
 });
-</script>
 
+// ══════════════════════════════════════════════
+// PEDIDOS PENDIENTES
+// ══════════════════════════════════════════════
+
+async function cargarPedidosPendientes() {
+    const lista = document.getElementById('lista-pedidos');
+    const badge = document.getElementById('badge-pedidos');
+    if (!lista) return;
+
+    lista.innerHTML = '<div class="text-center py-4 text-slate-400 text-sm"><span class="material-symbols-outlined animate-spin">progress_activity</span></div>';
+
+    try {
+        const resp = await fetch('/api/pedidos/pendientes', {
+            headers: { 'Authorization': `Bearer ${VO.getToken()}` },
+        });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        const pedidos = data.pendientes || [];
+
+        if (pedidos.length > 0) {
+            badge.textContent = pedidos.length;
+            badge.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+        }
+
+        if (pedidos.length === 0) {
+            lista.innerHTML = `
+                <div class="text-center py-6 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+                    <span class="material-symbols-outlined text-slate-300 text-4xl">inbox</span>
+                    <p class="text-sm text-slate-500 mt-2">Sin pedidos pendientes por ahora.</p>
+                    <p class="text-xs text-slate-400 mt-1">Cuando un comprador te envíe una cotización aparecerá acá.</p>
+                </div>`;
+            return;
+        }
+
+        lista.innerHTML = pedidos.map(p => `
+            <div class="bg-white dark:bg-slate-900 rounded-xl border border-amber-200 dark:border-amber-800 shadow-sm p-4 space-y-3 mb-3">
+                <div class="flex items-start justify-between gap-2">
+                    <div class="flex-1 min-w-0">
+                        <p class="font-bold text-sm truncate">${escHTML(p.nombre_proyecto)}</p>
+                        <p class="text-xs text-slate-500 mt-0.5">
+                            🧑 ${escHTML(p.nombre_comprador)} · ${p.items.length} producto${p.items.length !== 1 ? 's' : ''}
+                        </p>
+                        <p class="text-xs text-slate-400 mt-0.5">${formatFechaCorta(p.fecha_creacion)}</p>
+                    </div>
+                    <p class="font-black text-primary text-sm whitespace-nowrap">$${Math.round(p.total_estimado).toLocaleString('es-CO')}</p>
+                </div>
+
+                ${p.notas_cliente ? `
+                    <div class="bg-slate-50 dark:bg-slate-800 rounded-lg p-2">
+                        <p class="text-xs text-slate-600 dark:text-slate-300">📝 "${escHTML(p.notas_cliente)}"</p>
+                    </div>` : ''}
+
+                <div class="space-y-1 border border-slate-100 dark:border-slate-700 rounded-lg p-2">
+                    ${p.items.map(it => `
+                        <div class="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 py-0.5">
+                            <span class="truncate flex-1">${escHTML(it.nombre_comun || `Item #${it.inventario_id}`)}</span>
+                            <span class="font-semibold ml-2 shrink-0 text-primary">${it.cantidad} uds</span>
+                        </div>
+                    `).join('')}
+                </div>
+
+                <div class="flex gap-2">
+                    <button onclick="aprobarPedido(${p.cotizacion_id})"
+                        class="flex-1 bg-primary text-white text-sm font-bold py-2.5 rounded-full flex items-center justify-center gap-1 hover:bg-primary/90 transition active:scale-95">
+                        <span class="material-symbols-outlined text-base">check_circle</span>
+                        Aprobar
+                    </button>
+                    <button onclick="rechazarPedido(${p.cotizacion_id})"
+                        class="flex-1 bg-red-50 dark:bg-red-900/20 text-red-600 text-sm font-bold py-2.5 rounded-full flex items-center justify-center gap-1 hover:bg-red-100 transition border border-red-200 dark:border-red-800 active:scale-95">
+                        <span class="material-symbols-outlined text-base">cancel</span>
+                        Rechazar
+                    </button>
+                </div>
+            </div>
+        `).join('');
+
+    } catch (e) {
+        lista.innerHTML = `<p class="text-xs text-red-500 text-center py-4">Error al cargar pedidos: ${escHTML(e.message)}</p>`;
+    }
+}
+
+async function aprobarPedido(cotizacion_id) {
+    if (!confirm('¿Aprobar este pedido?\n\nConfirmás que tenés el stock disponible y podés despachar.')) return;
+    try {
+        const resp = await fetch(`/api/pedidos/${cotizacion_id}/aprobar`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${VO.getToken()}` },
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || 'Error al aprobar');
+        }
+        VO.showToast('✅ Pedido aprobado. El comprador fue notificado.', 'success');
+        setTimeout(cargarPedidosPendientes, 1200);
+    } catch (e) {
+        VO.showToast(e.message || 'No se pudo aprobar', 'error');
+    }
+}
+
+async function rechazarPedido(cotizacion_id) {
+    const motivo = prompt('¿Por qué rechazás este pedido? (opcional)\n\nEj: Sin stock, fuera de temporada, zona no cubierta...');
+    if (motivo === null) return; // Canceló
+    try {
+        const resp = await fetch(`/api/pedidos/${cotizacion_id}/rechazar`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${VO.getToken()}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ motivo: motivo || null }),
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || 'Error al rechazar');
+        }
+        VO.showToast('Pedido rechazado. El comprador fue notificado.', 'success');
+        setTimeout(cargarPedidosPendientes, 1200);
+    } catch (e) {
+        VO.showToast(e.message || 'No se pudo rechazar', 'error');
+    }
+}
+
+function escHTML(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function formatFechaCorta(s) {
+    if (!s || s === 'None') return '';
+    try {
+        return new Date(s).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    } catch { return ''; }
+}
+
+// Cargar pedidos al inicio
+cargarPedidosPendientes();
+</script>
 </body></html>
