@@ -45,6 +45,11 @@ async def auth_onboarding():
     return _tpl("auth_onboarding.html")
 
 
+@router.get("/auth/registro", response_class=HTMLResponse)
+async def auth_registro():
+    return _tpl("auth_registro.html")
+
+
 # ─────────────────── APP ───────────────────
 
 @router.get("/viverista", response_class=HTMLResponse)
