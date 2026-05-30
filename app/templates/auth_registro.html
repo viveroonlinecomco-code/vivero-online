@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<script id="tailwind-config">
+    tailwind.config = {
+        darkMode: "class",
+        theme: {
+            extend: {
+                colors: {
+                    "primary": "#012d1d",
+                    "background-light": "#f7f7f6",
+                    "background-dark": "#171d15",
+                },
+                fontFamily: {
+                    "display": ["Inter", "sans-serif"],
+                    "hero": ["Montserrat", "sans-serif"],
+                },
+                borderRadius: {"DEFAULT":"1rem","lg":"2rem","xl":"3rem","full":"9999px"},
+            },
+        },
+    }
+</script>
+<title>Crear cuenta · ViveroOnline</title>
+<style>
+    body { min-height: max(884px, 100dvh); }
+    .role-card { transition: all 0.2s; cursor: pointer; }
+    .role-card[data-selected="true"] {
+        border-color: #012d1d;
+        background: linear-gradient(135deg, rgba(1,45,29,0.06), rgba(1,45,29,0.01));
+        box-shadow: 0 0 0 3px rgba(1,45,29,0.12);
+    }
+    .role-card:hover:not([data-selected="true"]) { border-color: rgba(1,45,29,0.3); }
+</style>
+</head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100">
+
+<div class="flex flex-col min-h-screen max-w-md mx-auto px-6 py-8">
+
+    <div class="flex items-center justify-between mb-6">
+        <a href="/" class="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-primary transition-colors">
+            <span class="material-symbols-outlined text-base">arrow_back</span>
+            Inicio
+        </a>
+        <a href="/auth/ingresar" class="text-sm font-semibold text-primary hover:underline">
+            Ya estoy registrado →
+        </a>
+    </div>
+
+    <!-- Barra de progreso -->
+    <div class="flex items-center gap-2 mb-8">
+        <div class="w-8 h-1 rounded-full bg-primary"></div>
+        <div class="w-8 h-1 rounded-full bg-slate-200 dark:bg-slate-700"></div>
+    </div>
+
+    <div class="flex-1">
+        <h1 class="text-3xl font-black leading-tight tracking-tight mb-3 font-hero">
+            ¿Cómo querés<br>
+            <span class="text-primary">usar ViveroOnline?</span>
+        </h1>
+        <p class="text-slate-600 dark:text-slate-400 text-base mb-8">
+            Podés cambiar esto después en tu perfil.
+        </p>
+
+        <div class="space-y-3 mb-8">
+            <button type="button" data-role="viverista"
+                class="role-card w-full text-left p-5 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-lg">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <span class="material-symbols-outlined text-primary text-2xl">forest</span>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="font-bold text-lg mb-1">Soy Viverista</h3>
+                        <p class="text-sm text-slate-600 dark:text-slate-400">
+                            Tengo un vivero y quiero vender mis plantas a paisajistas, constructoras y empresas.
+                        </p>
+                        <div class="flex flex-wrap gap-1 mt-3">
+                            <span class="text-xs px-2 py-1 bg-primary/10 text-primary rounded-full font-semibold">Catálogo con IA</span>
+                            <span class="text-xs px-2 py-1 bg-primary/10 text-primary rounded-full font-semibold">Precios sugeridos</span>
+                        </div>
+                    </div>
+                </div>
+            </button>
+
+            <button type="button" data-role="comprador"
+                class="role-card w-full text-left p-5 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-lg">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <span class="material-symbols-outlined text-primary text-2xl">architecture</span>
+                    </div>
+                    <div class="flex-1">
+                        <h3 class="font-bold text-lg mb-1">Soy Comprador B2B</h3>
+                        <p class="text-sm text-slate-600 dark:text-slate-400">
+                            Represento una constructora, paisajista, conjunto o empresa y necesito plantas al por mayor.
+                        </p>
+                        <div class="flex flex-wrap gap-1 mt-3">
+                            <span class="text-xs px-2 py-1 bg-primary/10 text-primary rounded-full font-semibold">Marketplace</span>
+                            <span class="text-xs px-2 py-1 bg-primary/10 text-primary rounded-full font-semibold">Pedidos masivos</span>
+                        </div>
+                    </div>
+                </div>
+            </button>
+        </div>
+
+        <button id="continue-btn" type="button" disabled
+            class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-primary/20 transition disabled:opacity-40 disabled:cursor-not-allowed">
+            <span>Continuar</span>
+            <span class="material-symbols-outlined">arrow_forward</span>
+        </button>
+    </div>
+</div>
+
+<script>
+const VALID_ROLES = ['viverista', 'comprador'];
+const urlRol = new URLSearchParams(window.location.search).get('rol');
+
+let selectedRole = null;
+const continueBtn = document.getElementById('continue-btn');
+const roleCards = document.querySelectorAll('.role-card');
+
+function selectCard(card) {
+    roleCards.forEach(c => c.dataset.selected = 'false');
+    card.dataset.selected = 'true';
+    selectedRole = card.dataset.role;
+    continueBtn.disabled = false;
+}
+
+roleCards.forEach(card => card.addEventListener('click', () => selectCard(card)));
+
+// Pre-seleccionar si viene ?rol= en la URL
+if (urlRol && VALID_ROLES.includes(urlRol)) {
+    const targetCard = document.querySelector(`.role-card[data-role="${urlRol}"]`);
+    if (targetCard) selectCard(targetCard);
+}
+
+// Continuar → email con el rol elegido
+continueBtn.addEventListener('click', () => {
+    if (!selectedRole) return;
+    localStorage.setItem('vivero_intended_rol', selectedRole);
+    window.location.href = `/auth/ingresar?rol=${selectedRole}`;
+});
+</script>
+<script src="/static/js/vivero.js"></script>
+</body>
+</html>
