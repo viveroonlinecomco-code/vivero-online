@@ -124,17 +124,37 @@ async def detalle_item(
     user: UserContext = Depends(require_user),
 ):
     db = admin()
+
+    # Verificar suscripción activa (admin también tiene acceso)
+    tiene_suscripcion = user.rol == "admin"
+    if not tiene_suscripcion:
+        sus = db.table("suscripciones").select("suscripcion_id").eq(
+            "user_id", user.user_id
+        ).eq("estado", "activa").limit(1).execute()
+        tiene_suscripcion = bool(sus.data)
+
     resp = db.table("inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, precio_detal, "
         "stock, unidad_medida, estado_planta, foto_ia_url, notas, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico, familia_botanica, requerimientos_ia, clima_ideal), "
-        "viveros(nombre_vivero, ciudad, latitud, longitud, telefono, whatsapp_numero, historia, foto_url, fotos_galeria, direccion)"
+        "viveros(nombre_vivero, ciudad, departamento, historia, foto_url, fotos_galeria, latitud, longitud, direccion)"
     ).eq("inventario_id", inventario_id).limit(1).execute()
 
     if not resp.data:
         raise HTTPException(404, detail="Item no encontrado")
-    return {"ok": True, "item": resp.data[0]}
 
+    item = resp.data[0]
+
+    # Sin suscripción → ocultar ubicación exacta
+    if not tiene_suscripcion and item.get("viveros"):
+        item["viveros"]["latitud"]  = None
+        item["viveros"]["longitud"] = None
+        item["viveros"]["direccion"] = None
+
+    # Teléfono y WhatsApp NUNCA se exponen (no están en el SELECT)
+    item["tiene_suscripcion"] = tiene_suscripcion
+
+    return {"ok": True, "item": item}
 
 # ═══════════════════════════════════════════════════════════
 # COTIZACIONES — helpers
