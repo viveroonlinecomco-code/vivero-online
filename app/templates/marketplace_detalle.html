@@ -119,34 +119,44 @@
                 <p data-vo="vivero-historia" class="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line"></p>
             </div>
 
-            <div data-vo="contacto-autenticado" class="hidden flex-wrap gap-2 mt-4">
-                <a data-vo="contacto-whatsapp" href="#" target="_blank" rel="noopener noreferrer" class="hidden items-center gap-1 bg-emerald-500 text-white px-4 py-2 rounded-full text-sm font-semibold hover:bg-emerald-600 transition-colors">
-                    <span class="material-symbols-outlined text-base">chat</span>
-                    WhatsApp
-                </a>
-                <a data-vo="contacto-telefono" href="#" class="hidden items-center gap-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-full text-sm font-semibold hover:bg-slate-200 transition-colors">
-                    <span class="material-symbols-outlined text-base">call</span>
-                    Llamar
-                </a>
-                <a data-vo="vivero-mapa" href="#" target="_blank" rel="noopener noreferrer" class="hidden items-center gap-1 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 px-4 py-2 rounded-full text-sm font-semibold hover:bg-slate-200 transition-colors">
-                    <span class="material-symbols-outlined text-base">map</span>
-                    Ver en mapa
-                </a>
-            </div>
+            <!-- Ubicación: solo para suscriptores -->
+<div data-vo="contacto-suscriptor" class="hidden mt-4 space-y-3">
+    <p data-vo="vivero-dir-text" class="hidden text-sm text-slate-600 dark:text-slate-400 flex items-center gap-1">
+        <span class="material-symbols-outlined text-base text-primary">place</span>
+        <span data-vo="vivero-dir-label"></span>
+    </p>
+    <a data-vo="vivero-mapa" href="#" target="_blank" rel="noopener noreferrer"
+        class="hidden items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-semibold hover:bg-primary/20 transition-colors">
+        <span class="material-symbols-outlined text-base">map</span>
+        Ver ubicación en mapa
+    </a>
+</div>
 
-            <div data-vo="contacto-anonimo" class="hidden bg-primary/5 dark:bg-primary/10 rounded-lg p-4 items-start gap-3 mt-4">
-                <span class="material-symbols-outlined text-primary text-2xl">lock</span>
-                <div class="flex-1">
-                    <p class="text-sm font-semibold">Iniciá sesión para contactar al vivero</p>
-                    <p class="text-xs text-slate-500 mt-1">El contacto directo (WhatsApp y teléfono) requiere cuenta.</p>
-                    <a href="/auth/ingresar" class="inline-flex items-center gap-1 text-primary font-bold text-sm mt-2 hover:underline">
-                        Iniciar Sesión
-                        <span class="material-symbols-outlined text-base">arrow_forward</span>
-                    </a>
-                </div>
-            </div>
-        </section>
+<!-- Bloqueado: logueado sin suscripción -->
+<div data-vo="contacto-sin-suscripcion" class="hidden bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 items-start gap-3 mt-4">
+    <span class="material-symbols-outlined text-amber-600 text-2xl">lock</span>
+    <div class="flex-1">
+        <p class="text-sm font-semibold text-amber-900 dark:text-amber-100">Ubicación disponible en el Plan Inteligencia</p>
+        <p class="text-xs text-amber-700 dark:text-amber-300 mt-1">Con tu suscripción accedés a la dirección exacta y la ubicación en mapa del vivero.</p>
+        <a href="/mi-cuenta/suscripcion" class="inline-flex items-center gap-1 text-amber-800 dark:text-amber-200 font-bold text-sm mt-2 hover:underline">
+            Ver planes
+            <span class="material-symbols-outlined text-base">arrow_forward</span>
+        </a>
+    </div>
+</div>
 
+<!-- Anon: no logueado -->
+<div data-vo="contacto-anonimo" class="hidden bg-primary/5 dark:bg-primary/10 rounded-lg p-4 items-start gap-3 mt-4">
+    <span class="material-symbols-outlined text-primary text-2xl">lock</span>
+    <div class="flex-1">
+        <p class="text-sm font-semibold">Iniciá sesión para acceder a la ubicación</p>
+        <p class="text-xs text-slate-500 mt-1">La ubicación del vivero requiere cuenta y suscripción al Plan Inteligencia.</p>
+        <a href="/auth/ingresar" class="inline-flex items-center gap-1 text-primary font-bold text-sm mt-2 hover:underline">
+            Iniciar Sesión
+            <span class="material-symbols-outlined text-base">arrow_forward</span>
+        </a>
+    </div>
+</div>
         <!-- Información botánica -->
         <section data-vo="seccion-botanica" class="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
             <h3 class="font-bold text-sm text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1">
@@ -423,24 +433,17 @@
         $('[data-vo="vivero-historia"]').textContent = vivero.historia;
     }
 
-    // Contactos según sesión
-    if (me) {
-        const contactoBox = $('[data-vo="contacto-autenticado"]');
-        contactoBox.classList.remove('hidden');
-        contactoBox.classList.add('flex');
+   // Contactos según sesión (teléfono/WhatsApp nunca se muestran)
+if (me) {
+    if (item.tiene_suscripcion) {
+        const box = $('[data-vo="contacto-suscriptor"]');
+        box.classList.remove('hidden');
 
-        if (vivero.whatsapp_numero) {
-            const ws = $('[data-vo="contacto-whatsapp"]');
-            const wsNum = String(vivero.whatsapp_numero).replace(/\D/g, '');
-            ws.href = `https://wa.me/${wsNum}?text=${encodeURIComponent(`Hola, vi tu publicación de ${planta.nombre_comun || 'una planta'} en ViveroOnline.com.co`)}`;
-            ws.classList.remove('hidden');
-            ws.classList.add('inline-flex');
-        }
-        if (vivero.telefono) {
-            const tel = $('[data-vo="contacto-telefono"]');
-            tel.href = `tel:${vivero.telefono}`;
-            tel.classList.remove('hidden');
-            tel.classList.add('inline-flex');
+        if (vivero.direccion) {
+            const dirEl = $('[data-vo="vivero-dir-text"]');
+            $('[data-vo="vivero-dir-label"]').textContent = vivero.direccion;
+            dirEl.classList.remove('hidden');
+            dirEl.classList.add('flex');
         }
         if (vivero.latitud && vivero.longitud) {
             const mapa = $('[data-vo="vivero-mapa"]');
@@ -449,10 +452,15 @@
             mapa.classList.add('inline-flex');
         }
     } else {
-        const lock = $('[data-vo="contacto-anonimo"]');
+        const lock = $('[data-vo="contacto-sin-suscripcion"]');
         lock.classList.remove('hidden');
         lock.classList.add('flex');
     }
+} else {
+    const lock = $('[data-vo="contacto-anonimo"]');
+    lock.classList.remove('hidden');
+    lock.classList.add('flex');
+}
 
     // Botánica
     if (planta.familia_botanica) {
