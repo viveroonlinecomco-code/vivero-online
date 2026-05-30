@@ -130,6 +130,10 @@ body { min-height: 100dvh; background: #f0f2ee; font-family: "Inter", sans-serif
             <span class="material-symbols-outlined icon">star</span>
             Suscripciones
         </div>
+        <div class="sidebar-item" onclick="goTo('secop')" id="nav-secop">
+            <span class="material-symbols-outlined icon">cloud_download</span>
+            SECOP II
+        </div>
         <div class="sidebar-item" onclick="goTo('auditoria')" id="nav-auditoria">
             <span class="material-symbols-outlined icon">shield</span>
             Auditoría y Soporte
@@ -348,6 +352,112 @@ body { min-height: 100dvh; background: #f0f2ee; font-family: "Inter", sans-serif
             </div>
         </div>
 
+        <!-- ══════════ SECOP ══════════ -->
+        <div class="section" id="section-secop">
+            <div style="margin-bottom:20px;">
+                <h1 style="font-size:22px;font-weight:800;color:#012d1d;">📋 SECOP II</h1>
+                <p style="color:#64748b;font-size:13px;margin-top:2px;">Ingesta y análisis de procesos públicos de contratación</p>
+            </div>
+
+            <!-- Ingestar -->
+            <div class="card" style="margin-bottom:16px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+                    <h3 style="font-weight:700;font-size:15px;color:#012d1d;">Ingestar SECOP II</h3>
+                    <span style="font-size:11px;color:#94a3b8;">Procesos públicos de contratación</span>
+                </div>
+                <p style="font-size:13px;color:#64748b;margin-bottom:16px;">Trae procesos recientes de SECOP que mencionan plantas/arborización/paisajismo en la Sabana de Bogotá. Si activás clasificación IA, Gemini analiza cada proceso (~2–3s por proceso).</p>
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px;">
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Días atrás</label>
+                        <input type="number" id="secop-dias" value="30" min="1" max="365"
+                            style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:13px;outline:none;background:#fff;">
+                    </div>
+                    <div>
+                        <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Límite procesos</label>
+                        <input type="number" id="secop-limit" value="5" min="1" max="200"
+                            style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:13px;outline:none;background:#fff;">
+                    </div>
+                    <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
+                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#475569;font-weight:500;">
+                            <input type="checkbox" id="secop-clasificar" style="width:16px;height:16px;accent-color:#012d1d;">
+                            Clasificar con IA (Gemini)
+                        </label>
+                    </div>
+                </div>
+                <button id="secop-disparar" onclick="dispararSecop()"
+                    class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;">
+                    <span id="secop-btn-content" style="display:flex;align-items:center;gap:8px;">
+                        <span class="material-symbols-outlined" style="font-size:18px;">cloud_download</span>
+                        <span>Disparar ingesta</span>
+                    </span>
+                </button>
+
+                <div id="secop-resultado" style="display:none;margin-top:16px;">
+                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
+                        <div style="background:#f0fdf4;border-radius:10px;padding:12px;text-align:center;">
+                            <p style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;">Ingestados</p>
+                            <p style="font-size:24px;font-weight:800;color:#012d1d;" id="secop-ingestados">0</p>
+                        </div>
+                        <div style="background:#f0fdf4;border-radius:10px;padding:12px;text-align:center;">
+                            <p style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;">Nuevos</p>
+                            <p style="font-size:24px;font-weight:800;color:#012d1d;" id="secop-nuevos">0</p>
+                        </div>
+                        <div style="background:#f0fdf4;border-radius:10px;padding:12px;text-align:center;">
+                            <p style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;">Clasificados</p>
+                            <p style="font-size:24px;font-weight:800;color:#012d1d;" id="secop-clasificados">0</p>
+                        </div>
+                        <div style="background:#f0fdf4;border-radius:10px;padding:12px;text-align:center;">
+                            <p style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;">Relevantes</p>
+                            <p style="font-size:24px;font-weight:800;color:#012d1d;" id="secop-relevantes">0</p>
+                        </div>
+                    </div>
+                    <p id="secop-fecha-desde" style="font-size:11px;color:#94a3b8;margin-top:10px;"></p>
+                    <div id="secop-warnings" style="display:none;margin-top:10px;">
+                        <p style="font-size:12px;font-weight:700;color:#92400e;">⚠ Advertencias:</p>
+                        <ul style="font-size:12px;color:#b45309;list-style:disc;padding-left:16px;margin-top:4px;"></ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Procesos en BD -->
+            <div class="card">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+                    <div>
+                        <h3 style="font-weight:700;font-size:15px;color:#012d1d;">Procesos SECOP en BD</h3>
+                        <p style="font-size:11px;color:#94a3b8;margin-top:2px;">Oportunidades reales de demanda ingresadas</p>
+                    </div>
+                    <button onclick="cargarProcesosSecop()" class="btn btn-ghost" style="padding:6px 10px;">
+                        <span class="material-symbols-outlined" style="font-size:16px;">refresh</span>
+                        Refrescar
+                    </button>
+                </div>
+
+                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
+                    <div style="background:#f8fafc;border-radius:10px;padding:12px;text-align:center;">
+                        <p style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;">En BD</p>
+                        <p style="font-size:22px;font-weight:800;color:#012d1d;" id="bd-total">0</p>
+                    </div>
+                    <div style="background:#f8fafc;border-radius:10px;padding:12px;text-align:center;">
+                        <p style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;">Clasificados</p>
+                        <p style="font-size:22px;font-weight:800;color:#012d1d;" id="bd-clasificados">0</p>
+                    </div>
+                    <div style="background:#f0fdf4;border-radius:10px;padding:12px;text-align:center;">
+                        <p style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;">Relevantes</p>
+                        <p style="font-size:22px;font-weight:800;color:#012d1d;" id="bd-relevantes">0</p>
+                    </div>
+                </div>
+
+                <div id="resumen-especies-block" style="display:none;margin-bottom:14px;padding:12px;background:#f0fdf4;border-radius:10px;border:1px solid #bbf7d0;">
+                    <p style="font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;margin-bottom:8px;">🌱 Plantas más mencionadas</p>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;" id="resumen-especies-tags"></div>
+                </div>
+
+                <div id="procesos-tabla">
+                    <p style="text-align:center;color:#94a3b8;font-size:13px;padding:20px;">Cargando...</p>
+                </div>
+            </div>
+        </div>
+
         <!-- ══════════ AUDITORÍA ══════════ -->
         <div class="section" id="section-auditoria">
             <div style="margin-bottom:20px;">
@@ -499,6 +609,7 @@ async function loadSection(s) {
     if (s === 'comunidad') await loadComunidad();
     if (s === 'catalogo') await loadCatalogo();
     if (s === 'suscripciones') await loadSuscripciones();
+    if (s === 'secop') await cargarProcesosSecop();
     if (s === 'auditoria') await loadAuditoria();
 }
 
@@ -968,7 +1079,138 @@ async function loadAuditoria() {
     }
 }
 
-// ──────── Modales ────────
+// ──────── SECOP ────────
+async function dispararSecop() {
+    const btn = document.getElementById('secop-disparar');
+    const btnContent = document.getElementById('secop-btn-content');
+    const resultDiv = document.getElementById('secop-resultado');
+    const dias = parseInt(document.getElementById('secop-dias').value) || 30;
+    const limit = parseInt(document.getElementById('secop-limit').value) || 5;
+    const clasificar = document.getElementById('secop-clasificar').checked;
+
+    if (clasificar && limit > 15) {
+        const seg = Math.round(limit * 2.5);
+        if (!confirm(`Clasificar ${limit} procesos con Gemini tomará ~${seg}s. Vercel puede cortar si supera 60s. ¿Continuar?`)) return;
+    }
+
+    btn.disabled = true;
+    btnContent.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;animation:spin 1s linear infinite;">progress_activity</span><span>Procesando...</span>';
+    resultDiv.style.display = 'none';
+
+    try {
+        const data = await VO.api('/api/ingesta/secop', {
+            method: 'POST',
+            body: JSON.stringify({ dias_atras: dias, limit, clasificar }),
+        });
+        document.getElementById('secop-ingestados').textContent = data.ingestados ?? 0;
+        document.getElementById('secop-nuevos').textContent = data.nuevos ?? 0;
+        document.getElementById('secop-clasificados').textContent = data.clasificados ?? 0;
+        document.getElementById('secop-relevantes').textContent = data.relevantes ?? 0;
+
+        const fechaEl = document.getElementById('secop-fecha-desde');
+        if (fechaEl) fechaEl.textContent = `Buscó desde: ${data.fecha_desde} · ${data.keywords_count || 0} keywords · ${data.municipios_count || 0} municipios`;
+
+        const warn = document.getElementById('secop-warnings');
+        const warnUl = warn?.querySelector('ul');
+        if (data.warnings?.length && warnUl) {
+            warnUl.innerHTML = data.warnings.slice(0,10).map(w => `<li>${escHTML(w)}</li>`).join('');
+            warn.style.display = 'block';
+        } else if (warn) warn.style.display = 'none';
+
+        resultDiv.style.display = 'block';
+        showToast(`✓ ${data.nuevos ?? 0} procesos nuevos ingestados`);
+        setTimeout(cargarProcesosSecop, 500);
+    } catch(e) {
+        showToast('Error ingesta: ' + e.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btnContent.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">cloud_download</span><span>Disparar ingesta</span>';
+    }
+}
+
+async function cargarProcesosSecop() {
+    const tabla = document.getElementById('procesos-tabla');
+    tabla.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:13px;padding:20px;">Cargando...</p>';
+    try {
+        const data = await VO.api('/api/ingesta/secop/procesos?limit=100');
+        document.getElementById('bd-total').textContent = (data.total || 0).toLocaleString('es-CO');
+        document.getElementById('bd-clasificados').textContent = (data.total_clasificados || 0).toLocaleString('es-CO');
+        document.getElementById('bd-relevantes').textContent = (data.total_relevantes || 0).toLocaleString('es-CO');
+
+        const resBlock = document.getElementById('resumen-especies-block');
+        const resTags = document.getElementById('resumen-especies-tags');
+        if (data.resumen_especies?.length) {
+            resTags.innerHTML = data.resumen_especies.map(e =>
+                `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:9999px;font-size:11px;background:#dcfce7;color:#15803d;font-weight:600;">
+                    ${escHTML(e.especie)}
+                    <span style="background:#15803d;color:#fff;padding:1px 5px;border-radius:9999px;font-size:10px;">×${e.menciones}</span>
+                </span>`
+            ).join('');
+            resBlock.style.display = 'block';
+        } else resBlock.style.display = 'none';
+
+        if (!data.procesos?.length) {
+            tabla.innerHTML = `<div style="text-align:center;padding:32px;border:2px dashed #e2e8f0;border-radius:10px;">
+                <span class="material-symbols-outlined" style="font-size:40px;color:#cbd5e1;">inbox</span>
+                <p style="color:#94a3b8;font-size:13px;margin-top:8px;">Sin procesos en BD. Disparar ingesta para traer datos.</p>
+            </div>`;
+            return;
+        }
+        tabla.innerHTML = data.procesos.map(renderProcesoCard).join('');
+    } catch(e) {
+        tabla.innerHTML = `<p style="color:#dc2626;font-size:13px;padding:16px;">Error: ${escHTML(e.message)}</p>`;
+    }
+}
+
+function renderProcesoCard(p) {
+    const cuantia = p.cuantia_proceso ? fCOP(p.cuantia_proceso) : '<span style="color:#94a3b8;">Sin cuantía</span>';
+    const c = p.clasificacion;
+    let badge_html = '';
+    if (c) {
+        badge_html = c.es_relevante
+            ? '<span class="badge badge-green">● Relevante</span>'
+            : '<span class="badge badge-gray">Falso positivo</span>';
+    } else {
+        badge_html = '<span class="badge badge-yellow">Sin clasificar</span>';
+    }
+
+    let meta = '';
+    if (c) {
+        const parts = [c.tipo_proyecto, c.cantidad_estimada && `~${c.cantidad_estimada.toLocaleString('es-CO')} uds`, c.altura_estimada_cm && `~${c.altura_estimada_cm} cm`].filter(Boolean);
+        if (parts.length) meta = `<p style="font-size:11px;color:#64748b;margin-top:4px;">${parts.join(' · ')}</p>`;
+        if (c.especies_mencionadas?.length) {
+            meta += `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">${c.especies_mencionadas.map(e =>
+                `<span style="padding:2px 8px;border-radius:9999px;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:500;">${escHTML(e)}</span>`
+            ).join('')}</div>`;
+        }
+    }
+
+    return `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:8px;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+            <div style="flex:1;min-width:0;">
+                <p style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHTML(p.entidad || 'Sin entidad')}</p>
+                <p style="font-size:11px;color:#94a3b8;margin-top:2px;">${escHTML(p.ciudad || '?')} · ${escHTML(p.fecha_publicacion || '?')}</p>
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+                <p style="font-size:13px;font-weight:700;color:#012d1d;">${cuantia}</p>
+                ${badge_html}
+            </div>
+        </div>
+        <p style="font-size:12px;color:#475569;margin-top:8px;line-height:1.5;">${escHTML((p.objeto || '').slice(0,240))}${(p.objeto||'').length > 240 ? '…' : ''}</p>
+        ${meta}
+        ${p.url_proceso ? `<a href="${escHTML(p.url_proceso)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#012d1d;font-weight:600;margin-top:8px;text-decoration:none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">Ver en SECOP <span class="material-symbols-outlined" style="font-size:12px;">open_in_new</span></a>` : ''}
+    </div>`;
+}
+
+function escHTML(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// Spin animation for secop button
+const styleEl = document.createElement('style');
+styleEl.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
+document.head.appendChild(styleEl);
+
 function cerrarModal(id) {
     document.getElementById(id).classList.remove('open');
 }
