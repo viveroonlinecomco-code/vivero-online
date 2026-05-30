@@ -45,33 +45,37 @@ async def solicitar_aprobacion(
     if not cot.get("items"):
         raise HTTPException(400, "El carrito está vacío")
 
-    # Actualizar estado
     db.table("cotizaciones").update({
         "estado": "enviada",
     }).eq("cotizacion_id", cotizacion_id).execute()
 
-    # Notificar al viverista por WhatsApp (si hay un solo vivero en los items)
+    # Notificar al viverista por WhatsApp
     try:
         items = cot.get("items") or []
-        vivero_ids = list({it.get("vivero_id") for it in items if it.get("vivero_id")})
-        if len(vivero_ids) == 1:
-            v = db.table("viveros").select("whatsapp_numero, nombre_vivero").eq(
-                "vivero_id", vivero_ids[0]
-            ).limit(1).execute()
-            if v.data and v.data[0].get("whatsapp_numero"):
-                total = int(float(cot.get("total_estimado") or 0))
-                nombre_proyecto = cot.get("prompt_original") or f"Cotización #{cotizacion_id}"
-                msg = (
-                    f"🌿 *Nueva solicitud de cotización — ViveroOnline*\n\n"
-                    f"Proyecto: {nombre_proyecto}\n"
-                    f"Items: {len(items)} productos\n"
-                    f"Total estimado: ${total:,}\n\n"
-                    f"Ingresá a tu panel para aprobar o rechazar:\n"
-                    f"https://vivero-online-j3gi.vercel.app/viverista"
-                )
-                send_text_message(v.data[0]["whatsapp_numero"], msg)
+        inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
+        if inv_ids:
+            inv_resp = db.table("inventario").select("vivero_id").in_(
+                "inventario_id", inv_ids
+            ).execute()
+            vivero_ids = list({r["vivero_id"] for r in (inv_resp.data or []) if r.get("vivero_id")})
+            if len(vivero_ids) == 1:
+                v = db.table("viveros").select("whatsapp_numero, nombre_vivero").eq(
+                    "vivero_id", vivero_ids[0]
+                ).limit(1).execute()
+                if v.data and v.data[0].get("whatsapp_numero"):
+                    total = int(float(cot.get("total_estimado") or 0))
+                    nombre_proyecto = cot.get("prompt_original") or f"Cotización #{cotizacion_id}"
+                    msg = (
+                        f"🌿 *Nueva solicitud de cotización — ViveroOnline*\n\n"
+                        f"Proyecto: {nombre_proyecto}\n"
+                        f"Items: {len(items)} productos\n"
+                        f"Total estimado: ${total:,}\n\n"
+                        f"Ingresá a tu panel para aprobar o rechazar:\n"
+                        f"https://vivero-online-j3gi.vercel.app/viverista"
+                    )
+                    send_text_message(v.data[0]["whatsapp_numero"], msg)
     except Exception:
-        pass  # No bloquear el flujo si falla WhatsApp
+        pass
 
     return {"ok": True, "estado": "enviada", "cotizacion_id": cotizacion_id}
 
@@ -87,7 +91,7 @@ async def listar_pendientes(
     if not user.vivero_id:
         raise HTTPException(400, "Tu perfil no está vinculado a un vivero")
 
-    # Buscar todas las cotizaciones 'enviada' que contienen items de este vivero
+    # Traer todas las cotizaciones en estado 'enviada'
     r = db.table("cotizaciones").select(
         "cotizacion_id, cliente_id, estado, items, total_estimado, "
         "prompt_original, notas_cliente, fecha_creacion"
@@ -96,8 +100,36 @@ async def listar_pendientes(
     pendientes = []
     for cot in (r.data or []):
         items = cot.get("items") or []
-        # Filtrar solo las que tienen items de este vivero
-        mis_items = [it for it in items if it.get("vivero_id") == user.vivero_id]
+        if not items:
+            continue
+
+        # Obtener inventario_ids de esta cotización
+        inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
+        if not inv_ids:
+            continue
+
+        # Cruzar con la tabla inventario para saber el vivero_id real
+        inv_resp = db.table("inventario").select(
+            "inventario_id, vivero_id, plantas(nombre_comun)"
+        ).in_("inventario_id", inv_ids).execute()
+
+        inv_map = {row["inventario_id"]: row for row in (inv_resp.data or [])}
+
+        # Filtrar solo los items de ESTE vivero
+        mis_items = []
+        for it in items:
+            inv = inv_map.get(it.get("inventario_id"))
+            if not inv:
+                continue
+            if inv.get("vivero_id") != user.vivero_id:
+                continue
+            planta = inv.get("plantas") or {}
+            mis_items.append({
+                **it,
+                "vivero_id": user.vivero_id,
+                "nombre_comun": planta.get("nombre_comun") or f"Item #{it.get('inventario_id')}",
+            })
+
         if not mis_items:
             continue
 
@@ -145,18 +177,22 @@ async def aprobar_cotizacion(
     if cot["estado"] != "enviada":
         raise HTTPException(400, f"Solo se pueden aprobar cotizaciones enviadas. Estado: {cot['estado']}")
 
-    # Verificar que el viverista es dueño de al menos 1 item
+    # Verificar que el viverista tiene items en esta cotización
     items = cot.get("items") or []
-    mis_items = [it for it in items if it.get("vivero_id") == user.vivero_id]
-    if not mis_items:
-        raise HTTPException(403, "Esta cotización no contiene items de tu vivero")
+    inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
+    if inv_ids:
+        inv_resp = db.table("inventario").select("inventario_id, vivero_id").in_(
+            "inventario_id", inv_ids
+        ).execute()
+        tiene_items = any(r.get("vivero_id") == user.vivero_id for r in (inv_resp.data or []))
+        if not tiene_items:
+            raise HTTPException(403, "Esta cotización no contiene items de tu vivero")
 
-    # Actualizar estado
     db.table("cotizaciones").update({
         "estado": "aceptada",
     }).eq("cotizacion_id", cotizacion_id).execute()
 
-    # Notificar al comprador por WhatsApp
+    # Notificar al comprador
     try:
         cliente = db.table("clientes").select("whatsapp_numero").eq(
             "cliente_id", cot["cliente_id"]
@@ -185,16 +221,23 @@ async def rechazar_cotizacion(
     req: RechazarReq,
     user: UserContext = Depends(require_viverista),
 ):
-    """Viverista rechaza la cotización (sin stock, fuera de zona, etc.)."""
+    """Viverista rechaza la cotización."""
     db = db_admin()
     cot = _get_cotizacion(db, cotizacion_id)
 
     if cot["estado"] != "enviada":
         raise HTTPException(400, f"Solo se pueden rechazar cotizaciones enviadas. Estado: {cot['estado']}")
 
+    # Verificar que el viverista tiene items en esta cotización
     items = cot.get("items") or []
-    if not any(it.get("vivero_id") == user.vivero_id for it in items):
-        raise HTTPException(403, "Esta cotización no contiene items de tu vivero")
+    inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
+    if inv_ids:
+        inv_resp = db.table("inventario").select("inventario_id, vivero_id").in_(
+            "inventario_id", inv_ids
+        ).execute()
+        tiene_items = any(r.get("vivero_id") == user.vivero_id for r in (inv_resp.data or []))
+        if not tiene_items:
+            raise HTTPException(403, "Esta cotización no contiene items de tu vivero")
 
     db.table("cotizaciones").update({
         "estado": "rechazada",
@@ -253,7 +296,7 @@ async def iniciar_checkout(
     if not epayco.is_configured:
         raise HTTPException(503, "Servicio de pagos no configurado")
 
-    # Guardar datos de entrega en cotización
+    # Guardar datos de entrega
     update_data = {}
     if req.ciudad_entrega:
         update_data["ciudad_entrega"] = req.ciudad_entrega
@@ -268,7 +311,7 @@ async def iniciar_checkout(
     if monto_cop <= 0:
         raise HTTPException(400, "El total de la cotización es inválido")
 
-    # Obtener datos del cliente
+    # Datos del cliente
     cliente = db.table("clientes").select(
         "nombre_empresa, nombre_representante, whatsapp_numero"
     ).eq("cliente_id", user.cliente_id).limit(1).execute()
@@ -301,7 +344,7 @@ async def iniciar_checkout(
         "transaccion_id": transaccion_id,
     }).eq("cotizacion_id", cotizacion_id).execute()
 
-    # Crear payload ePayco
+    # Payload ePayco
     checkout_req = CheckoutRequest(
         transaccion_id=transaccion_id,
         monto_cop=monto_cop,
@@ -313,7 +356,7 @@ async def iniciar_checkout(
     confirmation_url = f"{s.app_base_url}/api/pagos/confirmacion"
     payload = epayco.build_checkout_payload(checkout_req, response_url, confirmation_url)
 
-    # Crear registro de pago pendiente
+    # Registro de pago pendiente
     monto_plataforma = round(monto_cop * 0.05, 2)
     pago_resp = db.table("pagos").insert({
         "transaccion_id": transaccion_id,
@@ -332,6 +375,7 @@ async def iniciar_checkout(
         "ok": True,
         "pago_id": pago_id,
         "transaccion_id": transaccion_id,
+        "cotizacion_id": cotizacion_id,
         "referencia": payload["invoice"],
         "checkout_payload": payload,
         "monto_cop": monto_cop,
