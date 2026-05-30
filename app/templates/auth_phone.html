@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta content="width=device-width, initial-scale=1.0" name="viewport">
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
 <script id="tailwind-config">
     tailwind.config = {
@@ -12,39 +12,48 @@
         theme: {
             extend: {
                 colors: {
-                    "primary": "#325926",
-                    "background-light": "#f7f7f6",
-                    "background-dark": "#171d15",
+                    "primary":           "#012d1d",
+                    "secondary":         "#924c00",
+                    "background-light":  "#f7f7f6",
+                    "background-dark":   "#171d15",
                 },
-                fontFamily: { "display": ["Inter", "sans-serif"] },
-                borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                fontFamily: {
+                    "display": ["Inter", "sans-serif"],
+                    "hero":    ["Montserrat", "sans-serif"],
+                },
+                borderRadius: {"DEFAULT":"1rem","lg":"2rem","xl":"3rem","full":"9999px"},
             },
         },
     }
 </script>
 <title>Ingresar · ViveroOnline</title>
-<style>
-    body { min-height: max(884px, 100dvh); }
-</style>
+<style>body { min-height: max(884px, 100dvh); }</style>
 </head>
 <body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100">
 
 <div class="flex flex-col min-h-screen max-w-md mx-auto px-6 py-8">
 
-    <!-- Brand header -->
-    <div class="flex items-center gap-2 mb-12">
+    <!-- Brand -->
+    <div class="flex items-center gap-2 mb-10">
         <span class="material-symbols-outlined text-primary text-3xl">energy_savings_leaf</span>
         <h2 class="text-lg font-bold tracking-tight">ViveroOnline.com.co</h2>
     </div>
 
-    <!-- Hero -->
     <div class="flex-1">
-        <h1 class="text-4xl font-black leading-tight tracking-tight mb-3">
-            Bienvenido al<br>
-            <span class="text-primary">Marketplace de Plantas IA</span>
+
+        <!-- Badge de rol (solo visible cuando viene ?rol=) -->
+        <div id="role-badge" class="hidden items-center gap-2 px-4 py-2 rounded-full text-sm font-bold mb-6 w-fit">
+            <span class="material-symbols-outlined text-base" id="badge-icon">forest</span>
+            <span id="badge-text">Viverista</span>
+        </div>
+
+        <!-- Hero -->
+        <h1 class="text-4xl font-black leading-tight tracking-tight mb-3 font-hero">
+            <span id="hero-line1">Bienvenido al</span><br>
+            <span id="hero-line2" class="text-primary">Marketplace de Plantas IA</span>
         </h1>
-        <p class="text-slate-600 dark:text-slate-400 text-base mb-10">
-            Ingresa tu email para recibir un código de verificación.
+        <p id="hero-sub" class="text-slate-600 dark:text-slate-400 text-base mb-10">
+            Ingresá tu email para recibir tu código de acceso.
         </p>
 
         <!-- Form -->
@@ -55,83 +64,93 @@
                 </label>
                 <input
                     id="email-input"
-                    type="email"
-                    inputmode="email"
-                    autocomplete="email"
-                    placeholder="tucorreo@ejemplo.com"
-                    required
+                    type="email" inputmode="email" autocomplete="email"
+                    placeholder="tucorreo@ejemplo.com" required
                     class="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT text-base font-semibold focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition"
                 >
-                <p class="mt-2 text-xs text-slate-500 dark:text-slate-500">
-                    Te enviaremos un código de 6 dígitos a tu correo.
-                </p>
+                <p class="mt-2 text-xs text-slate-500">Te enviaremos un código de 6 dígitos a tu correo.</p>
             </div>
 
             <div id="error-box" class="hidden rounded-DEFAULT bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3"></div>
 
-            <button
-                type="submit"
-                id="submit-btn"
-                class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-primary/20 transition disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-                <span id="btn-text">Enviar código</span>
+            <button type="submit" id="submit-btn"
+                class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-primary/20 transition disabled:opacity-60 disabled:cursor-not-allowed">
+                <span id="btn-text">Continuar</span>
                 <span id="btn-spinner" class="hidden material-symbols-outlined animate-spin">progress_activity</span>
                 <span id="btn-arrow" class="material-symbols-outlined">arrow_forward</span>
             </button>
         </form>
 
-        <!-- Terms -->
-        <p class="mt-8 text-xs text-slate-500 dark:text-slate-500 text-center">
-            Al continuar, aceptas nuestros
+        <p class="mt-8 text-xs text-slate-500 text-center">
+            Al continuar, aceptás nuestros
             <a href="/terminos" class="text-primary font-semibold underline">Términos</a> y
             <a href="/habeas-data" class="text-primary font-semibold underline">Tratamiento de Datos</a>.
         </p>
     </div>
 
-    <!-- Footer -->
-    <div class="mt-8 text-center text-xs text-slate-400 dark:text-slate-600">
-        © 2026 ViveroOnline · Sabana de Bogotá
-    </div>
+    <div class="mt-8 text-center text-xs text-slate-400">© 2026 ViveroOnline · Sabana de Bogotá</div>
 </div>
 
 <script>
-const form = document.getElementById('email-form');
-const input = document.getElementById('email-input');
-const errorBox = document.getElementById('error-box');
-const btn = document.getElementById('submit-btn');
-const btnText = document.getElementById('btn-text');
-const btnSpinner = document.getElementById('btn-spinner');
-const btnArrow = document.getElementById('btn-arrow');
+const VALID_ROLES = ['viverista', 'comprador'];
+const rol = new URLSearchParams(window.location.search).get('rol');
 
+// ─── Personalización según ?rol= ──────────────────────────────
+const badge   = document.getElementById('role-badge');
+const hero2   = document.getElementById('hero-line2');
+const heroSub = document.getElementById('hero-sub');
+const btn     = document.getElementById('submit-btn');
+
+if (rol === 'viverista') {
+    badge.classList.remove('hidden');
+    badge.classList.add('flex');
+    badge.style.cssText = 'background:rgba(1,45,29,0.08);color:#012d1d;';
+    document.getElementById('badge-icon').textContent = 'forest';
+    document.getElementById('badge-text').textContent = 'Registro Viverista';
+    document.getElementById('hero-line1').textContent = 'Bienvenido,';
+    hero2.textContent = 'Viverista 🌿';
+    heroSub.textContent = 'Ingresá tu email para activar tu cuenta de viverista y cargar tu catálogo.';
+    document.title = 'Registro Viverista · ViveroOnline';
+} else if (rol === 'comprador') {
+    badge.classList.remove('hidden');
+    badge.classList.add('flex');
+    badge.style.cssText = 'background:rgba(146,76,0,0.08);color:#924c00;';
+    document.getElementById('badge-icon').textContent = 'architecture';
+    document.getElementById('badge-text').textContent = 'Registro Comprador';
+    document.getElementById('hero-line1').textContent = 'Bienvenido,';
+    hero2.textContent = 'Comprador 🛒';
+    hero2.style.color = '#924c00';
+    btn.style.background = '#924c00';
+    heroSub.textContent = 'Ingresá tu email para acceder al marketplace mayorista.';
+    document.title = 'Registro Comprador · ViveroOnline';
+}
+
+// ─── Form ─────────────────────────────────────────────────────
+const form     = document.getElementById('email-form');
+const input    = document.getElementById('email-input');
+const errorBox = document.getElementById('error-box');
+const btnText  = document.getElementById('btn-text');
+const spinner  = document.getElementById('btn-spinner');
+const arrow    = document.getElementById('btn-arrow');
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 
-function showError(msg) {
-    errorBox.textContent = msg;
-    errorBox.classList.remove('hidden');
-}
-function hideError() { errorBox.classList.add('hidden'); }
-
-function setLoading(loading) {
-    btn.disabled = loading;
-    btnText.textContent = loading ? 'Enviando...' : 'Enviar código';
-    btnSpinner.classList.toggle('hidden', !loading);
-    btnArrow.classList.toggle('hidden', loading);
+function showError(msg) { errorBox.textContent = msg; errorBox.classList.remove('hidden'); }
+function hideError()    { errorBox.classList.add('hidden'); }
+function setLoading(v)  {
+    btn.disabled = v;
+    btnText.textContent = v ? 'Enviando...' : 'Continuar';
+    spinner.classList.toggle('hidden', !v);
+    arrow.classList.toggle('hidden', v);
 }
 
 form.addEventListener('submit', async (e) => {
     e.preventDefault();
     hideError();
-
     const email = input.value.trim().toLowerCase();
-    if (!EMAIL_RE.test(email)) {
-        showError('Ingresá un email válido (ej: tucorreo@ejemplo.com).');
-        return;
-    }
-
+    if (!EMAIL_RE.test(email)) { showError('Ingresá un email válido.'); return; }
     setLoading(true);
-
     try {
-        const res = await fetch('/api/auth/otp/send', {
+        const res  = await fetch('/api/auth/otp/send', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ email }),
@@ -139,8 +158,10 @@ form.addEventListener('submit', async (e) => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.detail || 'No se pudo enviar el código.');
 
-        // Guarda el email para la siguiente pantalla
         sessionStorage.setItem('vivero_email', email);
+        if (rol && VALID_ROLES.includes(rol)) {
+            localStorage.setItem('vivero_intended_rol', rol);
+        }
         window.location.href = '/auth/otp';
     } catch (err) {
         showError(err.message);
