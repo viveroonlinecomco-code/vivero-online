@@ -1,472 +1,980 @@
 <!DOCTYPE html>
-<html lang="es"><head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Panel admin · ViveroOnline</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    colors: {
-                        "primary": "#325926",
-                        "background-light": "#f7f7f6",
-                        "background-dark": "#171d15",
-                    },
-                    fontFamily: { "display": ["Inter"] },
-                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
-                },
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Centro de Control · ViveroOnline</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<script>
+tailwind.config = {
+    theme: {
+        extend: {
+            colors: {
+                primary: "#012d1d",
+                accent:  "#22c55e",
+                bg:      "#f0f2ee",
             },
-        }
-    </script>
+            fontFamily: {
+                sans: ["Inter", "sans-serif"],
+                mono: ["DM Mono", "monospace"],
+            },
+        },
+    },
+}
+</script>
 <style>
-    body { min-height: max(884px, 100dvh); }
-  </style>
-  </head>
-<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100">
-<div class="relative flex min-h-screen w-full flex-col overflow-x-hidden">
-<!-- Header -->
-<div class="flex items-center bg-white dark:bg-background-dark p-4 border-b border-primary/10 justify-between sticky top-0 z-50">
-<div class="text-primary flex size-12 shrink-0 items-center justify-center">
-<span class="material-symbols-outlined text-3xl">navigation</span>
-</div>
-<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold leading-tight tracking-tight flex-1">Panel administrador</h2>
-<div class="flex w-12 items-center justify-end">
-<button onclick="VO.logout()" title="Cerrar sesión" class="flex items-center justify-center rounded-full h-10 w-10 bg-primary/10 text-primary">
-<span class="material-symbols-outlined">person</span>
-</button>
-</div>
+* { box-sizing: border-box; }
+body { min-height: 100dvh; background: #f0f2ee; font-family: "Inter", sans-serif; }
+
+/* Sidebar */
+.sidebar { width: 240px; min-height: 100dvh; background: #012d1d; position: fixed; top: 0; left: 0; bottom: 0; display: flex; flex-direction: column; z-index: 40; transition: transform .25s; }
+.sidebar.hidden-mobile { transform: translateX(-100%); }
+@media(max-width:768px){ .sidebar { transform: translateX(-100%); } .sidebar.open { transform: translateX(0); } }
+.sidebar-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 10px; cursor: pointer; color: rgba(255,255,255,.6); font-size: 14px; font-weight: 500; transition: all .15s; margin: 1px 8px; }
+.sidebar-item:hover { background: rgba(255,255,255,.08); color: #fff; }
+.sidebar-item.active { background: rgba(34,197,94,.15); color: #4ade80; }
+.sidebar-item .icon { font-size: 20px; }
+
+/* Main layout */
+.main { margin-left: 240px; min-height: 100dvh; }
+@media(max-width:768px){ .main { margin-left: 0; } }
+
+/* Cards */
+.card { background: #fff; border-radius: 14px; padding: 20px; border: 1px solid rgba(1,45,29,.08); }
+.kpi-val { font-size: 28px; font-weight: 800; color: #012d1d; }
+.kpi-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; }
+
+/* Tables */
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #64748b; padding: 10px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+.tbl td { padding: 12px; font-size: 13px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.tbl tr:hover td { background: #f8fafc; }
+.tbl tr:last-child td { border-bottom: none; }
+
+/* Badges */
+.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
+.badge-green { background: #dcfce7; color: #15803d; }
+.badge-yellow { background: #fef9c3; color: #a16207; }
+.badge-red { background: #fee2e2; color: #dc2626; }
+.badge-blue { background: #dbeafe; color: #1d4ed8; }
+.badge-gray { background: #f1f5f9; color: #64748b; }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; border: none; }
+.btn-primary { background: #012d1d; color: #fff; }
+.btn-primary:hover { background: #024a2f; }
+.btn-danger { background: #fee2e2; color: #dc2626; }
+.btn-danger:hover { background: #fecaca; }
+.btn-ghost { background: #f1f5f9; color: #475569; }
+.btn-ghost:hover { background: #e2e8f0; }
+.btn-success { background: #dcfce7; color: #15803d; }
+.btn-success:hover { background: #bbf7d0; }
+
+/* Section tabs */
+.section { display: none; }
+.section.active { display: block; }
+
+/* Search */
+.search-box { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 12px; }
+.search-box input { border: none; outline: none; font-size: 14px; flex: 1; background: transparent; }
+
+/* Modal overlay */
+.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 100; display: none; align-items: center; justify-content: center; }
+.modal-bg.open { display: flex; }
+.modal { background: #fff; border-radius: 16px; padding: 24px; width: 100%; max-width: 440px; }
+
+/* Toast */
+#toast { position: fixed; bottom: 24px; right: 24px; z-index: 200; display: none; }
+.toast-msg { background: #012d1d; color: #fff; padding: 12px 18px; border-radius: 10px; font-size: 13px; font-weight: 600; margin-top: 8px; animation: fadeUp .3s; }
+.toast-msg.error { background: #dc2626; }
+@keyframes fadeUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
+
+/* Mobile overlay */
+.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 35; }
+.overlay.show { display: block; }
+</style>
+</head>
+<body>
+
+<!-- Mobile overlay -->
+<div class="overlay" id="overlay" onclick="closeSidebar()"></div>
+
+<!-- SIDEBAR -->
+<aside class="sidebar" id="sidebar">
+    <div style="padding:20px 16px 12px; border-bottom: 1px solid rgba(255,255,255,.1);">
+        <div style="display:flex;align-items:center;gap:10px;">
+            <span class="material-symbols-outlined" style="color:#4ade80;font-size:28px;">energy_savings_leaf</span>
+            <div>
+                <p style="color:#fff;font-weight:800;font-size:14px;line-height:1.2;">ViveroOnline</p>
+                <p style="color:rgba(255,255,255,.4);font-size:11px;">Centro de Control</p>
+            </div>
+        </div>
+    </div>
+
+    <nav style="flex:1;padding:12px 0;overflow-y:auto;">
+        <div class="sidebar-item active" onclick="goTo('dashboard')" id="nav-dashboard">
+            <span class="material-symbols-outlined icon">dashboard</span>
+            Centro de Control
+        </div>
+        <div class="sidebar-item" onclick="goTo('comunidad')" id="nav-comunidad">
+            <span class="material-symbols-outlined icon">groups</span>
+            Comunidad
+        </div>
+        <div class="sidebar-item" onclick="goTo('catalogo')" id="nav-catalogo">
+            <span class="material-symbols-outlined icon">inventory_2</span>
+            Catálogo e Inventario
+        </div>
+        <div class="sidebar-item" onclick="goTo('suscripciones')" id="nav-suscripciones">
+            <span class="material-symbols-outlined icon">star</span>
+            Suscripciones
+        </div>
+        <div class="sidebar-item" onclick="goTo('auditoria')" id="nav-auditoria">
+            <span class="material-symbols-outlined icon">shield</span>
+            Auditoría y Soporte
+        </div>
+    </nav>
+
+    <div style="padding:16px;border-top:1px solid rgba(255,255,255,.1);">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+            <div style="width:32px;height:32px;border-radius:50%;background:rgba(74,222,128,.2);display:flex;align-items:center;justify-content:center;">
+                <span class="material-symbols-outlined" style="color:#4ade80;font-size:16px;">person</span>
+            </div>
+            <div>
+                <p id="admin-nombre" style="color:#fff;font-size:12px;font-weight:600;">Admin</p>
+                <p style="color:rgba(255,255,255,.4);font-size:11px;">Administrador</p>
+            </div>
+        </div>
+        <button onclick="VO.logout()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);border:none;border-radius:8px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;" onmouseover="this.style.background='rgba(255,255,255,.15)'" onmouseout="this.style.background='rgba(255,255,255,.08)'">
+            <span class="material-symbols-outlined" style="font-size:16px;">logout</span>
+            Cerrar sesión
+        </button>
+    </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+
+    <!-- Top bar (mobile) -->
+    <div style="display:none;position:sticky;top:0;z-index:30;background:#f0f2ee;padding:12px 16px;border-bottom:1px solid rgba(1,45,29,.08);align-items:center;gap:12px;" id="mobile-topbar">
+        <button onclick="openSidebar()" style="border:none;background:none;cursor:pointer;padding:4px;">
+            <span class="material-symbols-outlined" style="font-size:24px;color:#012d1d;">menu</span>
+        </button>
+        <span class="material-symbols-outlined" style="color:#22c55e;font-size:22px;">energy_savings_leaf</span>
+        <span style="font-weight:800;font-size:15px;color:#012d1d;">Centro de Control</span>
+    </div>
+
+    <div style="padding:24px 28px;max-width:1100px;margin:0 auto;">
+
+        <!-- ══════════ DASHBOARD ══════════ -->
+        <div class="section active" id="section-dashboard">
+            <div style="margin-bottom:24px;">
+                <h1 style="font-size:22px;font-weight:800;color:#012d1d;">📊 Centro de Control</h1>
+                <p style="color:#64748b;font-size:13px;margin-top:2px;">KPIs en tiempo real de ViveroOnline</p>
+            </div>
+
+            <!-- KPIs -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px;">
+                <div class="card">
+                    <p class="kpi-label">GMV Total</p>
+                    <p class="kpi-val" id="k-gmv">—</p>
+                    <p style="font-size:11px;color:#94a3b8;margin-top:4px;">Acumulado plataforma</p>
+                </div>
+                <div class="card">
+                    <p class="kpi-label">Ticket Promedio</p>
+                    <p class="kpi-val" id="k-ticket">—</p>
+                    <p style="font-size:11px;color:#94a3b8;margin-top:4px;">Por transacción</p>
+                </div>
+                <div class="card">
+                    <p class="kpi-label">Viveristas Activos</p>
+                    <p class="kpi-val" id="k-viveristas">—</p>
+                    <p style="font-size:11px;color:#94a3b8;margin-top:4px;">Con catálogo publicado</p>
+                </div>
+                <div class="card">
+                    <p class="kpi-label">Compradores</p>
+                    <p class="kpi-val" id="k-compradores">—</p>
+                    <p style="font-size:11px;color:#94a3b8;margin-top:4px;">Usuarios activos B2B</p>
+                </div>
+                <div class="card">
+                    <p class="kpi-label">Plantas en Catálogo</p>
+                    <p class="kpi-val" id="k-items">—</p>
+                    <p style="font-size:11px;color:#94a3b8;margin-top:4px;">Disponibles para compra</p>
+                </div>
+                <div class="card">
+                    <p class="kpi-label">Suscriptores Plan</p>
+                    <p class="kpi-val" id="k-suscriptores">—</p>
+                    <p style="font-size:11px;color:#94a3b8;margin-top:4px;">Plan Inteligencia activo</p>
+                </div>
+            </div>
+
+            <!-- Accesos rápidos -->
+            <div class="card" style="margin-bottom:16px;">
+                <h3 style="font-weight:700;font-size:14px;color:#012d1d;margin-bottom:14px;">⚡ Acciones rápidas</h3>
+                <div style="display:flex;flex-wrap:wrap;gap:10px;">
+                    <button class="btn btn-primary" onclick="goTo('suscripciones');setTimeout(()=>document.getElementById('btn-nueva-sus').click(),300)">
+                        <span class="material-symbols-outlined" style="font-size:16px;">star</span>
+                        Dar suscripción
+                    </button>
+                    <button class="btn btn-ghost" onclick="goTo('comunidad')">
+                        <span class="material-symbols-outlined" style="font-size:16px;">groups</span>
+                        Ver usuarios
+                    </button>
+                    <button class="btn btn-ghost" onclick="goTo('catalogo')">
+                        <span class="material-symbols-outlined" style="font-size:16px;">inventory_2</span>
+                        Ver catálogo
+                    </button>
+                    <a href="/marketplace" target="_blank" class="btn btn-ghost" style="text-decoration:none;">
+                        <span class="material-symbols-outlined" style="font-size:16px;">storefront</span>
+                        Ver marketplace
+                    </a>
+                </div>
+            </div>
+
+            <!-- Top Viveristas -->
+            <div class="card">
+                <div style="display:flex;align-items:center;justify-content:between;margin-bottom:14px;">
+                    <h3 style="font-weight:700;font-size:14px;color:#012d1d;flex:1;">🏆 Top Viveristas (últimos 90 días · GMV)</h3>
+                </div>
+                <div id="top-viveristas">
+                    <p style="text-align:center;color:#94a3b8;font-size:13px;padding:20px;">Cargando...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ══════════ COMUNIDAD ══════════ -->
+        <div class="section" id="section-comunidad">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+                <div>
+                    <h1 style="font-size:22px;font-weight:800;color:#012d1d;">👥 Comunidad</h1>
+                    <p style="color:#64748b;font-size:13px;margin-top:2px;">Todos los usuarios de la plataforma</p>
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn btn-ghost" onclick="filtrarComunidad('')" id="fil-todos">Todos</button>
+                    <button class="btn btn-ghost" onclick="filtrarComunidad('viverista')" id="fil-viverista">🌿 Viveristas</button>
+                    <button class="btn btn-ghost" onclick="filtrarComunidad('comprador')" id="fil-comprador">🛒 Compradores</button>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom:16px;">
+                <div class="search-box">
+                    <span class="material-symbols-outlined" style="color:#94a3b8;font-size:18px;">search</span>
+                    <input type="text" placeholder="Buscar por nombre o vivero..." id="q-comunidad" oninput="buscarComunidad()">
+                </div>
+            </div>
+
+            <div class="card" style="overflow-x:auto;">
+                <table class="tbl" id="tbl-comunidad">
+                    <thead>
+                        <tr>
+                            <th>Usuario</th>
+                            <th>Rol</th>
+                            <th>Vivero / Info</th>
+                            <th>Suscripción</th>
+                            <th>Onboarding</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-comunidad">
+                        <tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:24px;">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ══════════ CATÁLOGO ══════════ -->
+        <div class="section" id="section-catalogo">
+            <div style="margin-bottom:20px;">
+                <h1 style="font-size:22px;font-weight:800;color:#012d1d;">📦 Catálogo e Inventario</h1>
+                <p style="color:#64748b;font-size:13px;margin-top:2px;">Todos los productos del marketplace</p>
+            </div>
+
+            <div class="card" style="margin-bottom:16px;">
+                <div class="search-box">
+                    <span class="material-symbols-outlined" style="color:#94a3b8;font-size:18px;">search</span>
+                    <input type="text" placeholder="Buscar planta o vivero..." id="q-catalogo" oninput="buscarCatalogo()">
+                </div>
+            </div>
+
+            <div class="card" style="overflow-x:auto;">
+                <table class="tbl">
+                    <thead>
+                        <tr>
+                            <th>Planta</th>
+                            <th>Vivero</th>
+                            <th>Precio mayorista</th>
+                            <th>Stock</th>
+                            <th>Altura</th>
+                            <th>Estado</th>
+                            <th>Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-catalogo">
+                        <tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:24px;">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ══════════ SUSCRIPCIONES ══════════ -->
+        <div class="section" id="section-suscripciones">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+                <div>
+                    <h1 style="font-size:22px;font-weight:800;color:#012d1d;">⭐ Suscripciones</h1>
+                    <p style="color:#64748b;font-size:13px;margin-top:2px;">Plan Inteligencia — gestión manual</p>
+                </div>
+                <button class="btn btn-primary" id="btn-nueva-sus" onclick="abrirModalActivar()">
+                    <span class="material-symbols-outlined" style="font-size:16px;">add</span>
+                    Dar acceso a usuario
+                </button>
+            </div>
+
+            <div class="card" style="overflow-x:auto;">
+                <table class="tbl">
+                    <thead>
+                        <tr>
+                            <th>Usuario</th>
+                            <th>Rol</th>
+                            <th>Plan</th>
+                            <th>Estado</th>
+                            <th>Vence</th>
+                            <th>Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-sus">
+                        <tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:24px;">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- ══════════ AUDITORÍA ══════════ -->
+        <div class="section" id="section-auditoria">
+            <div style="margin-bottom:20px;">
+                <h1 style="font-size:22px;font-weight:800;color:#012d1d;">🛡️ Auditoría y Soporte</h1>
+                <p style="color:#64748b;font-size:13px;margin-top:2px;">Log de actividad del sistema IA</p>
+            </div>
+
+            <div class="card" style="overflow-x:auto;">
+                <table class="tbl">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Tipo</th>
+                            <th>Agente</th>
+                            <th>Detalle</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-auditoria">
+                        <tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px;">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div><!-- /content -->
+</div><!-- /main -->
+
+<!-- ══════════ MODAL: Activar suscripción ══════════ -->
+<div class="modal-bg" id="modal-activar">
+    <div class="modal">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+            <h3 style="font-weight:800;font-size:16px;color:#012d1d;">⭐ Dar acceso Plan Inteligencia</h3>
+            <button onclick="cerrarModal('modal-activar')" style="border:none;background:none;cursor:pointer;">
+                <span class="material-symbols-outlined" style="color:#94a3b8;">close</span>
+            </button>
+        </div>
+
+        <div style="margin-bottom:14px;">
+            <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px;">Usuario (nombre o email)</label>
+            <input type="text" id="sus-buscar" placeholder="Escribí el nombre..." oninput="buscarUsuarioParaSus()"
+                style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;">
+            <div id="sus-resultados" style="margin-top:6px;max-height:160px;overflow-y:auto;"></div>
+        </div>
+
+        <div id="sus-usuario-sel" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 12px;margin-bottom:14px;">
+            <p id="sus-usuario-nombre" style="font-weight:700;font-size:13px;color:#15803d;"></p>
+            <p id="sus-usuario-id" style="font-size:11px;color:#4ade80;font-family:monospace;"></p>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
+            <div>
+                <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px;">Días de acceso</label>
+                <select id="sus-dias" style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;background:#fff;">
+                    <option value="30">30 días</option>
+                    <option value="60">60 días</option>
+                    <option value="90">90 días</option>
+                    <option value="365">1 año</option>
+                </select>
+            </div>
+            <div>
+                <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px;">Nota interna</label>
+                <input type="text" id="sus-nota" placeholder="Opcional..."
+                    style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;">
+            </div>
+        </div>
+
+        <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="confirmarActivar()">
+            <span class="material-symbols-outlined" style="font-size:16px;">star</span>
+            Activar suscripción
+        </button>
+    </div>
 </div>
 
-<!-- Key Metrics -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 p-4">
-<div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-800 border border-primary/10 shadow-sm">
-<p class="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider">GMV Total</p>
-<p class="text-slate-900 dark:text-white text-2xl font-bold" data-vo="gmv">$0</p>
-<p class="text-slate-400 text-xs">Acumulado de la plataforma</p>
-</div>
-<div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-800 border border-primary/10 shadow-sm">
-<p class="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider">Ticket Promedio</p>
-<p class="text-slate-900 dark:text-white text-2xl font-bold" data-vo="ticket-promedio">$0</p>
-<p class="text-slate-400 text-xs">Por transacción</p>
-</div>
-<div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-800 border border-primary/10 shadow-sm">
-<p class="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider">Viveristas Activos</p>
-<p class="text-slate-900 dark:text-white text-2xl font-bold" data-vo="viveros-activos">0</p>
-<p class="text-slate-400 text-xs">Con catálogo publicado</p>
-</div>
-<div class="flex flex-col gap-2 rounded-xl p-5 bg-white dark:bg-slate-800 border border-primary/10 shadow-sm">
-<p class="text-slate-500 dark:text-slate-400 text-xs font-semibold uppercase tracking-wider">Items en Catálogo</p>
-<p class="text-slate-900 dark:text-white text-2xl font-bold" data-vo="items-disponibles">0</p>
-<p class="text-slate-400 text-xs">Disponibles para compra</p>
-</div>
+<!-- ══════════ MODAL: Gestionar suscripción ══════════ -->
+<div class="modal-bg" id="modal-gestionar-sus">
+    <div class="modal">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+            <h3 style="font-weight:800;font-size:16px;color:#012d1d;" id="modal-sus-titulo">Gestionar suscripción</h3>
+            <button onclick="cerrarModal('modal-gestionar-sus')" style="border:none;background:none;cursor:pointer;">
+                <span class="material-symbols-outlined" style="color:#94a3b8;">close</span>
+            </button>
+        </div>
+        <p id="modal-sus-info" style="font-size:13px;color:#64748b;margin-bottom:16px;"></p>
+
+        <div style="margin-bottom:14px;">
+            <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px;">Extender por</label>
+            <select id="modal-sus-dias" style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;background:#fff;">
+                <option value="30">30 días</option>
+                <option value="60">60 días</option>
+                <option value="90">90 días</option>
+                <option value="365">1 año</option>
+            </select>
+        </div>
+
+        <div style="display:flex;gap:8px;">
+            <button class="btn btn-success" style="flex:1;justify-content:center;" onclick="extenderSus()">
+                <span class="material-symbols-outlined" style="font-size:16px;">schedule</span>
+                Extender
+            </button>
+            <button class="btn btn-danger" style="flex:1;justify-content:center;" onclick="cancelarSus()">
+                <span class="material-symbols-outlined" style="font-size:16px;">cancel</span>
+                Cancelar acceso
+            </button>
+        </div>
+    </div>
 </div>
 
-<!-- Top Viveristas -->
-<div class="px-4 pb-6">
-<div class="bg-white dark:bg-slate-800 rounded-xl p-5 border border-primary/10 shadow-sm">
-<div class="flex items-center justify-between mb-4">
-<h3 class="text-lg font-bold text-slate-900 dark:text-white">Top Viveristas</h3>
-<span class="text-xs text-slate-400 font-medium">Últimos 90 días · GMV</span>
-</div>
-<div data-vo="top-viveristas" class="space-y-1">
-<div class="text-center py-6 text-slate-500 text-sm">
-<span class="material-symbols-outlined animate-spin">progress_activity</span>
-<p class="mt-2">Cargando ranking…</p>
-</div>
-</div>
-</div>
-</div>
-
-<!-- Ingestar SECOP II -->
-<div class="px-4 pb-6">
-<div class="bg-white dark:bg-slate-800 rounded-xl p-5 border border-primary/10 shadow-sm">
-<div class="flex items-center justify-between mb-2">
-<h3 class="text-lg font-bold text-slate-900 dark:text-white">Ingestar SECOP II</h3>
-<span class="text-xs text-slate-400 font-medium">Procesos públicos de contratación</span>
-</div>
-<p class="text-sm text-slate-500 mb-4">Trae procesos recientes de SECOP que mencionan plantas/arborización/paisajismo en la Sabana de Bogotá. Si activás clasificación IA, Gemini analiza cada proceso (~2–3s por proceso).</p>
-
-<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
-<div>
-<label class="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">Días atrás</label>
-<input type="number" data-vo="secop-dias" value="30" min="1" max="365" class="w-full rounded-lg border border-primary/20 px-3 py-2 text-sm bg-white dark:bg-slate-700"/>
-</div>
-<div>
-<label class="text-xs font-semibold text-slate-500 uppercase tracking-wider block mb-1">Límite procesos</label>
-<input type="number" data-vo="secop-limit" value="5" min="1" max="200" class="w-full rounded-lg border border-primary/20 px-3 py-2 text-sm bg-white dark:bg-slate-700"/>
-</div>
-<div class="flex items-end">
-<label class="flex items-center gap-2 cursor-pointer select-none py-2">
-<input type="checkbox" data-vo="secop-clasificar" class="rounded text-primary focus:ring-primary"/>
-<span class="text-sm text-slate-700 dark:text-slate-200">Clasificar con IA (Gemini)</span>
-</label>
-</div>
-</div>
-
-<button data-vo="secop-disparar" onclick="dispararSecop()" class="w-full bg-primary text-white font-semibold py-3 rounded-lg hover:bg-primary/90 transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
-<span data-vo="secop-btn-content" class="flex items-center justify-center gap-2">
-<span class="material-symbols-outlined">cloud_download</span>
-<span>Disparar ingesta</span>
-</span>
-</button>
-
-<div data-vo="secop-resultado" class="mt-5 hidden">
-<div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-<div class="bg-primary/5 rounded-lg p-3 text-center">
-<p class="text-xs text-slate-500 uppercase tracking-wider font-semibold">Ingestados</p>
-<p class="text-2xl font-bold text-primary" data-vo="secop-ingestados">0</p>
-</div>
-<div class="bg-primary/5 rounded-lg p-3 text-center">
-<p class="text-xs text-slate-500 uppercase tracking-wider font-semibold">Nuevos</p>
-<p class="text-2xl font-bold text-primary" data-vo="secop-nuevos">0</p>
-</div>
-<div class="bg-primary/5 rounded-lg p-3 text-center">
-<p class="text-xs text-slate-500 uppercase tracking-wider font-semibold">Clasificados</p>
-<p class="text-2xl font-bold text-primary" data-vo="secop-clasificados">0</p>
-</div>
-<div class="bg-primary/5 rounded-lg p-3 text-center">
-<p class="text-xs text-slate-500 uppercase tracking-wider font-semibold">Relevantes</p>
-<p class="text-2xl font-bold text-primary" data-vo="secop-relevantes">0</p>
-</div>
-</div>
-<p data-vo="secop-fecha-desde" class="text-xs text-slate-500 mt-3"></p>
-<div data-vo="secop-warnings" class="mt-3 hidden">
-<p class="text-xs font-semibold text-amber-700 mb-1">⚠ Warnings:</p>
-<ul class="text-xs text-amber-600 list-disc list-inside space-y-1"></ul>
-</div>
-</div>
-</div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════
-     PROCESOS SECOP EN BD (sección nueva)
-     ═══════════════════════════════════════════════════ -->
-<div class="px-4 pb-6">
-<div class="bg-white dark:bg-slate-800 rounded-xl p-5 border border-primary/10 shadow-sm">
-<div class="flex items-center justify-between mb-4">
-<div>
-<h3 class="text-lg font-bold text-slate-900 dark:text-white">Procesos SECOP en BD</h3>
-<p class="text-xs text-slate-400 mt-0.5">Lo que se ingestó · oportunidades reales de demanda</p>
-</div>
-<button onclick="cargarProcesosSecop()" title="Refrescar" class="rounded-full p-2 bg-primary/10 text-primary hover:bg-primary/20 transition-colors">
-<span class="material-symbols-outlined text-base">refresh</span>
-</button>
-</div>
-
-<!-- Stats globales -->
-<div class="grid grid-cols-3 gap-2 mb-4">
-<div class="bg-slate-50 dark:bg-slate-700 rounded-lg p-3 text-center">
-<p class="text-xs text-slate-500 uppercase tracking-wider">En BD</p>
-<p class="text-xl font-bold text-slate-900 dark:text-white" data-vo="bd-total">0</p>
-</div>
-<div class="bg-slate-50 dark:bg-slate-700 rounded-lg p-3 text-center">
-<p class="text-xs text-slate-500 uppercase tracking-wider">Clasificados</p>
-<p class="text-xl font-bold text-slate-900 dark:text-white" data-vo="bd-clasificados">0</p>
-</div>
-<div class="bg-primary/5 rounded-lg p-3 text-center">
-<p class="text-xs text-slate-500 uppercase tracking-wider">Relevantes</p>
-<p class="text-xl font-bold text-primary" data-vo="bd-relevantes">0</p>
-</div>
-</div>
-
-<!-- Resumen de especies (si hay clasificación) -->
-<div data-vo="resumen-especies-block" class="hidden mb-4 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200/50">
-<p class="text-xs font-semibold text-emerald-800 dark:text-emerald-200 mb-2 uppercase tracking-wider">🌱 Plantas más mencionadas en SECOP</p>
-<div class="flex flex-wrap gap-1.5" data-vo="resumen-especies-tags"></div>
-</div>
-
-<!-- Tabla de procesos -->
-<div data-vo="procesos-tabla" class="space-y-2">
-<div class="text-center py-6 text-slate-500 text-sm">
-<span class="material-symbols-outlined animate-spin">progress_activity</span>
-<p class="mt-2">Cargando procesos…</p>
-</div>
-</div>
-</div>
-</div>
-
-<!-- Insights IA -->
-<div class="px-4 pb-20">
-<div class="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-6">
-<div class="flex items-start gap-4">
-<span class="material-symbols-outlined text-primary text-3xl">psychology</span>
-<div class="flex-1">
-<h3 class="font-bold text-slate-800 dark:text-slate-100">Insights estratégicos por IA</h3>
-<p class="text-sm text-slate-500 mt-1">Próximamente, el agente CEO_Orchestrator va a generar recomendaciones basadas en tu data real (top especies por demanda, zonas calientes, alertas de stock). Por ahora podés interactuar con los agentes desde <a href="/api/chat" class="text-primary font-semibold">/api/chat</a>.</p>
-</div>
-</div>
-</div>
-</div>
-
-<!-- Bottom Navigation Bar -->
-<div class="fixed bottom-0 left-0 right-0 border-t border-primary/10 bg-white dark:bg-background-dark px-4 pb-6 pt-2 z-50">
-<div class="flex justify-between max-w-md mx-auto">
-<a class="flex flex-1 flex-col items-center justify-center gap-1 text-primary" href="/admin">
-<span class="material-symbols-outlined fill-1">dashboard</span>
-<p class="text-[10px] font-bold uppercase tracking-tighter">Dashboard</p>
-</a>
-<a class="flex flex-1 flex-col items-center justify-center gap-1 text-slate-400" href="/marketplace">
-<span class="material-symbols-outlined">storefront</span>
-<p class="text-[10px] font-bold uppercase tracking-tighter">Marketplace</p>
-</a>
-<a class="flex flex-1 flex-col items-center justify-center gap-1 text-slate-400" href="mailto:viveroonline.com.co@gmail.com">
-<span class="material-symbols-outlined">support_agent</span>
-<p class="text-[10px] font-bold uppercase tracking-tighter">Soporte</p>
-</a>
-</div>
-</div>
-</div>
+<!-- Toast -->
+<div id="toast"></div>
 
 <script src="/static/js/vivero.js"></script>
-
 <script>
-if (!VO.requireAuth()) throw new Error('auth');
+// ──────── Responsive ────────
+const mobileTopbar = document.getElementById('mobile-topbar');
+function checkMobile() {
+    if (window.innerWidth < 768) {
+        mobileTopbar.style.display = 'flex';
+    } else {
+        mobileTopbar.style.display = 'none';
+    }
+}
+window.addEventListener('resize', checkMobile);
+checkMobile();
 
-// Helpers de escape y formato
-function escapeHTML(s) {
-    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function openSidebar() {
+    document.getElementById('sidebar').classList.add('open');
+    document.getElementById('overlay').classList.add('show');
+}
+function closeSidebar() {
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('overlay').classList.remove('show');
 }
 
-function truncate(s, n) {
-    s = String(s ?? '');
-    return s.length > n ? s.slice(0, n) + '…' : s;
+// ──────── Navegación ────────
+function goTo(section) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
+    document.getElementById('section-' + section).classList.add('active');
+    document.getElementById('nav-' + section).classList.add('active');
+    closeSidebar();
+    if (!loaded[section]) loadSection(section);
 }
 
+const loaded = {};
+
+async function loadSection(s) {
+    loaded[s] = true;
+    if (s === 'dashboard') await loadDashboard();
+    if (s === 'comunidad') await loadComunidad();
+    if (s === 'catalogo') await loadCatalogo();
+    if (s === 'suscripciones') await loadSuscripciones();
+    if (s === 'auditoria') await loadAuditoria();
+}
+
+// ──────── Helpers ────────
+function fCOP(v) {
+    return '$' + Number(v || 0).toLocaleString('es-CO');
+}
+function badge(text, type) {
+    return `<span class="badge badge-${type}">${text}</span>`;
+}
+function fDate(s) {
+    if (!s || s === 'None') return '—';
+    return new Date(s).toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric' });
+}
+function showToast(msg, type='ok') {
+    const t = document.getElementById('toast');
+    const el = document.createElement('div');
+    el.className = 'toast-msg' + (type === 'error' ? ' error' : '');
+    el.textContent = msg;
+    t.style.display = 'block';
+    t.appendChild(el);
+    setTimeout(() => { el.remove(); if (!t.children.length) t.style.display='none'; }, 3500);
+}
+
+// ──────── Auth ────────
+let ME = null;
+let COMUNIDAD_DATA = [];
+let SUS_DATA = [];
+let CATALOGO_DATA = [];
+let SUS_USUARIO_SEL = null;
+let SUS_ID_ACTIVO = null;
+
+// ──────── Init ────────
 document.addEventListener('DOMContentLoaded', async () => {
     try {
-        const me = await VO.me();
-        if (me.rol !== 'admin') {
-            if (typeof VO.showToast === 'function') VO.showToast('Acceso solo para admin', 'error');
+        ME = await VO.me();
+        if (ME.rol !== 'admin') {
+            showToast('Acceso solo para admin', 'error');
             setTimeout(() => window.location.href = '/', 1500);
             return;
         }
-
-        const k = await VO.api('/api/kpis');
-
-        const gmv = document.querySelector('[data-vo="gmv"]');
-        if (gmv) gmv.textContent = VO.formatCOP(k.gmv_total_cop || 0);
-
-        const ticket = document.querySelector('[data-vo="ticket-promedio"]');
-        if (ticket) ticket.textContent = VO.formatCOPFull(k.ticket_promedio_cop || 0);
-
-        const viveros = document.querySelector('[data-vo="viveros-activos"]');
-        if (viveros) viveros.textContent = (k.viveristas_activos || 0).toLocaleString('es-CO');
-
-        const items = document.querySelector('[data-vo="items-disponibles"]');
-        if (items) items.textContent = (k.items_disponibles || 0).toLocaleString('es-CO');
-
-        const topList = document.querySelector('[data-vo="top-viveristas"]');
-        if (topList) {
-            const tops = (k.top_viveristas || []).slice(0, 5);
-            if (tops.length === 0) {
-                topList.innerHTML = `
-                    <div class="text-center py-6 text-slate-500 text-sm">
-                        <span class="material-symbols-outlined text-slate-400 text-3xl mb-2">forest</span>
-                        <p class="font-medium">Aún no hay actividad de viveros para rankear.</p>
-                        <p class="text-xs mt-1">Cuando arranquen las transacciones, vas a ver aquí el top 5 por GMV de los últimos 90 días.</p>
-                    </div>`;
-            } else {
-                topList.innerHTML = tops.map(v => `
-                    <div class="flex items-center justify-between py-3 border-b border-primary/10 last:border-0">
-                        <div>
-                            <p class="font-semibold text-sm">${escapeHTML(v.nombre_vivero || 'Sin nombre')}</p>
-                            <p class="text-xs text-slate-500">${escapeHTML(v.ciudad || '')}</p>
-                        </div>
-                        <div class="text-right">
-                            <p class="font-bold text-primary text-sm">${VO.formatCOPFull(v.gmv_90d_cop || 0)}</p>
-                            <p class="text-xs text-slate-500">${v.ventas_90d || 0} ventas</p>
-                        </div>
-                    </div>
-                `).join('');
-            }
-        }
-
-        // Cargar procesos SECOP al inicio
-        cargarProcesosSecop();
-    } catch (e) {
-        console.error('Error cargando admin dashboard:', e);
-        if (typeof VO.showToast === 'function') {
-            VO.showToast('Error al cargar KPIs: ' + (e.message || 'desconocido'), 'error');
-        }
+        document.getElementById('admin-nombre').textContent = ME.nombre || 'Admin';
+        await loadDashboard();
+    } catch(e) {
+        showToast('Error de sesión: ' + e.message, 'error');
     }
 });
 
-// ─────────────────── INGESTA SECOP ───────────────────
-window.dispararSecop = async function() {
-    const btn = document.querySelector('[data-vo="secop-disparar"]');
-    const btnContent = document.querySelector('[data-vo="secop-btn-content"]');
-    const resultDiv = document.querySelector('[data-vo="secop-resultado"]');
-    const diasAtras = parseInt(document.querySelector('[data-vo="secop-dias"]').value) || 30;
-    const limit = parseInt(document.querySelector('[data-vo="secop-limit"]').value) || 5;
-    const clasificar = document.querySelector('[data-vo="secop-clasificar"]').checked;
-
-    if (clasificar && limit > 15) {
-        const estimadoSeg = Math.round(limit * 2.5);
-        const ok = confirm(
-            `Clasificar ${limit} procesos con Gemini va a tomar ~${estimadoSeg}s. ` +
-            `Vercel puede cortar la conexión si supera 60s. ¿Continuar igual?`
-        );
-        if (!ok) return;
-    }
-
-    btn.disabled = true;
-    btnContent.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span><span>Procesando...</span>';
-    resultDiv.classList.add('hidden');
-
+// ──────── DASHBOARD ────────
+async function loadDashboard() {
     try {
-        const data = await VO.api('/api/ingesta/secop', {
-            method: 'POST',
-            body: JSON.stringify({ dias_atras: diasAtras, limit, clasificar }),
-        });
+        const k = await VO.api('/api/kpis');
+        document.getElementById('k-gmv').textContent       = fCOP(k.gmv_total_cop);
+        document.getElementById('k-ticket').textContent    = fCOP(k.ticket_promedio_cop);
+        document.getElementById('k-viveristas').textContent = k.viveristas_activos || 0;
+        document.getElementById('k-compradores').textContent = k.compradores_activos || 0;
+        document.getElementById('k-items').textContent     = k.items_disponibles || 0;
 
-        document.querySelector('[data-vo="secop-ingestados"]').textContent = data.ingestados ?? 0;
-        document.querySelector('[data-vo="secop-nuevos"]').textContent = data.nuevos ?? 0;
-        document.querySelector('[data-vo="secop-clasificados"]').textContent = data.clasificados ?? 0;
-        document.querySelector('[data-vo="secop-relevantes"]').textContent = data.relevantes ?? 0;
+        // Contar suscriptores
+        try {
+            const sus = await VO.api('/api/admin/suscripciones');
+            const activas = (sus.suscripciones || []).filter(s => s.estado === 'activa').length;
+            document.getElementById('k-suscriptores').textContent = activas;
+        } catch { document.getElementById('k-suscriptores').textContent = '—'; }
 
-        const fechaSpan = document.querySelector('[data-vo="secop-fecha-desde"]');
-        if (fechaSpan) {
-            fechaSpan.textContent = `Buscó procesos desde: ${data.fecha_desde} · ${data.keywords_count} keywords · ${data.municipios_count} municipios`;
-        }
-
-        const warningsDiv = document.querySelector('[data-vo="secop-warnings"]');
-        const warningsUl = warningsDiv ? warningsDiv.querySelector('ul') : null;
-        if (data.warnings && data.warnings.length > 0 && warningsUl) {
-            warningsUl.innerHTML = data.warnings.slice(0, 10).map(w => `<li>${escapeHTML(w)}</li>`).join('');
-            warningsDiv.classList.remove('hidden');
-        } else if (warningsDiv) {
-            warningsDiv.classList.add('hidden');
-        }
-
-        resultDiv.classList.remove('hidden');
-        VO.showToast(`✓ ${data.nuevos ?? 0} procesos nuevos ingestados`, 'success');
-
-        // Refrescar la tabla automáticamente
-        setTimeout(cargarProcesosSecop, 500);
-    } catch (e) {
-        console.error('Error en ingesta SECOP:', e);
-        VO.showToast('Error: ' + (e.message || 'desconocido'), 'error');
-    } finally {
-        btn.disabled = false;
-        btnContent.innerHTML = '<span class="material-symbols-outlined">cloud_download</span><span>Disparar ingesta</span>';
-    }
-};
-
-// ─────────────────── LISTADO DE PROCESOS SECOP ───────────────────
-window.cargarProcesosSecop = async function() {
-    const tablaDiv = document.querySelector('[data-vo="procesos-tabla"]');
-    tablaDiv.innerHTML = `
-        <div class="text-center py-6 text-slate-500 text-sm">
-            <span class="material-symbols-outlined animate-spin">progress_activity</span>
-            <p class="mt-2">Cargando procesos…</p>
-        </div>`;
-
-    try {
-        const data = await VO.api('/api/ingesta/secop/procesos?limit=100');
-
-        // Stats
-        document.querySelector('[data-vo="bd-total"]').textContent = (data.total || 0).toLocaleString('es-CO');
-        document.querySelector('[data-vo="bd-clasificados"]').textContent = (data.total_clasificados || 0).toLocaleString('es-CO');
-        document.querySelector('[data-vo="bd-relevantes"]').textContent = (data.total_relevantes || 0).toLocaleString('es-CO');
-
-        // Resumen de especies
-        const resumenBlock = document.querySelector('[data-vo="resumen-especies-block"]');
-        const resumenTags = document.querySelector('[data-vo="resumen-especies-tags"]');
-        if (data.resumen_especies && data.resumen_especies.length > 0) {
-            resumenTags.innerHTML = data.resumen_especies.map(e => `
-                <span class="inline-flex items-center px-3 py-1 rounded-full text-xs bg-emerald-100 text-emerald-800 font-medium">
-                    ${escapeHTML(e.especie)}
-                    <span class="ml-1.5 px-1.5 py-0.5 rounded-full bg-emerald-700 text-white text-[10px] font-bold">×${e.menciones}</span>
-                </span>
-            `).join('');
-            resumenBlock.classList.remove('hidden');
+        // Top viveristas
+        const tops = (k.top_viveristas || []).slice(0, 5);
+        const tv = document.getElementById('top-viveristas');
+        if (!tops.length) {
+            tv.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:13px;padding:20px;">Sin actividad registrada aún.</p>';
         } else {
-            resumenBlock.classList.add('hidden');
+            tv.innerHTML = tops.map((v, i) => `
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f1f5f9;">
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <span style="width:24px;height:24px;border-radius:50%;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#15803d;">${i+1}</span>
+                        <div>
+                            <p style="font-size:13px;font-weight:600;">${v.nombre_vivero || '—'}</p>
+                            <p style="font-size:11px;color:#94a3b8;">${v.ciudad || ''}</p>
+                        </div>
+                    </div>
+                    <div style="text-align:right;">
+                        <p style="font-size:13px;font-weight:700;color:#012d1d;">${fCOP(v.gmv_90d_cop)}</p>
+                        <p style="font-size:11px;color:#94a3b8;">${v.ventas_90d || 0} ventas</p>
+                    </div>
+                </div>`).join('');
         }
+    } catch(e) {
+        showToast('Error cargando KPIs: ' + e.message, 'error');
+    }
+}
 
-        // Tabla de procesos
-        if (!data.procesos || data.procesos.length === 0) {
-            tablaDiv.innerHTML = `
-                <div class="text-center py-8 text-slate-500 text-sm border-2 border-dashed border-slate-200 rounded-lg">
-                    <span class="material-symbols-outlined text-slate-300 text-4xl mb-2">inbox</span>
-                    <p class="font-medium">Aún no hay procesos en BD.</p>
-                    <p class="text-xs mt-1">Disparar ingesta arriba para traer datos de SECOP II.</p>
-                </div>`;
+// ──────── COMUNIDAD ────────
+let filtroRolComunidad = '';
+
+async function loadComunidad() {
+    try {
+        const data = await VO.api('/api/admin/comunidad');
+        COMUNIDAD_DATA = data.comunidad || [];
+        renderComunidad();
+    } catch(e) {
+        document.getElementById('tbody-comunidad').innerHTML =
+            `<tr><td colspan="6" style="text-align:center;color:#dc2626;padding:24px;">Error: ${e.message}</td></tr>`;
+    }
+}
+
+function filtrarComunidad(rol) {
+    filtroRolComunidad = rol;
+    ['todos','viverista','comprador'].forEach(r => {
+        document.getElementById('fil-' + (r === '' ? 'todos' : r)).classList.remove('btn-primary');
+        document.getElementById('fil-' + (r === '' ? 'todos' : r)).classList.add('btn-ghost');
+    });
+    const activo = rol === '' ? 'fil-todos' : 'fil-' + rol;
+    document.getElementById(activo).classList.add('btn-primary');
+    document.getElementById(activo).classList.remove('btn-ghost');
+    renderComunidad();
+}
+
+function buscarComunidad() { renderComunidad(); }
+
+function renderComunidad() {
+    const q = (document.getElementById('q-comunidad').value || '').toLowerCase();
+    let data = COMUNIDAD_DATA;
+
+    if (filtroRolComunidad) data = data.filter(u => u.rol === filtroRolComunidad);
+    if (q) data = data.filter(u =>
+        (u.nombre || '').toLowerCase().includes(q) ||
+        (u.vivero?.nombre_vivero || '').toLowerCase().includes(q)
+    );
+
+    if (!data.length) {
+        document.getElementById('tbody-comunidad').innerHTML =
+            '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:24px;">Sin resultados</td></tr>';
+        return;
+    }
+
+    document.getElementById('tbody-comunidad').innerHTML = data.map(u => {
+        const rolBadge = u.rol === 'viverista' ? badge('🌿 Viverista','green')
+            : u.rol === 'comprador' ? badge('🛒 Comprador','blue')
+            : badge('🔑 Admin','gray');
+        const extra = u.vivero ? u.vivero.nombre_vivero : '—';
+        const sus = u.suscripcion
+            ? badge('⭐ Plan Inteligencia','yellow')
+            : badge('Free','gray');
+        const onb = u.onboarding_ok
+            ? badge('✓ Completo','green')
+            : badge('Pendiente','yellow');
+
+        const accionVivero = u.vivero ? `
+            <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px;" onclick="toggleVivero(${u.vivero_id}, '${u.vivero?.estado}')">
+                ${u.vivero?.estado === 'activo' ? '⏸ Suspender vivero' : '▶ Activar vivero'}
+            </button>` : '';
+
+        return `<tr>
+            <td>
+                <p style="font-weight:600;font-size:13px;">${u.nombre}</p>
+                <p style="font-size:11px;color:#94a3b8;">${fDate(u.creado_en)}</p>
+            </td>
+            <td>${rolBadge}</td>
+            <td style="font-size:12px;">${extra}</td>
+            <td>${sus}</td>
+            <td>${onb}</td>
+            <td>
+                <div style="display:flex;gap:4px;flex-wrap:wrap;">
+                    ${accionVivero}
+                    ${!u.suscripcion ? `<button class="btn btn-success" style="padding:4px 8px;font-size:11px;" onclick="darSuscripcionRapido('${u.user_id}','${u.nombre}')">⭐ Dar plan</button>` : ''}
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+async function toggleVivero(vivero_id, estadoActual) {
+    if (!vivero_id) return;
+    const nuevoEstado = estadoActual === 'activo' ? 'suspendido' : 'activo';
+    const confirmMsg = nuevoEstado === 'suspendido'
+        ? '¿Suspender este vivero? Dejará de aparecer en el marketplace.'
+        : '¿Activar este vivero?';
+    if (!confirm(confirmMsg)) return;
+    try {
+        await VO.api(`/api/admin/vivero/${vivero_id}/estado`, {
+            method: 'PATCH',
+            body: JSON.stringify({ estado: nuevoEstado }),
+        });
+        showToast(`Vivero ${nuevoEstado} correctamente`);
+        loaded.comunidad = false;
+        await loadComunidad();
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+// ──────── CATÁLOGO ────────
+async function loadCatalogo() {
+    try {
+        const data = await VO.api('/api/admin/inventario');
+        CATALOGO_DATA = data.items || [];
+        renderCatalogo();
+    } catch(e) {
+        document.getElementById('tbody-catalogo').innerHTML =
+            `<tr><td colspan="7" style="text-align:center;color:#dc2626;padding:24px;">Error: ${e.message}</td></tr>`;
+    }
+}
+
+function buscarCatalogo() {
+    const q = (document.getElementById('q-catalogo').value || '').toLowerCase();
+    const filtered = q ? CATALOGO_DATA.filter(i =>
+        (i.nombre_comun || '').toLowerCase().includes(q) ||
+        (i.nombre_vivero || '').toLowerCase().includes(q)
+    ) : CATALOGO_DATA;
+    renderCatalogoData(filtered);
+}
+
+function renderCatalogo() { renderCatalogoData(CATALOGO_DATA); }
+
+function renderCatalogoData(data) {
+    if (!data.length) {
+        document.getElementById('tbody-catalogo').innerHTML =
+            '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:24px;">Sin resultados</td></tr>';
+        return;
+    }
+    document.getElementById('tbody-catalogo').innerHTML = data.map(item => {
+        const estadoBadge = item.estado_planta === 'disponible' ? badge('Disponible','green')
+            : item.estado_planta === 'agotado' ? badge('Agotado','yellow')
+            : badge('Descontinuado','red');
+
+        return `<tr>
+            <td>
+                <p style="font-weight:600;font-size:13px;">${item.nombre_comun}</p>
+                <p style="font-size:11px;color:#94a3b8;">ID: ${item.inventario_id}</p>
+            </td>
+            <td>
+                <p style="font-size:13px;">${item.nombre_vivero || '—'}</p>
+                <p style="font-size:11px;color:#94a3b8;">${item.ciudad || ''}</p>
+            </td>
+            <td style="font-weight:600;">${fCOP(item.precio_mayorista)}</td>
+            <td>
+                <span style="font-weight:700;color:${item.stock < 5 ? '#dc2626' : '#15803d'};">${item.stock}</span>
+                <span style="font-size:11px;color:#94a3b8;"> uds</span>
+            </td>
+            <td style="font-size:12px;">${item.altura_cm} cm</td>
+            <td>${estadoBadge}</td>
+            <td>
+                <select onchange="cambiarEstadoItem(${item.inventario_id}, this.value)" style="border:1px solid #e2e8f0;border-radius:6px;padding:4px 6px;font-size:11px;outline:none;background:#fff;">
+                    <option value="">Cambiar...</option>
+                    <option value="disponible">✓ Disponible</option>
+                    <option value="agotado">⚠ Agotado</option>
+                    <option value="descontinuado">✗ Descontinuado</option>
+                </select>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+async function cambiarEstadoItem(inv_id, estado) {
+    if (!estado) return;
+    try {
+        await VO.api(`/api/admin/inventario/${inv_id}/estado`, {
+            method: 'PATCH',
+            body: JSON.stringify({ estado_planta: estado }),
+        });
+        showToast(`Estado actualizado a: ${estado}`);
+        loaded.catalogo = false;
+        await loadCatalogo();
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+// ──────── SUSCRIPCIONES ────────
+async function loadSuscripciones() {
+    try {
+        const data = await VO.api('/api/admin/suscripciones');
+        SUS_DATA = data.suscripciones || [];
+        renderSuscripciones();
+    } catch(e) {
+        document.getElementById('tbody-sus').innerHTML =
+            `<tr><td colspan="6" style="text-align:center;color:#dc2626;padding:24px;">Error: ${e.message}</td></tr>`;
+    }
+}
+
+function renderSuscripciones() {
+    if (!SUS_DATA.length) {
+        document.getElementById('tbody-sus').innerHTML =
+            '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:24px;">Sin suscripciones registradas</td></tr>';
+        return;
+    }
+    document.getElementById('tbody-sus').innerHTML = SUS_DATA.map(s => {
+        const estadoBadge = s.estado === 'activa' ? badge('● Activa','green')
+            : s.estado === 'cancelada' ? badge('✗ Cancelada','red')
+            : badge(s.estado,'gray');
+        const vence = fDate(s.fecha_proximo_cobro);
+        const vencida = s.fecha_proximo_cobro && new Date(s.fecha_proximo_cobro) < new Date();
+        const monto = s.monto_mensual_cop === 0 ? badge('Prueba','blue') : fCOP(s.monto_mensual_cop) + '/mes';
+
+        return `<tr>
+            <td>
+                <p style="font-weight:600;font-size:13px;">${s.nombre_usuario}</p>
+                <p style="font-size:11px;color:#94a3b8;font-family:monospace;">${s.user_id?.slice(0,8)}...</p>
+            </td>
+            <td style="font-size:12px;">${s.rol_usuario}</td>
+            <td>
+                <span class="badge badge-yellow">⭐ ${s.plan || 'inteligencia'}</span>
+                <p style="font-size:11px;color:#94a3b8;margin-top:2px;">${monto}</p>
+            </td>
+            <td>${estadoBadge}</td>
+            <td>
+                <span style="font-size:13px;color:${vencida ? '#dc2626' : '#15803d'};">${vence}</span>
+                ${vencida ? '<br><span style="font-size:10px;color:#dc2626;font-weight:600;">VENCIDA</span>' : ''}
+            </td>
+            <td>
+                ${s.estado === 'activa' ? `
+                <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px;" onclick="abrirGestionarSus(${s.suscripcion_id}, '${s.nombre_usuario}', '${vence}')">
+                    ✏️ Gestionar
+                </button>` : `
+                <button class="btn btn-success" style="padding:4px 8px;font-size:11px;" onclick="reactivarSus(${s.suscripcion_id})">
+                    ▶ Reactivar
+                </button>`}
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// ──────── Modal: Activar ────────
+function abrirModalActivar() {
+    SUS_USUARIO_SEL = null;
+    document.getElementById('sus-buscar').value = '';
+    document.getElementById('sus-resultados').innerHTML = '';
+    document.getElementById('sus-usuario-sel').style.display = 'none';
+    document.getElementById('sus-nota').value = '';
+    document.getElementById('modal-activar').classList.add('open');
+}
+
+async function buscarUsuarioParaSus() {
+    const q = document.getElementById('sus-buscar').value.toLowerCase().trim();
+    if (!q) { document.getElementById('sus-resultados').innerHTML = ''; return; }
+
+    let data = COMUNIDAD_DATA;
+    if (!data.length) {
+        try {
+            const r = await VO.api('/api/admin/comunidad');
+            data = r.comunidad || [];
+            COMUNIDAD_DATA = data;
+        } catch { return; }
+    }
+
+    const resultados = data.filter(u =>
+        (u.nombre || '').toLowerCase().includes(q) ||
+        (u.vivero?.nombre_vivero || '').toLowerCase().includes(q)
+    ).slice(0, 5);
+
+    if (!resultados.length) {
+        document.getElementById('sus-resultados').innerHTML =
+            '<p style="font-size:12px;color:#94a3b8;padding:8px;">Sin resultados</p>';
+        return;
+    }
+
+    document.getElementById('sus-resultados').innerHTML = resultados.map(u => `
+        <div onclick="seleccionarUsuarioSus('${u.user_id}','${u.nombre.replace(/'/g,"\\'")}','${u.suscripcion ? 'con_sus' : ''}')"
+             style="padding:8px 10px;border-radius:6px;cursor:pointer;border:1px solid #e2e8f0;margin-bottom:4px;background:#fff;"
+             onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='#fff'">
+            <p style="font-size:13px;font-weight:600;">${u.nombre}</p>
+            <p style="font-size:11px;color:#94a3b8;">${u.rol} ${u.suscripcion ? '· ⭐ Ya tiene plan activo' : ''}</p>
+        </div>`).join('');
+}
+
+function seleccionarUsuarioSus(uid, nombre, flag) {
+    if (flag === 'con_sus') {
+        showToast('Este usuario ya tiene Plan Inteligencia activo.', 'error');
+        return;
+    }
+    SUS_USUARIO_SEL = { user_id: uid, nombre };
+    document.getElementById('sus-usuario-nombre').textContent = '✓ ' + nombre;
+    document.getElementById('sus-usuario-id').textContent = uid;
+    document.getElementById('sus-usuario-sel').style.display = 'block';
+    document.getElementById('sus-resultados').innerHTML = '';
+    document.getElementById('sus-buscar').value = nombre;
+}
+
+async function confirmarActivar() {
+    if (!SUS_USUARIO_SEL) { showToast('Seleccioná un usuario primero', 'error'); return; }
+    const dias = parseInt(document.getElementById('sus-dias').value);
+    const nota = document.getElementById('sus-nota').value;
+    try {
+        await VO.api('/api/admin/suscripcion/activar', {
+            method: 'POST',
+            body: JSON.stringify({ user_id: SUS_USUARIO_SEL.user_id, dias, nota }),
+        });
+        showToast(`✅ Plan Inteligencia activado para ${SUS_USUARIO_SEL.nombre} (${dias} días)`);
+        cerrarModal('modal-activar');
+        loaded.suscripciones = false;
+        await loadSuscripciones();
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+// ──────── Modal: Gestionar suscripción ────────
+function abrirGestionarSus(sus_id, nombre, vence) {
+    SUS_ID_ACTIVO = sus_id;
+    document.getElementById('modal-sus-titulo').textContent = `Gestionar: ${nombre}`;
+    document.getElementById('modal-sus-info').textContent = `Plan Inteligencia · Vence: ${vence}`;
+    document.getElementById('modal-gestionar-sus').classList.add('open');
+}
+
+async function extenderSus() {
+    if (!SUS_ID_ACTIVO) return;
+    const dias = parseInt(document.getElementById('modal-sus-dias').value);
+    try {
+        const r = await VO.api(`/api/admin/suscripcion/${SUS_ID_ACTIVO}/extender`, {
+            method: 'PATCH',
+            body: JSON.stringify({ dias }),
+        });
+        showToast(`Extendido ${dias} días. Nueva fecha: ${r.nueva_fecha_vencimiento}`);
+        cerrarModal('modal-gestionar-sus');
+        loaded.suscripciones = false;
+        await loadSuscripciones();
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function cancelarSus() {
+    if (!SUS_ID_ACTIVO) return;
+    if (!confirm('¿Cancelar la suscripción? El usuario perderá acceso a la ubicación de los viveros.')) return;
+    try {
+        await VO.api(`/api/admin/suscripcion/${SUS_ID_ACTIVO}/cancelar`, { method: 'PATCH' });
+        showToast('Suscripción cancelada');
+        cerrarModal('modal-gestionar-sus');
+        loaded.suscripciones = false;
+        await loadSuscripciones();
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+async function reactivarSus(sus_id) {
+    if (!confirm('¿Reactivar esta suscripción por 30 días?')) return;
+    try {
+        await VO.api(`/api/admin/suscripcion/${sus_id}/extender`, {
+            method: 'PATCH',
+            body: JSON.stringify({ dias: 30 }),
+        });
+        showToast('Suscripción reactivada por 30 días');
+        loaded.suscripciones = false;
+        await loadSuscripciones();
+    } catch(e) { showToast(e.message, 'error'); }
+}
+
+function darSuscripcionRapido(user_id, nombre) {
+    goTo('suscripciones');
+    setTimeout(() => {
+        abrirModalActivar();
+        seleccionarUsuarioSus(user_id, nombre, '');
+    }, 300);
+}
+
+// ──────── AUDITORÍA ────────
+async function loadAuditoria() {
+    try {
+        const data = await VO.api('/api/admin/auditoria');
+        const logs = data.logs || [];
+        if (!logs.length) {
+            document.getElementById('tbody-auditoria').innerHTML =
+                '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px;">Sin registros aún</td></tr>';
             return;
         }
-
-        tablaDiv.innerHTML = data.procesos.map(renderProcesoCard).join('');
-    } catch (e) {
-        console.error('Error cargando procesos SECOP:', e);
-        tablaDiv.innerHTML = `<p class="text-sm text-red-600 py-4">Error: ${escapeHTML(e.message || 'desconocido')}</p>`;
+        document.getElementById('tbody-auditoria').innerHTML = logs.map(l => `
+            <tr>
+                <td style="font-size:12px;white-space:nowrap;">${fDate(l.creado_en)}</td>
+                <td><span class="badge badge-blue">${l.tipo || '—'}</span></td>
+                <td style="font-size:12px;">${l.agente || '—'}</td>
+                <td style="font-size:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${JSON.stringify(l.resultado || l.datos || '').slice(0,120)}</td>
+            </tr>`).join('');
+    } catch(e) {
+        document.getElementById('tbody-auditoria').innerHTML =
+            `<tr><td colspan="4" style="text-align:center;color:#dc2626;padding:24px;">Error: ${e.message}</td></tr>`;
     }
-};
-
-function renderProcesoCard(p) {
-    const cuantia = p.cuantia_proceso ? VO.formatCOPFull(p.cuantia_proceso) : '<span class="text-slate-400">Sin cuantía</span>';
-    const fecha = p.fecha_publicacion || '?';
-    const ciudad = p.ciudad || '?';
-    const entidad = p.entidad || 'Sin entidad';
-    const objeto = p.objeto || '';
-    const url = p.url_proceso || '';
-    const c = p.clasificacion;
-
-    // Badge según clasificación
-    let badge = '';
-    if (c) {
-        if (c.es_relevante) {
-            badge = `<span class="px-2 py-0.5 rounded-full bg-primary text-white text-[10px] font-bold uppercase tracking-wider">Relevante</span>`;
-        } else {
-            badge = `<span class="px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 text-[10px] font-medium uppercase tracking-wider">Falso positivo</span>`;
-        }
-    } else {
-        badge = `<span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-medium uppercase tracking-wider">Sin clasificar</span>`;
-    }
-
-    // Tags de clasificación
-    let metaLine = '';
-    let especiesHTML = '';
-    if (c) {
-        const parts = [];
-        if (c.tipo_proyecto) parts.push(escapeHTML(c.tipo_proyecto));
-        if (c.cantidad_estimada) parts.push(`~${c.cantidad_estimada.toLocaleString('es-CO')} unidades`);
-        if (c.altura_estimada_cm) parts.push(`~${c.altura_estimada_cm} cm altura`);
-        if (parts.length > 0) {
-            metaLine = `<p class="text-xs text-slate-500 mt-1.5">${parts.join(' · ')}</p>`;
-        }
-        if (c.especies_mencionadas && c.especies_mencionadas.length > 0) {
-            especiesHTML = `
-                <div class="mt-2 flex flex-wrap gap-1">
-                    ${c.especies_mencionadas.map(e => `
-                        <span class="inline-block px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 text-[11px] font-medium">${escapeHTML(e)}</span>
-                    `).join('')}
-                </div>`;
-        }
-    }
-
-    return `
-        <div class="border border-primary/10 rounded-lg p-3 hover:bg-primary/5 transition-colors">
-            <div class="flex justify-between items-start gap-3">
-                <div class="flex-1 min-w-0">
-                    <p class="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">${escapeHTML(entidad)}</p>
-                    <p class="text-xs text-slate-500 mt-0.5">${escapeHTML(ciudad)} · ${escapeHTML(fecha)}</p>
-                </div>
-                <div class="text-right shrink-0 flex flex-col items-end gap-1">
-                    <p class="text-sm font-bold text-primary whitespace-nowrap">${cuantia}</p>
-                    ${badge}
-                </div>
-            </div>
-            <p class="text-xs text-slate-700 dark:text-slate-300 mt-2 leading-relaxed">${escapeHTML(truncate(objeto, 240))}</p>
-            ${metaLine}
-            ${especiesHTML}
-            ${url ? `<a href="${escapeHTML(url)}" target="_blank" rel="noopener" class="text-xs text-primary hover:underline mt-2 inline-flex items-center gap-1">Ver en SECOP <span class="material-symbols-outlined text-xs">open_in_new</span></a>` : ''}
-        </div>
-    `;
 }
-</script>
 
-</body></html>
+// ──────── Modales ────────
+function cerrarModal(id) {
+    document.getElementById(id).classList.remove('open');
+}
+document.querySelectorAll('.modal-bg').forEach(m => {
+    m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
+});
+</script>
+</body>
+</html>
