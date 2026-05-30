@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta content="width=device-width, initial-scale=1.0" name="viewport">
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Montserrat:wght@700;800;900&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
 <script id="tailwind-config">
     tailwind.config = {
@@ -12,12 +12,16 @@
         theme: {
             extend: {
                 colors: {
-                    "primary": "#325926",
+                    "primary":          "#012d1d",
+                    "secondary":        "#924c00",
                     "background-light": "#f7f7f6",
-                    "background-dark": "#171d15",
+                    "background-dark":  "#171d15",
                 },
-                fontFamily: { "display": ["Inter", "sans-serif"] },
-                borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                fontFamily: {
+                    "display": ["Inter", "sans-serif"],
+                    "hero":    ["Montserrat", "sans-serif"],
+                },
+                borderRadius: {"DEFAULT":"1rem","lg":"2rem","xl":"3rem","full":"9999px"},
             },
         },
     }
@@ -27,24 +31,20 @@
     body { min-height: max(884px, 100dvh); }
     .role-card { transition: all 0.2s; cursor: pointer; }
     .role-card[data-selected="true"] {
-        border-color: #325926;
-        background: linear-gradient(135deg, rgba(50,89,38,0.06), rgba(50,89,38,0.01));
-        box-shadow: 0 0 0 3px rgba(50,89,38,0.12);
+        border-color: #012d1d;
+        background: linear-gradient(135deg, rgba(1,45,29,0.06), rgba(1,45,29,0.01));
+        box-shadow: 0 0 0 3px rgba(1,45,29,0.12);
     }
-    .role-card:hover:not([data-selected="true"]) { border-color: rgba(50,89,38,0.3); }
-
+    .role-card:hover:not([data-selected="true"]) { border-color: rgba(1,45,29,0.3); }
     .chip {
         display: inline-flex; align-items: center; gap: 0.4rem;
         padding: 0.5rem 0.9rem;
         background: white; border: 1.5px solid #e5e7eb; border-radius: 9999px;
         font-size: 0.85rem; font-weight: 600; color: #475569;
-        cursor: pointer; transition: all 0.15s;
-        user-select: none;
+        cursor: pointer; transition: all 0.15s; user-select: none;
     }
-    .chip:hover { border-color: rgba(50,89,38,0.4); }
-    .chip[data-selected="true"] {
-        background: #325926; border-color: #325926; color: white;
-    }
+    .chip:hover { border-color: rgba(1,45,29,0.4); }
+    .chip[data-selected="true"] { background: #012d1d; border-color: #012d1d; color: white; }
     .chip[data-selected="true"] .chip-icon { display: inline; }
     .chip-icon { display: none; font-size: 1rem; }
 </style>
@@ -54,7 +54,7 @@
 <div class="flex flex-col min-h-screen max-w-md mx-auto px-6 py-8">
 
     <div class="flex items-center justify-between mb-6">
-        <a href="/" class="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-primary transition-colors">
+        <a href="/" class="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-primary transition-colors">
             <span class="material-symbols-outlined text-base">arrow_back</span>
             Inicio
         </a>
@@ -63,23 +63,25 @@
         </a>
     </div>
 
+    <!-- Barra de progreso -->
     <div class="flex items-center gap-2 mb-8">
         <div id="dot-1" class="w-8 h-1 rounded-full bg-primary"></div>
         <div id="dot-2" class="w-8 h-1 rounded-full bg-slate-200 dark:bg-slate-700"></div>
     </div>
 
-    <!-- STEP 1: Elegir rol -->
+    <!-- ════ STEP 1: Elegir rol ════ -->
     <div id="step-role" class="flex-1">
-        <h1 class="text-3xl font-black leading-tight tracking-tight mb-3">
-            ¿Cómo quieres<br>
+        <h1 class="text-3xl font-black leading-tight tracking-tight mb-3 font-hero">
+            ¿Cómo querés<br>
             <span class="text-primary">usar ViveroOnline?</span>
         </h1>
         <p class="text-slate-600 dark:text-slate-400 text-base mb-8">
-            Puedes cambiar esto después en tu perfil.
+            Podés cambiar esto después en tu perfil.
         </p>
 
         <div class="space-y-3 mb-8">
-            <button type="button" data-role="viverista" class="role-card w-full text-left p-5 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-lg">
+            <button type="button" data-role="viverista"
+                class="role-card w-full text-left p-5 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-lg">
                 <div class="flex items-start gap-4">
                     <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                         <span class="material-symbols-outlined text-primary text-2xl">forest</span>
@@ -97,7 +99,8 @@
                 </div>
             </button>
 
-            <button type="button" data-role="comprador" class="role-card w-full text-left p-5 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-lg">
+            <button type="button" data-role="comprador"
+                class="role-card w-full text-left p-5 bg-white dark:bg-slate-800 border-2 border-slate-200 dark:border-slate-700 rounded-lg">
                 <div class="flex items-start gap-4">
                     <div class="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                         <span class="material-symbols-outlined text-primary text-2xl">architecture</span>
@@ -105,7 +108,7 @@
                     <div class="flex-1">
                         <h3 class="font-bold text-lg mb-1">Soy Comprador B2B</h3>
                         <p class="text-sm text-slate-600 dark:text-slate-400">
-                            Represento una constructora, paisajista, conjunto residencial o empresa y necesito plantas al por mayor.
+                            Represento una constructora, paisajista, conjunto o empresa y necesito plantas al por mayor.
                         </p>
                         <div class="flex flex-wrap gap-1 mt-3">
                             <span class="text-xs px-2 py-1 bg-primary/10 text-primary rounded-full font-semibold">Marketplace</span>
@@ -123,43 +126,52 @@
         </button>
     </div>
 
-    <!-- STEP 2: Datos del perfil -->
+    <!-- ════ STEP 2: Datos del perfil ════ -->
     <div id="step-profile" class="hidden flex-1">
-        <button type="button" id="back-btn" class="material-symbols-outlined text-slate-700 dark:text-slate-300 p-2 -ml-2 mb-4 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition">arrow_back</button>
+        <button type="button" id="back-btn"
+            class="material-symbols-outlined text-slate-700 dark:text-slate-300 p-2 -ml-2 mb-4 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition">
+            arrow_back
+        </button>
 
-        <div id="role-banner" class="mb-6 p-4 bg-primary/5 dark:bg-primary/10 border-2 border-primary/20 rounded-lg flex items-center justify-between gap-3">
+        <!-- Banner rol -->
+        <div id="role-banner" class="mb-6 p-4 border-2 rounded-lg flex items-center justify-between gap-3"
+            style="background:rgba(1,45,29,0.05); border-color:rgba(1,45,29,0.2);">
             <div class="flex items-center gap-3 min-w-0">
-                <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                    <span id="role-banner-icon" class="material-symbols-outlined text-primary">forest</span>
+                <div class="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                    style="background:rgba(1,45,29,0.1);">
+                    <span id="role-banner-icon" class="material-symbols-outlined" style="color:#012d1d;">forest</span>
                 </div>
                 <div class="min-w-0">
                     <p class="text-[10px] text-slate-500 uppercase tracking-wider font-bold">Te estás registrando como</p>
                     <p id="role-banner-name" class="font-bold text-base truncate">Viverista</p>
                 </div>
             </div>
-            <button type="button" id="change-role-btn" class="text-xs font-bold text-primary hover:underline whitespace-nowrap px-2 py-1 rounded">
+            <button type="button" id="change-role-btn"
+                class="text-xs font-bold hover:underline whitespace-nowrap px-2 py-1 rounded"
+                style="color:#012d1d;">
                 Cambiar
             </button>
         </div>
 
-        <h1 class="text-3xl font-black leading-tight tracking-tight mb-3">
-            Cuéntanos<br>
-            <span class="text-primary" id="profile-heading">de tu vivero</span>
+        <!-- Heading de bienvenida personalizado -->
+        <h1 class="text-3xl font-black leading-tight tracking-tight mb-2 font-hero">
+            Bienvenido,<br>
+            <span id="step2-role-name" class="text-primary">Viverista 🌿</span>
         </h1>
-        <p class="text-slate-600 dark:text-slate-400 text-base mb-6">
-            Completa tus datos para terminar el registro.
+        <p id="step2-sub" class="text-slate-600 dark:text-slate-400 text-base mb-6">
+            Completá los datos de tu vivero para empezar.
         </p>
 
         <form id="profile-form" class="space-y-4">
 
-            <!-- ============ BÁSICOS ============ -->
+            <!-- Nombre -->
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Nombre completo *</label>
                 <input id="f-nombre" type="text" required placeholder="Carlos Pérez"
                     class="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition">
             </div>
 
-            <!-- Viverista only -->
+            <!-- Solo Viverista -->
             <div id="grp-vivero" class="space-y-4">
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Nombre del vivero *</label>
@@ -168,7 +180,7 @@
                 </div>
             </div>
 
-            <!-- Comprador only -->
+            <!-- Solo Comprador -->
             <div id="grp-empresa" class="hidden space-y-4">
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Empresa / organización</label>
@@ -188,12 +200,13 @@
                 </div>
             </div>
 
+            <!-- Grid municipio + NIT -->
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Municipio *</label>
                     <select id="f-municipio" required
                         class="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition">
-                        <option value="">Selecciona</option>
+                        <option value="">Seleccioná</option>
                         <option>Cajicá</option><option>Chía</option><option>Zipaquirá</option>
                         <option>Sopó</option><option>La Calera</option><option>Tabio</option>
                         <option>Tenjo</option><option>Facatativá</option><option>Madrid</option>
@@ -206,55 +219,42 @@
                     <input id="f-nit" type="text" inputmode="numeric" placeholder="900123456"
                         class="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition">
                 </div>
-                <div>
+            </div>
+
+            <!-- WhatsApp -->
+            <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">WhatsApp de contacto *</label>
                 <div class="flex gap-2">
                     <div class="flex items-center px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT shadow-sm">
                         <span class="text-slate-700 dark:text-slate-300 font-semibold text-base">🇨🇴 +57</span>
                     </div>
-                    <input id="f-whatsapp" type="tel" inputmode="numeric" pattern="[0-9]{10}" maxlength="10" placeholder="300 123 4567" required
+                    <input id="f-whatsapp" type="tel" inputmode="numeric" pattern="[0-9]{10}" maxlength="10"
+                        placeholder="300 123 4567" required
                         class="flex-1 px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition">
                 </div>
                 <p class="mt-2 text-xs text-slate-500">Lo usaremos para contactarte sobre tus pedidos.</p>
             </div>
-            </div>
 
-            <!-- ============ COMPRADOR: Sobre tu trabajo ============ -->
+            <!-- Solo Comprador: Sobre tu trabajo -->
             <div id="grp-trabajo" class="hidden space-y-5 pt-4 mt-2 border-t-2 border-dashed border-slate-200 dark:border-slate-700">
                 <div>
                     <p class="text-xs uppercase tracking-wider font-bold text-primary mb-1">Sobre tu trabajo</p>
-                    <p class="text-xs text-slate-500 mb-3">Esto nos ayuda a recomendarte plantas y viveros que matcheen con lo que haces.</p>
+                    <p class="text-xs text-slate-500 mb-3">Esto nos ayuda a recomendarte plantas y viveros.</p>
                 </div>
-
                 <div>
-                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                        Tipos de proyectos que manejas *
-                    </label>
-                    <p class="text-xs text-slate-500 mb-3">Selecciona los que apliquen (al menos uno).</p>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Tipos de proyectos *</label>
+                    <p class="text-xs text-slate-500 mb-3">Seleccioná los que apliquen (al menos uno).</p>
                     <div class="flex flex-wrap gap-2" id="chips-proyectos">
-                        <button type="button" class="chip" data-value="residencial">
-                            <span class="chip-icon material-symbols-outlined">check</span>Residencial
-                        </button>
-                        <button type="button" class="chip" data-value="comercial">
-                            <span class="chip-icon material-symbols-outlined">check</span>Comercial
-                        </button>
-                        <button type="button" class="chip" data-value="urbano">
-                            <span class="chip-icon material-symbols-outlined">check</span>Urbano / Espacio público
-                        </button>
-                        <button type="button" class="chip" data-value="institucional">
-                            <span class="chip-icon material-symbols-outlined">check</span>Institucional
-                        </button>
-                        <button type="button" class="chip" data-value="otro">
-                            <span class="chip-icon material-symbols-outlined">check</span>Otro
-                        </button>
+                        <button type="button" class="chip" data-value="residencial"><span class="chip-icon material-symbols-outlined">check</span>Residencial</button>
+                        <button type="button" class="chip" data-value="comercial"><span class="chip-icon material-symbols-outlined">check</span>Comercial</button>
+                        <button type="button" class="chip" data-value="urbano"><span class="chip-icon material-symbols-outlined">check</span>Urbano / Espacio público</button>
+                        <button type="button" class="chip" data-value="institucional"><span class="chip-icon material-symbols-outlined">check</span>Institucional</button>
+                        <button type="button" class="chip" data-value="otro"><span class="chip-icon material-symbols-outlined">check</span>Otro</button>
                     </div>
                 </div>
-
                 <div>
-                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                        Municipios donde operas *
-                    </label>
-                    <p class="text-xs text-slate-500 mb-3">Pre-seleccionamos tu sede. Agrega otros si trabajas en varios sitios.</p>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Municipios donde operás *</label>
+                    <p class="text-xs text-slate-500 mb-3">Pre-seleccionamos tu sede. Agregá otros si trabajás en varios sitios.</p>
                     <div class="flex flex-wrap gap-2" id="chips-municipios">
                         <button type="button" class="chip" data-value="Cajicá">Cajicá</button>
                         <button type="button" class="chip" data-value="Chía">Chía</button>
@@ -274,21 +274,17 @@
                 </div>
             </div>
 
-            <!-- ============ COMPRADOR: Opcional ============ -->
+            <!-- Solo Comprador: Opcional -->
             <details id="grp-opcional" class="hidden group pt-2">
                 <summary class="cursor-pointer flex items-center justify-between py-3 px-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT hover:border-primary/40 transition list-none">
-                    <span class="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                        Más info (opcional)
-                    </span>
-                    <span class="material-symbols-outlined text-slate-400 group-open:rotate-180 transition-transform">
-                        expand_more
-                    </span>
+                    <span class="text-sm font-semibold text-slate-700 dark:text-slate-300">Más info (opcional)</span>
+                    <span class="material-symbols-outlined text-slate-400 group-open:rotate-180 transition-transform">expand_more</span>
                 </summary>
                 <div class="pt-4 space-y-4">
                     <div>
                         <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Descripción corta</label>
                         <textarea id="f-descripcion" rows="3" maxlength="280"
-                            placeholder="Estudio de paisajismo enfocado en proyectos residenciales con plantas nativas..."
+                            placeholder="Estudio de paisajismo enfocado en proyectos residenciales..."
                             class="w-full px-4 py-3 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition resize-none"></textarea>
                         <p class="text-xs text-slate-400 mt-1">Máx. 280 caracteres.</p>
                     </div>
@@ -307,7 +303,7 @@
                 </div>
             </details>
 
-            <!-- ============ HABEAS ============ -->
+            <!-- Habeas Data -->
             <label class="flex items-start gap-3 p-4 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-DEFAULT cursor-pointer">
                 <input id="f-habeas" type="checkbox" required
                     class="mt-1 rounded text-primary focus:ring-primary/40">
@@ -329,26 +325,23 @@
 </div>
 
 <script>
-// ─── 1. Capturar rol intencionado del URL ───
 const VALID_ROLES = ['viverista', 'comprador'];
-const urlParams = new URLSearchParams(window.location.search);
-const urlRol = urlParams.get('rol');
+const urlParams   = new URLSearchParams(window.location.search);
+const urlRol      = urlParams.get('rol');
 if (urlRol && VALID_ROLES.includes(urlRol)) {
     localStorage.setItem('vivero_intended_rol', urlRol);
 }
 
-// ─── 2. Verificar auth ───
 const token = localStorage.getItem('vivero_access_token');
 if (!token) window.location.href = '/auth/ingresar';
 
-// ─── 3. Determinar rol intencionado ───
-const intendedRol = (urlRol && VALID_ROLES.includes(urlRol))
+const intendedRol  = (urlRol && VALID_ROLES.includes(urlRol))
     ? urlRol
     : localStorage.getItem('vivero_intended_rol');
 
-let selectedRole = null;
+let selectedRole  = null;
 const continueBtn = document.getElementById('continue-btn');
-const roleCards = document.querySelectorAll('.role-card');
+const roleCards   = document.querySelectorAll('.role-card');
 
 function selectCard(card) {
     roleCards.forEach(c => c.dataset.selected = 'false');
@@ -357,33 +350,51 @@ function selectCard(card) {
     continueBtn.disabled = false;
 }
 
-roleCards.forEach(card => {
-    card.addEventListener('click', () => selectCard(card));
-});
+roleCards.forEach(card => card.addEventListener('click', () => selectCard(card)));
 
-if (intendedRol) {
-    const targetCard = document.querySelector(`.role-card[data-role="${intendedRol}"]`);
-    if (targetCard) selectCard(targetCard);
-}
+// ─── Navegación entre steps ──────────────────────────────────
 
-// ─── 4. Navegación entre steps ───
 function goToStep2() {
     if (!selectedRole) return;
+
+    const isViverista = selectedRole === 'viverista';
+    const roleColor   = isViverista ? '#012d1d' : '#924c00';
+    const roleIcon    = isViverista ? 'forest'  : 'architecture';
+    const roleName    = isViverista ? 'Viverista' : 'Comprador B2B';
+
+    // Mostrar Step 2, ocultar Step 1
     document.getElementById('step-role').classList.add('hidden');
     document.getElementById('step-profile').classList.remove('hidden');
     document.getElementById('dot-2').classList.remove('bg-slate-200', 'dark:bg-slate-700');
     document.getElementById('dot-2').classList.add('bg-primary');
 
-    const isViverista = selectedRole === 'viverista';
-    document.getElementById('profile-heading').textContent = isViverista ? 'de tu vivero' : 'de tu empresa';
+    // Heading de bienvenida personalizado
+    const roleNameEl = document.getElementById('step2-role-name');
+    const subEl      = document.getElementById('step2-sub');
+    roleNameEl.textContent = isViverista ? 'Viverista 🌿' : 'Comprador 🛒';
+    roleNameEl.style.color = roleColor;
+    subEl.textContent = isViverista
+        ? 'Completá los datos de tu vivero para empezar.'
+        : 'Completá tus datos para empezar a cotizar.';
+
+    // Banner del rol
+    const banner = document.getElementById('role-banner');
+    banner.style.background    = `rgba(${isViverista ? '1,45,29' : '146,76,0'}, 0.05)`;
+    banner.style.borderColor   = `rgba(${isViverista ? '1,45,29' : '146,76,0'}, 0.2)`;
+    document.getElementById('role-banner-icon').textContent  = roleIcon;
+    document.getElementById('role-banner-icon').style.color  = roleColor;
+    document.getElementById('role-banner-name').textContent  = roleName;
+    document.getElementById('change-role-btn').style.color   = roleColor;
+
+    // Campos dinámicos
     document.getElementById('grp-vivero').classList.toggle('hidden', !isViverista);
     document.getElementById('grp-empresa').classList.toggle('hidden', isViverista);
     document.getElementById('grp-trabajo').classList.toggle('hidden', isViverista);
     document.getElementById('grp-opcional').classList.toggle('hidden', isViverista);
     document.getElementById('f-nombre-vivero').required = isViverista;
 
-    document.getElementById('role-banner-name').textContent = isViverista ? 'Viverista' : 'Comprador B2B';
-    document.getElementById('role-banner-icon').textContent = isViverista ? 'forest' : 'architecture';
+    // Botón submit color según rol
+    document.getElementById('submit-btn').style.background = roleColor;
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -400,13 +411,20 @@ continueBtn.addEventListener('click', goToStep2);
 document.getElementById('back-btn').addEventListener('click', goBackToStep1);
 document.getElementById('change-role-btn').addEventListener('click', goBackToStep1);
 
-// ─── 5. Chips multi-select (proyectos + municipios) ───
+// ─── Auto-skip al Step 2 si viene con rol pre-definido ───────
+if (intendedRol) {
+    const targetCard = document.querySelector(`.role-card[data-role="${intendedRol}"]`);
+    if (targetCard) {
+        selectCard(targetCard);
+        goToStep2(); // ← salta directo, el usuario ya eligió en la landing
+    }
+}
+
+// ─── Chips ───────────────────────────────────────────────────
 function setupChips(containerId) {
-    const container = document.getElementById(containerId);
-    container.querySelectorAll('.chip').forEach(chip => {
+    document.getElementById(containerId).querySelectorAll('.chip').forEach(chip => {
         chip.addEventListener('click', () => {
-            const current = chip.dataset.selected === 'true';
-            chip.dataset.selected = current ? 'false' : 'true';
+            chip.dataset.selected = chip.dataset.selected === 'true' ? 'false' : 'true';
         });
     });
 }
@@ -417,42 +435,33 @@ function readChips(containerId) {
 setupChips('chips-proyectos');
 setupChips('chips-municipios');
 
-// Auto-pre-select del municipio de sede en municipios_operacion
 document.getElementById('f-municipio').addEventListener('change', (e) => {
-    const sede = e.target.value;
-    if (!sede || sede === 'Otro') return;
-    const chip = document.querySelector(`#chips-municipios .chip[data-value="${sede}"]`);
-    if (chip && chip.dataset.selected !== 'true') {
-        chip.dataset.selected = 'true';
-    }
+    const chip = document.querySelector(`#chips-municipios .chip[data-value="${e.target.value}"]`);
+    if (chip && chip.dataset.selected !== 'true') chip.dataset.selected = 'true';
 });
 
-// ─── 6. Submit ───
+// ─── Submit ───────────────────────────────────────────────────
 document.getElementById('profile-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-
     const submitBtn = document.getElementById('submit-btn');
-    const btnText = document.getElementById('btn-text');
-    const btnSpinner = document.getElementById('btn-spinner');
-    const errorBox = document.getElementById('error-box');
+    const btnText   = document.getElementById('btn-text');
+    const spinner   = document.getElementById('btn-spinner');
+    const errorBox  = document.getElementById('error-box');
 
-    // Validaciones del lado del cliente
     if (!document.getElementById('f-habeas').checked) {
-        errorBox.textContent = 'Debes aceptar el tratamiento de datos personales para continuar.';
+        errorBox.textContent = 'Debés aceptar el tratamiento de datos personales para continuar.';
         errorBox.classList.remove('hidden');
         return;
     }
 
     if (selectedRole === 'comprador') {
-        const proyectos = readChips('chips-proyectos');
-        const municipios = readChips('chips-municipios');
-        if (proyectos.length === 0) {
-            errorBox.textContent = 'Selecciona al menos un tipo de proyecto que manejas.';
+        if (readChips('chips-proyectos').length === 0) {
+            errorBox.textContent = 'Seleccioná al menos un tipo de proyecto.';
             errorBox.classList.remove('hidden');
             return;
         }
-        if (municipios.length === 0) {
-            errorBox.textContent = 'Selecciona al menos un municipio donde operas.';
+        if (readChips('chips-municipios').length === 0) {
+            errorBox.textContent = 'Seleccioná al menos un municipio donde operás.';
             errorBox.classList.remove('hidden');
             return;
         }
@@ -460,43 +469,40 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
 
     submitBtn.disabled = true;
     btnText.textContent = 'Guardando...';
-    btnSpinner.classList.remove('hidden');
+    spinner.classList.remove('hidden');
     errorBox.classList.add('hidden');
 
     try {
-        // Payload alineado con los nombres de campo de OnboardingRequest:
-        // rol, nombre, municipio, nit, habeas_data, nombre_vivero, empresa,
-        // tipo_comprador, preferencias.
         const whatsappDigits = document.getElementById('f-whatsapp').value.replace(/\D/g, '');
         if (whatsappDigits.length !== 10) {
             errorBox.textContent = 'El WhatsApp debe tener 10 dígitos (ej: 3001234567).';
             errorBox.classList.remove('hidden');
             submitBtn.disabled = false;
             btnText.textContent = 'Finalizar registro';
-            btnSpinner.classList.add('hidden');
+            spinner.classList.add('hidden');
             return;
         }
 
         const payload = {
-            rol: selectedRole,
-            nombre: document.getElementById('f-nombre').value.trim(),
-            whatsapp: '+57' + whatsappDigits,
+            rol:       selectedRole,
+            nombre:    document.getElementById('f-nombre').value.trim(),
+            whatsapp:  '+57' + whatsappDigits,
             municipio: document.getElementById('f-municipio').value,
-            nit: document.getElementById('f-nit').value.trim() || null,
+            nit:       document.getElementById('f-nit').value.trim() || null,
             habeas_data: true,
         };
 
         if (selectedRole === 'viverista') {
             payload.nombre_vivero = document.getElementById('f-nombre-vivero').value.trim();
         } else {
-            payload.empresa = document.getElementById('f-empresa').value.trim() || null;
+            payload.empresa        = document.getElementById('f-empresa').value.trim() || null;
             payload.tipo_comprador = document.getElementById('f-tipo-comprador').value;
-            payload.preferencias = {
-                tipos_proyectos: readChips('chips-proyectos'),
+            payload.preferencias   = {
+                tipos_proyectos:     readChips('chips-proyectos'),
                 municipios_operacion: readChips('chips-municipios'),
-                descripcion: document.getElementById('f-descripcion').value.trim() || null,
-                web: document.getElementById('f-web').value.trim() || null,
-                instagram: document.getElementById('f-instagram').value.trim() || null,
+                descripcion: (document.getElementById('f-descripcion')?.value || '').trim() || null,
+                web:         (document.getElementById('f-web')?.value || '').trim() || null,
+                instagram:   (document.getElementById('f-instagram')?.value || '').trim() || null,
             };
         }
 
@@ -512,10 +518,7 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
         if (!resp.ok) {
             const errData = await resp.json().catch(() => ({}));
             let msg = errData.detail || `Error ${resp.status}`;
-            if (Array.isArray(msg)) {
-                // FastAPI 422 devuelve array de errores con loc + msg
-                msg = msg.map(e => `${e.loc?.join('.')}: ${e.msg}`).join('; ');
-            }
+            if (Array.isArray(msg)) msg = msg.map(e => `${e.loc?.join('.')}: ${e.msg}`).join('; ');
             throw new Error(msg);
         }
 
@@ -527,10 +530,9 @@ document.getElementById('profile-form').addEventListener('submit', async (e) => 
         errorBox.classList.remove('hidden');
         submitBtn.disabled = false;
         btnText.textContent = 'Finalizar registro';
-        btnSpinner.classList.add('hidden');
+        spinner.classList.add('hidden');
     }
 });
 </script>
-
 </body>
 </html>
