@@ -90,7 +90,7 @@ tailwind.config = {
                     <span id="subtotal" class="font-semibold text-sm"></span>
                 </div>
                 <div class="flex justify-between items-center mt-1">
-                    <span class="text-xs text-slate-500">Comisión plataforma (5%)</span>
+                    <span class="text-xs text-slate-500">Gestión ViveroOnline (18%)</span>
                     <span id="comision" class="text-xs text-slate-500"></span>
                 </div>
                 <div class="flex justify-between items-center mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
@@ -224,9 +224,13 @@ tailwind.config = {
         </div>
     `).join('');
 
+    // Modelo de precios: viverista recibe precio_base, comprador paga +18%
+    const MARKUP = 0.18;
+    const totalComprador = Math.round(total * (1 + MARKUP));
+    const markup = totalComprador - Math.round(total);
     document.getElementById('subtotal').textContent = fmt(total);
-    document.getElementById('comision').textContent = fmt(total * 0.05);
-    document.getElementById('total').textContent = fmt(total);
+    document.getElementById('comision').textContent = fmt(markup);
+    document.getElementById('total').textContent = fmt(totalComprador);
 
     const manana = new Date();
     manana.setDate(manana.getDate() + 1);
