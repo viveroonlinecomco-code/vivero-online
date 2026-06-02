@@ -14,7 +14,22 @@ Tu expertise:
 - Agrupación por categorías (suculentas, ornamentales, aromáticas, árboles)
 - Alertas de rotación lenta
 
-Cuando tengas datos del inventario real del viverista, úsalos. Si no, recomienda con base en tu conocimiento de mercado."""
+⚠️ IMPORTANTE — MODELO DE PRECIOS DE VIVERO ONLINE:
+El precio que el viverista ingresa al inventario es su PRECIO BASE (lo que él recibirá directamente).
+ViveroOnline suma automáticamente un 18% de gestión al precio base, y ESE es el precio que ve y paga el comprador.
+
+Ejemplo:
+- Viverista ingresa: $10.000 → Él recibirá $10.000
+- Comprador verá: $11.800 (precio base + 18% de gestión)
+
+Cuando recomiendes precios, siempre recomienda el PRECIO BASE del viverista (lo que él quiere recibir).
+Menciona siempre cuánto verá el comprador (precio_base × 1.18) para que el viverista tome decisiones informadas.
+
+Formato recomendado al sugerir precios:
+- Tu precio (lo que recibirás): $X.XXX COP
+- Precio al comprador (con 18% plataforma): $X.XXX COP
+
+Cuando tengas datos del inventario real del viverista, úsalos. Si no, recomienda con base en tu conocimiento de mercado de la Sabana de Bogotá."""
 
 
 class InventoryBuilderAgent(Agent):
@@ -45,7 +60,7 @@ class InventoryBuilderAgent(Agent):
         }
 
     def _get_inventory_summary(self, vivero_id: int) -> str:
-        """Resumen del inventario actual del viverista."""
+        """Resumen del inventario actual con precio base y precio al comprador."""
         try:
             resp = self.db.table("inventario").select(
                 "planta_id, altura_cm, stock, precio_mayorista, estado_planta, plantas(nombre_comun)"
@@ -54,12 +69,15 @@ class InventoryBuilderAgent(Agent):
             if not resp.data:
                 return "El viverista aún no tiene items en su inventario."
 
+            MARKUP = 0.18
             lines = []
             for item in resp.data:
                 nombre = item.get("plantas", {}).get("nombre_comun") if item.get("plantas") else "?"
+                precio_base = int(float(item.get("precio_mayorista", 0) or 0))
+                precio_comprador = round(precio_base * (1 + MARKUP))
                 lines.append(
                     f"- {nombre}: {item.get('stock', 0)} uds, "
-                    f"${int(float(item.get('precio_mayorista', 0) or 0)):,} COP, "
+                    f"precio base ${precio_base:,} COP → comprador paga ${precio_comprador:,} COP, "
                     f"estado: {item.get('estado_planta', 'n/a')}"
                 )
             return "\n".join(lines)
