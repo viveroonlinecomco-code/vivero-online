@@ -10,7 +10,8 @@ from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from app.auth.deps import UserContext, require_comprador, require_viverista, require_user
+from app.auth.deps import UserContext, require_comprador, require_viverista
+from app.config import get_settings
 from app.services.supabase import admin as db_admin
 from app.services.whatsapp_meta import send_text_message
 
@@ -51,6 +52,7 @@ async def solicitar_aprobacion(
 
     # Notificar al viverista por WhatsApp
     try:
+        base = get_settings().app_base_url
         items = cot.get("items") or []
         inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
         if inv_ids:
@@ -71,7 +73,7 @@ async def solicitar_aprobacion(
                         f"Items: {len(items)} productos\n"
                         f"Total estimado: ${total:,}\n\n"
                         f"Ingresá a tu panel para aprobar o rechazar:\n"
-                        f"https://vivero-online-j3gi.vercel.app/viverista"
+                        f"{base}/viverista"
                     )
                     send_text_message(v.data[0]["whatsapp_numero"], msg)
     except Exception:
@@ -91,7 +93,6 @@ async def listar_pendientes(
     if not user.vivero_id:
         raise HTTPException(400, "Tu perfil no está vinculado a un vivero")
 
-    # Traer todas las cotizaciones en estado 'enviada'
     r = db.table("cotizaciones").select(
         "cotizacion_id, cliente_id, estado, items, total_estimado, "
         "prompt_original, notas_cliente, fecha_creacion"
@@ -103,19 +104,16 @@ async def listar_pendientes(
         if not items:
             continue
 
-        # Obtener inventario_ids de esta cotización
         inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
         if not inv_ids:
             continue
 
-        # Cruzar con la tabla inventario para saber el vivero_id real
         inv_resp = db.table("inventario").select(
             "inventario_id, vivero_id, plantas(nombre_comun)"
         ).in_("inventario_id", inv_ids).execute()
 
         inv_map = {row["inventario_id"]: row for row in (inv_resp.data or [])}
 
-        # Filtrar solo los items de ESTE vivero
         mis_items = []
         for it in items:
             inv = inv_map.get(it.get("inventario_id"))
@@ -133,7 +131,6 @@ async def listar_pendientes(
         if not mis_items:
             continue
 
-        # Enriquecer con nombre del comprador
         cliente = db.table("clientes").select(
             "nombre_empresa, nombre_representante"
         ).eq("cliente_id", cot["cliente_id"]).limit(1).execute()
@@ -177,7 +174,6 @@ async def aprobar_cotizacion(
     if cot["estado"] != "enviada":
         raise HTTPException(400, f"Solo se pueden aprobar cotizaciones enviadas. Estado: {cot['estado']}")
 
-    # Verificar que el viverista tiene items en esta cotización
     items = cot.get("items") or []
     inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
     if inv_ids:
@@ -194,6 +190,7 @@ async def aprobar_cotizacion(
 
     # Notificar al comprador
     try:
+        base = get_settings().app_base_url
         cliente = db.table("clientes").select("whatsapp_numero").eq(
             "cliente_id", cot["cliente_id"]
         ).limit(1).execute()
@@ -204,7 +201,7 @@ async def aprobar_cotizacion(
                 f"Proyecto: {nombre_proyecto}\n"
                 f"Total: ${int(float(cot.get('total_estimado') or 0)):,}\n\n"
                 f"Ya podés proceder con el pago:\n"
-                f"https://vivero-online-j3gi.vercel.app/comprador"
+                f"{base}/comprador"
             )
             send_text_message(cliente.data[0]["whatsapp_numero"], msg)
     except Exception:
@@ -228,7 +225,6 @@ async def rechazar_cotizacion(
     if cot["estado"] != "enviada":
         raise HTTPException(400, f"Solo se pueden rechazar cotizaciones enviadas. Estado: {cot['estado']}")
 
-    # Verificar que el viverista tiene items en esta cotización
     items = cot.get("items") or []
     inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
     if inv_ids:
@@ -246,6 +242,7 @@ async def rechazar_cotizacion(
 
     # Notificar al comprador
     try:
+        base = get_settings().app_base_url
         cliente = db.table("clientes").select("whatsapp_numero").eq(
             "cliente_id", cot["cliente_id"]
         ).limit(1).execute()
@@ -256,7 +253,7 @@ async def rechazar_cotizacion(
                 f"❌ *Cotización no disponible — ViveroOnline*\n\n"
                 f"Proyecto: {nombre_proyecto}{motivo_txt}\n\n"
                 f"Podés buscar alternativas en el marketplace:\n"
-                f"https://vivero-online-j3gi.vercel.app/marketplace"
+                f"{base}/marketplace"
             )
             send_text_message(cliente.data[0]["whatsapp_numero"], msg)
     except Exception:
@@ -269,7 +266,7 @@ async def rechazar_cotizacion(
 
 class CheckoutReq(BaseModel):
     ciudad_entrega: Optional[str] = None
-    fecha_entrega_deseada: Optional[str] = None  # YYYY-MM-DD
+    fecha_entrega_deseada: Optional[str] = None
     notas: Optional[str] = None
 
 
@@ -280,7 +277,6 @@ async def iniciar_checkout(
     user: UserContext = Depends(require_comprador),
 ):
     """Convierte cotización aprobada en transacción y genera payload ePayco."""
-    from app.config import get_settings
     from app.services.epayco import get_epayco, CheckoutRequest
 
     db = db_admin()
@@ -296,7 +292,6 @@ async def iniciar_checkout(
     if not epayco.is_configured:
         raise HTTPException(503, "Servicio de pagos no configurado")
 
-    # Guardar datos de entrega
     update_data = {}
     if req.ciudad_entrega:
         update_data["ciudad_entrega"] = req.ciudad_entrega
@@ -311,14 +306,12 @@ async def iniciar_checkout(
     if monto_cop <= 0:
         raise HTTPException(400, "El total de la cotización es inválido")
 
-    # Datos del cliente
     cliente = db.table("clientes").select(
         "nombre_empresa, nombre_representante, whatsapp_numero"
     ).eq("cliente_id", user.cliente_id).limit(1).execute()
     cli = cliente.data[0] if cliente.data else {}
     nombre = cli.get("nombre_representante") or cli.get("nombre_empresa") or "Cliente"
 
-    # Crear transacción B2B
     items = cot.get("items") or []
     txn_resp = db.table("transacciones_b2b").insert({
         "cliente_id": user.cliente_id,
@@ -337,14 +330,12 @@ async def iniciar_checkout(
 
     transaccion_id = txn_resp.data[0]["transaccion_id"]
 
-    # Marcar cotización como convertida
     db.table("cotizaciones").update({
         "estado": "convertida",
         "fecha_conversion": datetime.utcnow().isoformat(),
         "transaccion_id": transaccion_id,
     }).eq("cotizacion_id", cotizacion_id).execute()
 
-    # Payload ePayco
     checkout_req = CheckoutRequest(
         transaccion_id=transaccion_id,
         monto_cop=monto_cop,
@@ -356,7 +347,6 @@ async def iniciar_checkout(
     confirmation_url = f"{s.app_base_url}/api/pagos/confirmacion"
     payload = epayco.build_checkout_payload(checkout_req, response_url, confirmation_url)
 
-    # Registro de pago pendiente
     monto_plataforma = round(monto_cop * 0.05, 2)
     pago_resp = db.table("pagos").insert({
         "transaccion_id": transaccion_id,
