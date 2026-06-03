@@ -151,44 +151,35 @@ Ver todo <span class="material-symbols-outlined">chevron_right</span>
 </div>
 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
 <!-- Plant Card 1 -->
-<a href="/marketplace" class="bg-white dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm group cursor-pointer block">
-<div class="aspect-square bg-cover bg-center transition-transform group-hover:scale-105" data-alt="Lush green Monstera Deliciosa plant in a minimalist pot" style="background-image: url(&quot;https://lh3.googleusercontent.com/aida-public/AB6AXuDxtbch2CFh8WuyUKPzR3f_2lrRUNIQy2RTQgheE43OavuoWOJxR1auWWhEtJCVW6tYI17M-O32kEKA_7BUxek1Btvhun5nMa4dvnGCrVUGiukR7WMnjCbg6_4b0fEYbZh4WmeSr147FyRXrIzrUjMo-qtP1IJW26SZiBBZP5wczydQN1A20vzKaf4cxEmna2n4jj11ZP-2RkHVdvscSYIg4cjwv83l4d0mr_0h8QPCoJac0rdPQHCrOteLzuoEjoP9_oWA-tDKpw&quot;);"></div>
-<div class="p-4">
-<h4 class="font-bold text-slate-900 dark:text-slate-100">Monstera Deliciosa</h4>
-<p class="text-sm text-slate-500">Vivero El Bosque</p>
-<p class="mt-2 text-primary font-black">$25.000</p>
+<div id="landing-products" class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+    <!-- cargado dinámicamente -->
 </div>
-</a>
-<!-- Plant Card 2 -->
-<a href="/marketplace" class="bg-white dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm group cursor-pointer block">
-<div class="aspect-square bg-cover bg-center transition-transform group-hover:scale-105" data-alt="Collection of various small succulent plants in terracotta pots" style="background-image: url(&quot;https://lh3.googleusercontent.com/aida-public/AB6AXuCozD_bYNhWoGsnoemtQTRwLJQFMXfsaPyC2YJRuPtWxJbfi5YVPlHOz0GR2tKd592bXtGZXtO7P7geEO2mAxTJqg-l6tl-S_KbqBkshDhmkb5O5GVTDs_gnocURCL4S6LHZoC5aAAXsQGKXPLr6_Dgkpa7LbfSbchZ4Yu5H0gndJ0UtAgps0THTgSCII1KRVrxWWPXZwlsZX0hOHl1ZR15elJuWLZ6duE1zPhKDYyXeelUdY__AidYPfJ38W7K7w4oGVNTZrn9SA&quot;);"></div>
-<div class="p-4">
-<h4 class="font-bold text-slate-900 dark:text-slate-100">Set de Suculentas</h4>
-<p class="text-sm text-slate-500">Eco Jardín</p>
-<p class="mt-2 text-primary font-black">$18.000</p>
-</div>
-</a>
-<!-- Plant Card 3 -->
-<a href="/marketplace" class="bg-white dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm group cursor-pointer block">
-<div class="aspect-square bg-cover bg-center transition-transform group-hover:scale-105" data-alt="Tall Fiddle Leaf Fig tree in a decorative basket" style="background-image: url(&quot;https://lh3.googleusercontent.com/aida-public/AB6AXuAhslx8GaybNv0pTdJjS9gU1YG5FlIgrXXKT0W1Nh9ZI7XRctCCwfKL0PIngZHg6L1pewSVCOjWKyxOoL1wyWMCFs6tJ-2jCBRFoeqhA7otWR29mTTWFLZYGWs0K77bvbF1VrUY4f02MqY9Z4z5j8vg7OjJHNqwxvcC1wNtIWiCedCztNo_jmoJEGKAcK7irGODfQJeUGMB8RfyB-HfyumKVUToHGvv4yOQAlfzw07DnvPPgZaTyUe_EqK_Z-VX60nnt8TzBA-fmQ&quot;);"></div>
-<div class="p-4">
-<h4 class="font-bold text-slate-900 dark:text-slate-100">Ficus Lyrata</h4>
-<p class="text-sm text-slate-500">Vivero Tropical</p>
-<p class="mt-2 text-primary font-black">$42.000</p>
-</div>
-</a>
-<!-- Plant Card 4 -->
-<a href="/marketplace" class="bg-white dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm group cursor-pointer block">
-<div class="aspect-square bg-cover bg-center transition-transform group-hover:scale-105" data-alt="Elegant white peace lily plant in a modern white ceramic pot" style="background-image: url(&quot;https://lh3.googleusercontent.com/aida-public/AB6AXuATfk-tormXGyf1YIdBA-mlLLPgQ3tQar4cKlGEb8zXIeyPy37KlKPLbJN2yV5D8RIWrn24sLnH8hLvkbb3_4EWQGPz2YFjRHgeL4G36J2LXMgfWMHjzyLYyIA1oITuh5kuwcaSrF6Pq5ARUfBctsNO5_h90W-Hy_qYJp2j8jlGf0hsazLHY6VpuQVojDs7F-PYCWiaz4ntuseinVoL-tDp81ZqCyOnYj6uGGq8GSZWYduwEbn5qtutYD7QiZfd68SUIC7UQ1UjOw&quot;);"></div>
-<div class="p-4">
-<h4 class="font-bold text-slate-900 dark:text-slate-100">Cuna de Moisés</h4>
-<p class="text-sm text-slate-500">Palma Real</p>
-<p class="mt-2 text-primary font-black">$22.000</p>
-</div>
-</a>
-</div>
-</div>
-</section>
+<script>
+(async function() {
+    try {
+        const r = await fetch('/api/public/marketplace?limite=4');
+        if (!r.ok) return;
+        const data = await r.json();
+        const items = (data.items || []).slice(0, 4);
+        if (!items.length) return;
+
+        const MARKUP = 1.18;
+        document.getElementById('landing-products').innerHTML = items.map(item => `
+            <a href="/marketplace" class="bg-white dark:bg-slate-800 rounded-xl overflow-hidden shadow-sm group cursor-pointer block">
+                <div class="aspect-square bg-cover bg-center transition-transform group-hover:scale-105"
+                    style="background-image: url('${item.foto_ia_url || ''}');">
+                    ${!item.foto_ia_url ? '<div class="h-full flex items-center justify-center aspect-square"><span style="font-size:3rem">🌿</span></div>' : ''}
+                </div>
+                <div class="p-4">
+                    <h4 class="font-bold text-slate-900 dark:text-slate-100 truncate">${item.nombre_comun || 'Planta'}</h4>
+                    <p class="text-sm text-slate-500 truncate">${item.nombre_vivero || 'Vivero'}</p>
+                    <p class="mt-2 text-primary font-black">$${Math.round((item.precio_mayorista || 0) * MARKUP).toLocaleString('es-CO')}</p>
+                </div>
+            </a>
+        `).join('');
+    } catch(e) { console.warn('No se cargaron productos landing:', e); }
+})();
+</script>
 <!-- CTA Section — un único CTA: crear cuenta -->
 <section class="max-w-7xl mx-auto px-4 py-20 text-center">
 <div class="bg-primary rounded-xl md:rounded-3xl p-8 md:p-16 flex flex-col items-center gap-6 text-white overflow-hidden relative">
