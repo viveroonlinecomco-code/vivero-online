@@ -385,7 +385,8 @@
     }
 
     // Precio
-    $('[data-vo="precio"]').textContent = VO.formatCOPFull(item.precio_mayorista || 0);
+    const precioComprador = item.precio_comprador || Math.round((item.precio_mayorista || 0) * 1.18);
+    $('[data-vo="precio"]').textContent = VO.formatCOPFull(precioComprador);
     if (item.precio_detal) {
         const det = $('[data-vo="precio-detal"]');
         det.textContent = `Detal: ${VO.formatCOPFull(item.precio_detal)}`;
