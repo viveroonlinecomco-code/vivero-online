@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="es"><head>
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
@@ -144,14 +143,13 @@
 <script>
 if (!VO.requireAuth()) throw new Error('auth');
 
-const TIPO_CLIENTE_LABEL = {
-    paisajista: 'Paisajista',
-    constructora: 'Constructora',
-    conjunto: 'Conjunto residencial',
-    empresa: 'Empresa',
-    otro: 'Comprador',
-};
+// ─── Constante de markup (debe coincidir con el backend) ───
+const MARKUP = 0.18;
 
+const TIPO_CLIENTE_LABEL = {
+    paisajista: 'Paisajista', constructora: 'Constructora',
+    conjunto: 'Conjunto residencial', empresa: 'Empresa', otro: 'Comprador',
+};
 const BADGE_STYLES = {
     borrador:   'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
     enviada:    'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
@@ -179,43 +177,26 @@ const ESTADO_DESCR = {
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         const me = await VO.me();
-
         if (me.rol !== 'comprador' && me.rol !== 'admin') {
             window.location.href = me.rol === 'viverista' ? '/viverista' : '/';
             return;
         }
-
         const subtipo = TIPO_CLIENTE_LABEL[me.tipo_cliente] || 'Comprador';
         const saludo = me.nombre_display ? me.nombre_display : `Bienvenido, ${subtipo}`;
-
-        const bienvenida = Array.from(document.querySelectorAll('p, h2, h3')).find(el =>
-            /david silva|arq\./i.test(el.textContent)
-        );
+        const bienvenida = Array.from(document.querySelectorAll('p, h2, h3')).find(el => /david silva|arq\./i.test(el.textContent));
         if (bienvenida) bienvenida.textContent = saludo;
-
-        const etiquetaTop = Array.from(document.querySelectorAll('p')).find(el =>
-            /^bienvenido$/i.test((el.textContent || '').trim())
-        );
-        if (etiquetaTop && me.tipo_cliente) {
-            etiquetaTop.textContent = subtipo.toUpperCase();
-        }
-
+        const etiquetaTop = Array.from(document.querySelectorAll('p')).find(el => /^bienvenido$/i.test((el.textContent || '').trim()));
+        if (etiquetaTop && me.tipo_cliente) etiquetaTop.textContent = subtipo.toUpperCase();
         cargarProyectos();
-    } catch (e) {
-        console.error(e);
-    }
+    } catch (e) { console.error(e); }
 });
-
-// ═══════════════════════════════════════════════════════════
-// PROYECTOS
-// ═══════════════════════════════════════════════════════════
 
 async function cargarProyectos() {
     const token = localStorage.getItem('vivero_access_token');
     const loadingEl = document.getElementById('proyectos-loading');
-    const emptyEl = document.getElementById('proyectos-empty');
-    const listEl = document.getElementById('proyectos-list');
-    const metaEl = document.getElementById('proyectos-meta');
+    const emptyEl   = document.getElementById('proyectos-empty');
+    const listEl    = document.getElementById('proyectos-list');
+    const metaEl    = document.getElementById('proyectos-meta');
 
     try {
         const resp = await fetch('/api/marketplace/cotizacion/proyectos', {
@@ -223,20 +204,15 @@ async function cargarProyectos() {
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
-
         loadingEl.classList.add('hidden');
-
         const proyectos = data.proyectos || [];
-        if (proyectos.length === 0) {
-            emptyEl.classList.remove('hidden');
-            return;
-        }
+        if (proyectos.length === 0) { emptyEl.classList.remove('hidden'); return; }
 
         listEl.classList.remove('hidden');
         metaEl.classList.remove('hidden');
-        const numBorradores = proyectos.filter(p => p.estado === 'borrador').length;
-        const numEnviados = proyectos.filter(p => p.estado === 'enviada').length;
         const numAprobados = proyectos.filter(p => p.estado === 'aceptada').length;
+        const numEnviados  = proyectos.filter(p => p.estado === 'enviada').length;
+        const numBorradores= proyectos.filter(p => p.estado === 'borrador').length;
         let metaTexto = `${proyectos.length} proyecto${proyectos.length !== 1 ? 's' : ''}`;
         if (numAprobados > 0) metaTexto += ` · ${numAprobados} listo${numAprobados !== 1 ? 's' : ''} para pagar`;
         else if (numEnviados > 0) metaTexto += ` · ${numEnviados} en revisión`;
@@ -244,7 +220,6 @@ async function cargarProyectos() {
         metaEl.textContent = metaTexto;
 
         listEl.innerHTML = proyectos.map(p => renderProyectoCard(p)).join('');
-
         listEl.querySelectorAll('[data-proyecto-card]').forEach(card => {
             const id = parseInt(card.dataset.proyectoCard, 10);
             card.querySelector('[data-toggle]').addEventListener('click', () => toggleProyectoExpand(id));
@@ -262,10 +237,11 @@ function renderProyectoCard(p) {
         : '<span class="italic text-slate-400">Sin nombre</span>';
     const badgeStyle = BADGE_STYLES[p.estado] || BADGE_STYLES.borrador;
     const badgeLabel = BADGE_LABELS[p.estado] || p.estado;
+    const urgente = p.estado === 'aceptada';
     const showVencimiento = p.estado === 'borrador' && p.fecha_vencimiento;
 
-    // Icono de alerta para aprobados (acción requerida)
-    const urgente = p.estado === 'aceptada';
+    // ✅ FIX: el comprador siempre ve el precio CON markup
+    const totalMostrar = formatCOPConMarkup(p.total_estimado);
 
     return `
         <article class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border ${urgente ? 'border-emerald-200 dark:border-emerald-800' : 'border-slate-100 dark:border-slate-700'} overflow-hidden" data-proyecto-card="${p.cotizacion_id}">
@@ -276,7 +252,7 @@ function renderProyectoCard(p) {
                         <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${badgeStyle}">${badgeLabel}</span>
                     </div>
                     <p class="text-xs text-slate-500">
-                        ${p.num_items} unidades · ${formatCOP(p.total_estimado)}
+                        ${p.num_items} unidades · ${totalMostrar}
                         ${showVencimiento ? ` · vence ${formatFecha(p.fecha_vencimiento)}` : ''}
                     </p>
                 </div>
@@ -302,19 +278,15 @@ function renderProyectoCard(p) {
 async function toggleProyectoExpand(cotizacion_id) {
     const card = document.querySelector(`[data-proyecto-card="${cotizacion_id}"]`);
     if (!card) return;
-
-    const panel = card.querySelector('[data-panel]');
-    const chevron = card.querySelector('[data-chevron]');
-
+    const panel  = card.querySelector('[data-panel]');
+    const chevron= card.querySelector('[data-chevron]');
     if (!panel.classList.contains('hidden')) {
         panel.classList.add('hidden');
         chevron.style.transform = '';
         return;
     }
-
     panel.classList.remove('hidden');
     chevron.style.transform = 'rotate(180deg)';
-
     if (!card.dataset.itemsLoaded) {
         await cargarItemsProyecto(cotizacion_id);
         card.dataset.itemsLoaded = '1';
@@ -322,12 +294,11 @@ async function toggleProyectoExpand(cotizacion_id) {
 }
 
 async function cargarItemsProyecto(cotizacion_id) {
-    const card = document.querySelector(`[data-proyecto-card="${cotizacion_id}"]`);
+    const card    = document.querySelector(`[data-proyecto-card="${cotizacion_id}"]`);
     if (!card) return;
-
     const itemsEl = card.querySelector('[data-items]');
-    const footerEl = card.querySelector('[data-footer]');
-    const token = localStorage.getItem('vivero_access_token');
+    const footerEl= card.querySelector('[data-footer]');
+    const token   = localStorage.getItem('vivero_access_token');
 
     try {
         const resp = await fetch(`/api/marketplace/cotizacion/${cotizacion_id}`, {
@@ -346,7 +317,7 @@ async function cargarItemsProyecto(cotizacion_id) {
         const editable = c.estado === 'borrador';
         itemsEl.innerHTML = c.items.map(it => renderItem(it, editable)).join('');
 
-        // ── Footer según estado ──────────────────────────
+        // ── Footer según estado ──
         if (c.estado === 'borrador') {
             footerEl.innerHTML = `
                 <div class="space-y-2">
@@ -369,7 +340,7 @@ async function cargarItemsProyecto(cotizacion_id) {
                     <span class="material-symbols-outlined text-amber-400 text-3xl">schedule</span>
                     <p class="text-sm font-bold text-slate-700 dark:text-slate-200 mt-1">Esperando al vivero</p>
                     <p class="text-xs text-slate-500 mt-1">Te notificamos por WhatsApp cuando confirmen.</p>
-                    <p class="text-xs font-bold text-primary mt-2">${formatCOP(c.total_estimado)}</p>
+                    <p class="text-xs font-bold text-primary mt-2">${formatCOPConMarkup(c.total_estimado)}</p>
                 </div>`;
 
         } else if (c.estado === 'aceptada') {
@@ -398,21 +369,16 @@ async function cargarItemsProyecto(cotizacion_id) {
         } else {
             footerEl.innerHTML = `
                 <div class="text-center">
-                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200">${formatCOP(c.total_estimado)}</p>
+                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200">${formatCOPConMarkup(c.total_estimado)}</p>
                     <p class="text-xs text-slate-500 mt-1">${escapeHTML(ESTADO_DESCR[c.estado] || '')}</p>
                 </div>`;
         }
 
-        // Wire: quitar items (solo en borrador)
         if (editable) {
             itemsEl.querySelectorAll('[data-quitar-item]').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const inv = parseInt(btn.dataset.quitarItem, 10);
-                    quitarItem(cotizacion_id, inv);
-                });
+                btn.addEventListener('click', () => quitarItem(cotizacion_id, parseInt(btn.dataset.quitarItem, 10)));
             });
         }
-
     } catch (e) {
         console.error('Error cargando items:', e);
         itemsEl.innerHTML = `<p class="text-xs text-red-500 text-center py-4">No se pudieron cargar los items.</p>`;
@@ -448,10 +414,10 @@ function renderItem(it, editable) {
     `;
 }
 
-// ─── Acciones ───────────────────────────────────────────────
+// ─── Acciones ────────────────────────────────────────────────
 
 async function solicitarAprobacion(cotizacion_id, total) {
-    if (!confirm(`¿Enviar esta cotización (${formatCOP(total)}) al vivero para aprobación?\n\nNo podrás editarla mientras esté en revisión.`)) return;
+    if (!confirm(`¿Enviar esta cotización al vivero para aprobación?\n\nTotal a pagar (si se aprueba): ${formatCOPConMarkup(total)}\n\nNo podrás editarla mientras esté en revisión.`)) return;
     const token = localStorage.getItem('vivero_access_token');
     try {
         const resp = await fetch(`/api/pedidos/${cotizacion_id}/solicitar`, {
@@ -471,8 +437,9 @@ async function solicitarAprobacion(cotizacion_id, total) {
     }
 }
 
+// ✅ FIX: va a /checkout/ no a /pedido/
 function irACheckout(cotizacion_id) {
-    window.location.href = `/pedido/${cotizacion_id}`;
+    window.location.href = `/checkout/${cotizacion_id}`;
 }
 
 async function quitarItem(cotizacion_id, inventario_id) {
@@ -483,14 +450,9 @@ async function quitarItem(cotizacion_id, inventario_id) {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` },
         });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.detail || `Error ${resp.status}`);
-        }
+        if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `Error ${resp.status}`); }
         window.location.reload();
-    } catch (e) {
-        alert('No se pudo quitar el item: ' + (e.message || e));
-    }
+    } catch (e) { alert('No se pudo quitar el item: ' + (e.message || e)); }
 }
 
 async function eliminarProyecto(cotizacion_id) {
@@ -501,28 +463,21 @@ async function eliminarProyecto(cotizacion_id) {
             method: 'DELETE',
             headers: { 'Authorization': `Bearer ${token}` },
         });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.detail || `Error ${resp.status}`);
-        }
+        if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `Error ${resp.status}`); }
         window.location.reload();
-    } catch (e) {
-        alert('No se pudo eliminar: ' + (e.message || e));
-    }
+    } catch (e) { alert('No se pudo eliminar: ' + (e.message || e)); }
 }
 
-// ─── Helpers ────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────
 
-const MARKUP = 0.18;
 function formatCOPConMarkup(v) {
     if (!v && v !== 0) return '$0';
-    return '$' + Math.round((v || 0) * (1 + MARKUP)).toLocaleString('es-CO');
+    return '$' + Math.round((parseFloat(v) || 0) * (1 + MARKUP)).toLocaleString('es-CO');
 }
 function formatCOP(v) {
     if (!v && v !== 0) return '$0';
-    return '$' + Math.round(v).toLocaleString('es-CO');
+    return '$' + Math.round(parseFloat(v) || 0).toLocaleString('es-CO');
 }
-
 function formatFecha(s) {
     if (!s) return '—';
     try {
@@ -531,7 +486,6 @@ function formatFecha(s) {
         return d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
     } catch { return '—'; }
 }
-
 function escapeHTML(s) {
     if (s === null || s === undefined) return '';
     return String(s).replace(/[&<>"']/g, c => ({
