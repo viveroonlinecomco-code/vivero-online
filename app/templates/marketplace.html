@@ -211,7 +211,7 @@
                 data = await VO.api('/api/marketplace' + (qs ? qs + '&limite=120' : '?limite=120'));
             } else {
                 // Anónimo: endpoint público (sin contactos)
-                const resp = await fetch('/api/public/marketplace' + (qs ? qs + '&limite=120' : '?limite=120'));
+                cconst resp = await fetch('/api/public/marketplace' + (qs ? qs + '&limite=100' : '?limite=100'));
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 data = await resp.json();
             }
