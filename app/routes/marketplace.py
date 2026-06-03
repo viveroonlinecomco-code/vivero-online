@@ -49,7 +49,7 @@ async def listar_marketplace(
     lat: float = 4.9195,
     lon: float = -74.0270,
     radio_km: float = 50.0,
-    limite: int = Query(20, le=100),
+    limite: int = Query(120, le=200),
     user: UserContext = Depends(require_user),
 ):
     """Búsqueda geo-espacial + texto en el marketplace."""
