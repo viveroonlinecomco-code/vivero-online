@@ -161,7 +161,8 @@
             const vivero = escapeHTML(item.nombre_vivero || 'Vivero');
             const municipio = escapeHTML(item.municipio || '');
             const distancia = item.distancia_km ? `${item.distancia_km.toFixed(1)} km` : '';
-            const precio = VO.formatCOPFull(item.precio_mayorista || 0);
+            const precioBase = item.precio_mayorista || 0;
+            const precio = VO.formatCOPFull(item.precio_comprador || Math.round(precioBase * 1.18));
             const stock = item.stock || 0;
             const meta = [vivero, municipio, distancia].filter(Boolean).join(' · ');
 
