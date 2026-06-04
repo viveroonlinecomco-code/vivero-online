@@ -1,8 +1,5 @@
 """Endpoints públicos sin auth.
 
-NOTA: El dashboard inversor antes vivía aquí (/api/public/flywheel) sin auth.
-Ahora se movió a /api/inversores/flywheel y requiere cookie de invitación.
-
 Endpoints vigentes:
 - GET /api/public/health
 - GET /api/public/stats                      → métricas seguras para landing
@@ -10,18 +7,16 @@ Endpoints vigentes:
 - GET /api/public/marketplace/item/{inv_id}  → vitrina pública (detalle)
 """
 from __future__ import annotations
-
 import logging
 from typing import Optional
-
 from fastapi import APIRouter, HTTPException, Query
-
 from app.services.supabase import admin
 
-
 logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/api/public", tags=["public"])
+
+# Markup 18% — debe coincidir con marketplace.py
+MARKUP_PLATAFORMA = 0.18
 
 
 @router.get("/health")
@@ -33,19 +28,7 @@ async def public_health():
 
 @router.get("/stats")
 async def public_stats():
-    """Estadísticas SEGURAS para mostrar en el landing page sin auth.
-
-    Devuelve solo métricas no-sensibles:
-    - viveros_registrados: cuántos viveros hay en la plataforma
-    - items_disponibles: cuántos items de inventario están a la venta
-    - municipios: lista de ciudades cubiertas + count
-    - etapa: indicador de fase del producto (constante "beta" por ahora)
-
-    NO devuelve: GMV, transacciones, ingresos, datos sensibles.
-    Esas métricas viven en /api/inversores/flywheel (cookie de invitación).
-
-    Si falla la consulta a la DB, devuelve valores cero (no rompe el landing).
-    """
+    """Estadísticas seguras para el landing page sin auth."""
     fallback = {
         "ok": False,
         "viveros_registrados": 0,
@@ -54,24 +37,19 @@ async def public_stats():
         "municipios_count": 0,
         "etapa": "beta",
     }
-
     try:
         db = admin()
-
-        # 1. Métricas pre-calculadas de la view pública
         flywheel_resp = db.table("v_public_flywheel").select(
             "viveros_registrados, items_disponibles"
         ).limit(1).execute()
         flywheel = (flywheel_resp.data or [{}])[0]
 
-        # 2. Lista de municipios cubiertos (ciudades únicas con viveros activos)
         viveros_resp = db.table("viveros").select("ciudad").eq("estado", "activo").execute()
         municipios = sorted({
             (v.get("ciudad") or "").strip()
             for v in (viveros_resp.data or [])
             if v.get("ciudad") and v.get("ciudad").strip()
         })
-
         return {
             "ok": True,
             "viveros_registrados": int(flywheel.get("viveros_registrados") or 0),
@@ -96,20 +74,18 @@ async def listar_marketplace_publico(
     lat: float = 4.9195,
     lon: float = -74.0270,
     radio_km: float = 50.0,
-    limite: int = Query(20, le=100),
+    limite: int = Query(120, le=200),   # ← AUMENTADO: default 120, máx 200
 ):
     """Vitrina pública del marketplace. SIN auth.
 
-    Cualquier visitante puede ver: planta, foto, precio mayorista,
+    Devuelve: planta, foto, precio_mayorista, precio_comprador (con markup 18%),
     stock, vivero (nombre), municipio, distancia.
 
-    NO se exponen contactos del vivero (teléfono, WhatsApp, direccion) — eso requiere
-    autenticación vía /api/marketplace.
+    NO expone: contactos del vivero (teléfono, WhatsApp, direccion).
     """
     db = admin()
 
     if q and q.strip():
-        # Búsqueda por nombre usando función SQL geo
         resp = db.rpc("buscar_plantas_cercanas", {
             "p_nombre_planta": q.strip(),
             "p_altura_min_cm": altura_min,
@@ -122,13 +98,15 @@ async def listar_marketplace_publico(
 
         items = []
         for r in resp.data or []:
+            precio_base = float(r.get("precio_mayorista") or 0)
             items.append({
                 "inventario_id": r["inventario_id"],
                 "planta_id": r["planta_id"],
                 "nombre_comun": r["nombre_comun"],
                 "nombre_cientifico": r.get("nombre_cientifico"),
                 "foto_ia_url": r.get("foto_ia_url"),
-                "precio_mayorista": float(r.get("precio_mayorista") or 0),
+                "precio_mayorista": precio_base,
+                "precio_comprador": round(precio_base * (1 + MARKUP_PLATAFORMA)),
                 "stock": r["stock"],
                 "altura_cm": r["altura_cm"],
                 "vivero_id": r["vivero_id"],
@@ -137,7 +115,7 @@ async def listar_marketplace_publico(
             })
         return {"ok": True, "items": items, "total": len(items)}
 
-    # Sin búsqueda: listado general de disponibles
+    # Listado general
     query = db.table("inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
         "stock, unidad_medida, foto_ia_url, vivero_id, "
@@ -157,13 +135,15 @@ async def listar_marketplace_publico(
     for r in resp.data or []:
         planta = r.get("plantas") or {}
         vivero = r.get("viveros") or {}
+        precio_base = float(r.get("precio_mayorista") or 0)
         items.append({
             "inventario_id": r["inventario_id"],
             "planta_id": r["planta_id"],
             "nombre_comun": planta.get("nombre_comun", "Sin nombre"),
             "nombre_cientifico": planta.get("nombre_cientifico"),
             "foto_ia_url": r.get("foto_ia_url"),
-            "precio_mayorista": float(r.get("precio_mayorista") or 0),
+            "precio_mayorista": precio_base,
+            "precio_comprador": round(precio_base * (1 + MARKUP_PLATAFORMA)),
             "stock": r.get("stock") or 0,
             "altura_cm": r.get("altura_cm") or 0,
             "unidad_medida": r.get("unidad_medida"),
@@ -178,12 +158,8 @@ async def listar_marketplace_publico(
 
 @router.get("/marketplace/item/{inventario_id}")
 async def detalle_item_publico(inventario_id: int):
-    """Detalle público de un item del marketplace. SIN auth.
-
-    Devuelve datos botánicos + precio + stock + vivero (nombre, ciudad, coords,
-    historia, foto principal).
-
-    NO devuelve direccion teléfono ni WhatsApp del vivero — para eso hay que loguearse.
+    """Detalle público de un item. SIN auth.
+    NO devuelve: dirección, teléfono ni WhatsApp del vivero.
     """
     db = admin()
     resp = db.table("inventario").select(
@@ -195,4 +171,8 @@ async def detalle_item_publico(inventario_id: int):
 
     if not resp.data:
         raise HTTPException(404, detail="Item no encontrado")
-    return {"ok": True, "item": resp.data[0]}
+
+    item = resp.data[0]
+    precio_base = float(item.get("precio_mayorista") or 0)
+    item["precio_comprador"] = round(precio_base * (1 + MARKUP_PLATAFORMA))
+    return {"ok": True, "item": item}
