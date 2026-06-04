@@ -229,7 +229,7 @@ async def _handle_message(msg: dict):
         await send_text_message(
             whatsapp,
             "👋 ¡Hola! Aún no estás registrado en ViveroOnline.\n\n"
-            "Registrate gratis aquí:\nhttps://vivero-online-j3gi.vercel.app/auth/ingresar",
+            "Registrate gratis aquí:\nhttps://app.viveroonline.com.co/auth/ingresar",
         )
         return
 
@@ -363,7 +363,7 @@ async def _handle_image(
             msg += (
                 "¿Querés guardarla en tu inventario?\n"
                 "Respondé *sí* o entrá a la app:\n"
-                "https://vivero-online-j3gi.vercel.app/viverista"
+                "https://app.viveroonline.com.co/viverista"
             )
 
     _save_message(sesion_id, "user", "[Imagen enviada]", is_photo=True)
