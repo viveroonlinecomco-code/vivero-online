@@ -1,18 +1,8 @@
-"""Rutas de pagos vía ePayco.
-
-Flujo:
-1. Comprador con cotización aprobada → POST /api/pagos/iniciar
-2. Backend crea registro en `pagos` (estado=pendiente) + payload ePayco firmado
-3. Frontend abre el checkout de ePayco con ese payload
-4. Usuario completa el pago → ePayco redirige a /pagos/resultado (response_url)
-5. ePayco notifica POST /api/pagos/confirmacion (confirmation_url)
-6. Backend valida firma SHA256 → actualiza pago + transacción
-"""
+"""Rutas de pagos vía ePayco."""
 from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from app.auth.deps import UserContext, require_user
@@ -37,13 +27,12 @@ class IniciarPagoResponse(BaseModel):
     ok: bool
     pago_id: int
     referencia: str
-    checkout_payload: dict      # Lo que el frontend pasa al SDK ePayco
+    checkout_payload: dict
     monto_cop: int
 
 
 @router.post("/iniciar", response_model=IniciarPagoResponse)
 async def iniciar_pago(req: IniciarPagoRequest, user: UserContext = Depends(require_user)):
-    """Crea registro de pago + payload firmado para abrir ePayco Checkout."""
     s = get_settings()
     epayco = get_epayco()
     if not epayco.is_configured:
@@ -51,7 +40,6 @@ async def iniciar_pago(req: IniciarPagoRequest, user: UserContext = Depends(requ
 
     db = admin()
 
-    # 1. Validar transacción y dueño
     txn_resp = db.table("transacciones_b2b").select(
         "transaccion_id, cliente_id, precio_total, estado, "
         "clientes(nombre_empresa, nombre_representante, whatsapp_numero)"
@@ -60,7 +48,6 @@ async def iniciar_pago(req: IniciarPagoRequest, user: UserContext = Depends(requ
         raise HTTPException(404, detail="Transacción no encontrada")
     txn = txn_resp.data[0]
 
-    # Solo el comprador o admin pueden iniciar pago
     if user.rol == "comprador" and txn["cliente_id"] != user.cliente_id:
         raise HTTPException(403, detail="No puedes pagar esta transacción")
     if user.rol not in ("comprador", "admin"):
@@ -72,7 +59,6 @@ async def iniciar_pago(req: IniciarPagoRequest, user: UserContext = Depends(requ
     monto_cop = int(float(txn["precio_total"]))
     cliente = txn.get("clientes") or {}
 
-    # 2. Construir payload ePayco
     response_url = f"{s.app_base_url}/pagos/resultado"
     confirmation_url = f"{s.app_base_url}/api/pagos/confirmacion"
     checkout_req = CheckoutRequest(
@@ -85,8 +71,6 @@ async def iniciar_pago(req: IniciarPagoRequest, user: UserContext = Depends(requ
     payload = epayco.build_checkout_payload(checkout_req, response_url, confirmation_url)
     referencia = payload["invoice"]
 
-    # 3. Crear registro en pagos (estado pendiente)
-    # Comisión plataforma: 5% (configurable después)
     monto_plataforma = round(monto_cop * 0.05, 2)
     monto_viverista = monto_cop - monto_plataforma
 
@@ -127,11 +111,6 @@ async def confirmar_pago(
     x_signature: str = Form(""),
     x_id_invoice: Optional[str] = Form(None),
 ):
-    """Webhook que ePayco llama cuando se confirma/rechaza un pago.
-
-    Es la fuente de verdad: aunque el response_url falle, este webhook
-    asegura que sepamos el estado real del pago.
-    """
     epayco = get_epayco()
     db = admin()
 
@@ -147,9 +126,7 @@ async def confirmar_pago(
         x_signature=x_signature,
     )
 
-    # 1. Validar firma
     if not epayco.validate_signature(conf):
-        # Logueamos pero respondemos 200 igual (ePayco reintenta si no responde 2xx)
         try:
             db.table("log_ia").insert({
                 "tipo_operacion": "epayco_invalid_signature",
@@ -159,7 +136,6 @@ async def confirmar_pago(
             pass
         return {"ok": False, "reason": "invalid_signature"}
 
-    # 2. Buscar pago por referencia
     pago_resp = db.table("pagos").select(
         "pago_id, transaccion_id, estado_pago, tipo, suscripcion_id"
     ).eq("referencia_externa", x_id_factura).limit(1).execute()
@@ -167,7 +143,6 @@ async def confirmar_pago(
         return {"ok": False, "reason": "pago_no_encontrado"}
     pago = pago_resp.data[0]
 
-    # 3. Actualizar pago
     new_state = map_epayco_state_to_db(x_response)
     db.table("pagos").update({
         "estado_pago": new_state,
@@ -176,11 +151,12 @@ async def confirmar_pago(
         "webhook_payload": conf.model_dump(),
     }).eq("pago_id", pago["pago_id"]).execute()
 
-    # 4. Si fue aprobado, actualizar el objeto referenciado segun el tipo
+    # ── POST-PAGO: activar según tipo ──────────────────
     if new_state == "aprobado":
         tipo_pago = pago.get("tipo") or "transaccion_b2b"
+
         if tipo_pago == "suscripcion" and pago.get("suscripcion_id"):
-            # Activar suscripcion Inteligencia por 30 dias
+            # Activar Plan Inteligencia por 30 días
             from datetime import datetime, timedelta, timezone
             ahora = datetime.now(timezone.utc)
             proximo_cobro = ahora + timedelta(days=30)
@@ -190,20 +166,35 @@ async def confirmar_pago(
                 "fecha_proximo_cobro": proximo_cobro.isoformat(),
                 "epayco_subscription_id": x_ref_payco,
             }).eq("suscripcion_id", pago["suscripcion_id"]).execute()
+
         elif pago.get("transaccion_id"):
-            # Pago de transaccion B2B del marketplace (flujo original)
+            # Pago B2B del marketplace — marcar como pagada
             db.table("transacciones_b2b").update({
                 "estado": "pagada",
             }).eq("transaccion_id", pago["transaccion_id"]).execute()
 
+            # ── LOGÍSTICA: generar entregas y notificar viveristas ──
+            try:
+                txn = db.table("transacciones_b2b").select(
+                    "cotizacion_id"
+                ).eq("transaccion_id", pago["transaccion_id"]).limit(1).execute()
+
+                if txn.data and txn.data[0].get("cotizacion_id"):
+                    cotizacion_id = txn.data[0]["cotizacion_id"]
+                    from app.services.logistica import generar_entregas_y_notificar
+                    await generar_entregas_y_notificar(cotizacion_id)
+            except Exception as e:
+                # No bloqueamos el flujo de pago si la logística falla
+                import logging
+                logging.getLogger(__name__).exception(f"Error generando entregas post-pago: {e}")
+
     return {"ok": True, "estado": new_state}
 
 
-# ─────────────────── PÁGINA RESULTADO ───────────────────
+# ─────────────────── ESTADO DEL PAGO ───────────────────
 
 @router.get("/estado/{pago_id}")
 async def estado_pago(pago_id: int, user: UserContext = Depends(require_user)):
-    """Consulta el estado actual del pago. Útil para polling desde la página de resultado."""
     db = admin()
     resp = db.table("pagos").select(
         "pago_id, transaccion_id, monto_total, estado_pago, "
