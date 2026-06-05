@@ -80,10 +80,7 @@ tailwind.config = {
                 </h2>
                 <p id="nombre-proyecto" class="text-xs text-slate-500 mt-0.5"></p>
             </div>
-
             <div id="lista-items" class="divide-y divide-slate-100 dark:divide-slate-700"></div>
-
-            <!-- Totales -->
             <div class="px-5 py-4 bg-slate-50 dark:bg-slate-900/50">
                 <div class="flex justify-between items-center mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
                     <span class="font-bold">Total</span>
@@ -92,17 +89,21 @@ tailwind.config = {
             </div>
         </div>
 
-        <!-- Datos de entrega -->
+        <!-- ══════════════════════════════════════
+             DATOS DE ENTREGA EN OBRA — LOGÍSTICA
+             ══════════════════════════════════════ -->
         <div class="bg-white dark:bg-slate-800 rounded-xl border border-primary/10 shadow-sm p-5 space-y-4">
             <h2 class="font-bold text-base flex items-center gap-2">
                 <span class="material-symbols-outlined text-primary text-lg">local_shipping</span>
-                Datos de entrega
+                Datos de entrega en obra
             </h2>
+            <p class="text-xs text-slate-500 -mt-2">El viverista coordinará la entrega. Todos los campos con * son obligatorios.</p>
 
+            <!-- Ciudad -->
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Ciudad de entrega *</label>
                 <select id="ciudad-entrega"
-                    class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition text-sm">
+                    class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
                     <option value="">Seleccioná la ciudad</option>
                     <option>Cajicá</option><option>Chía</option><option>Zipaquirá</option>
                     <option>Sopó</option><option>La Calera</option><option>Tabio</option>
@@ -112,18 +113,81 @@ tailwind.config = {
                 </select>
             </div>
 
+            <!-- Dirección exacta -->
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Dirección exacta de entrega *</label>
+                <input type="text" id="direccion-entrega"
+                    placeholder="Ej: Cra 15 #80-20, Conjunto Las Palmas, Portería Norte"
+                    class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
+                <p class="text-xs text-slate-400 mt-1">Incluí el nombre de la obra, conjunto o edificio.</p>
+            </div>
+
+            <!-- Contacto nombre y teléfono -->
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Nombre del encargado *</label>
+                    <input type="text" id="contacto-nombre"
+                        placeholder="Ej: Carlos Pérez"
+                        class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Celular del encargado *</label>
+                    <input type="tel" id="contacto-telefono"
+                        placeholder="300 123 4567"
+                        class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
+                </div>
+            </div>
+
+            <!-- Tipo de vehículo -->
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Tipo de vehículo necesario *</label>
+                <select id="tipo-vehiculo"
+                    class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
+                    <option value="camioneta">🚐 Camioneta — hasta 20 plantas medianas</option>
+                    <option value="moto">🏍️ Moto — plantas pequeñas o urgente</option>
+                    <option value="camion">🚛 Camión — pedidos grandes o árboles</option>
+                    <option value="mula">🚚 Mula — carga extra pesada</option>
+                </select>
+            </div>
+
+            <!-- Fecha deseada y ventana horaria -->
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Fecha de entrega deseada</label>
                 <input type="date" id="fecha-entrega"
-                    class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition text-sm">
-                <p class="text-xs text-slate-500 mt-1">El vivero coordinará la entrega directamente con vos.</p>
+                    class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
             </div>
 
             <div>
-                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Notas adicionales</label>
-                <textarea id="notas-entrega" rows="3" maxlength="500"
-                    placeholder="Dirección exacta, instrucciones especiales, contacto para la entrega..."
-                    class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 focus:border-primary transition text-sm resize-none"></textarea>
+                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Horario de recepción en obra</label>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <p class="text-xs text-slate-400 mb-1">Desde</p>
+                        <input type="time" id="ventana-inicio"
+                            class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
+                    </div>
+                    <div>
+                        <p class="text-xs text-slate-400 mb-1">Hasta</p>
+                        <input type="time" id="ventana-fin"
+                            class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
+                    </div>
+                </div>
+                <p class="text-xs text-slate-400 mt-1">⚠️ Sin contacto disponible en la obra, la entrega puede fallar.</p>
+            </div>
+
+            <!-- Notas -->
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Notas para el viverista</label>
+                <textarea id="notas-entrega" rows="2" maxlength="500"
+                    placeholder="Ej: Ingresar por portería norte, no tienen montacargas, preguntar por el almacenista..."
+                    class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm resize-none"></textarea>
+            </div>
+
+            <!-- Aviso flete -->
+            <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-3">
+                <p class="text-xs text-amber-700 dark:text-amber-300 font-semibold flex items-start gap-2">
+                    <span class="material-symbols-outlined text-sm mt-0.5">info</span>
+                    El flete va por cuenta del comprador. El viverista te contactará para coordinar el costo del transporte.
+                </p>
             </div>
         </div>
 
@@ -133,7 +197,7 @@ tailwind.config = {
                 <span class="material-symbols-outlined text-amber-600 text-base mt-0.5">info</span>
                 <div>
                     <p class="text-xs font-bold text-amber-800 dark:text-amber-200">Modo sandbox (pruebas)</p>
-                    <p class="text-xs text-amber-700 dark:text-amber-300 mt-0.5">Tarjeta Visa de prueba: <span class="font-mono font-bold">4575623182290326</span> · CVV: <span class="font-mono">123</span> · Vence: 12/27</p>
+                    <p class="text-xs text-amber-700 dark:text-amber-300 mt-0.5">Tarjeta Visa: <span class="font-mono font-bold">4575623182290326</span> · CVV: <span class="font-mono">123</span> · Vence: 12/27</p>
                 </div>
             </div>
         </div>
@@ -160,7 +224,6 @@ tailwind.config = {
 <script src="/static/js/vivero.js"></script>
 <script>
 (async function() {
-    // ID de cotización de la URL: /checkout/{cotizacion_id}
     const match = window.location.pathname.match(/\/checkout\/(\d+)/);
     if (!match) { showError('URL inválida'); return; }
     const cotizacionId = parseInt(match[1]);
@@ -184,7 +247,6 @@ tailwind.config = {
         setState('state-error');
     }
 
-    // Cargar cotización
     let cotizacion;
     try {
         const data = await VO.api(`/api/marketplace/cotizacion/${cotizacionId}`);
@@ -196,7 +258,6 @@ tailwind.config = {
         return;
     }
 
-    // Render
     const total = parseFloat(cotizacion.total_estimado || 0);
     document.getElementById('nombre-proyecto').textContent = cotizacion.nombre_proyecto || `Pedido #${cotizacionId}`;
 
@@ -216,7 +277,6 @@ tailwind.config = {
         </div>
     `).join('');
 
-    // El precio ya incluye el 18% de gestión de plataforma
     const MARKUP = 0.18;
     const totalComprador = Math.round(total * (1 + MARKUP));
     document.getElementById('total').textContent = fmt(totalComprador);
@@ -228,17 +288,40 @@ tailwind.config = {
     setState('state-content');
     document.getElementById('sticky-footer').classList.remove('hidden');
 
-    // Botón pagar
+    // ── Botón pagar con validación de logística ──────────
     document.getElementById('btn-pagar').addEventListener('click', async () => {
-        const ciudad = document.getElementById('ciudad-entrega').value;
-        const errBox = document.getElementById('checkout-error');
-        const btn = document.getElementById('btn-pagar');
-        const btnText = document.getElementById('btn-pagar-text');
+        const ciudad    = document.getElementById('ciudad-entrega').value;
+        const direccion = document.getElementById('direccion-entrega').value.trim();
+        const nombre    = document.getElementById('contacto-nombre').value.trim();
+        const telefono  = document.getElementById('contacto-telefono').value.trim();
+        const vehiculo  = document.getElementById('tipo-vehiculo').value;
+        const errBox    = document.getElementById('checkout-error');
+        const btn       = document.getElementById('btn-pagar');
+        const btnText   = document.getElementById('btn-pagar-text');
 
+        // Validación de campos obligatorios
         if (!ciudad) {
             document.getElementById('checkout-error-msg').textContent = 'Seleccioná la ciudad de entrega.';
             errBox.classList.remove('hidden');
             document.getElementById('ciudad-entrega').focus();
+            return;
+        }
+        if (!direccion) {
+            document.getElementById('checkout-error-msg').textContent = 'La dirección exacta de entrega es obligatoria.';
+            errBox.classList.remove('hidden');
+            document.getElementById('direccion-entrega').focus();
+            return;
+        }
+        if (!nombre) {
+            document.getElementById('checkout-error-msg').textContent = 'El nombre del encargado de recepción es obligatorio.';
+            errBox.classList.remove('hidden');
+            document.getElementById('contacto-nombre').focus();
+            return;
+        }
+        if (!telefono) {
+            document.getElementById('checkout-error-msg').textContent = 'El celular del encargado es obligatorio.';
+            errBox.classList.remove('hidden');
+            document.getElementById('contacto-telefono').focus();
             return;
         }
 
@@ -246,13 +329,27 @@ tailwind.config = {
         btn.disabled = true;
         btnText.textContent = 'Preparando pago...';
 
+        // Construir ventana horaria combinando fecha + hora
+        const fecha = document.getElementById('fecha-entrega').value;
+        const horaIni = document.getElementById('ventana-inicio').value;
+        const horaFin = document.getElementById('ventana-fin').value;
+        const ventanaInicio = fecha && horaIni ? `${fecha}T${horaIni}:00` : null;
+        const ventanaFin    = fecha && horaFin ? `${fecha}T${horaFin}:00` : null;
+
         try {
             const payload = await VO.api(`/api/pedidos/${cotizacionId}/checkout`, {
                 method: 'POST',
                 body: JSON.stringify({
-                    ciudad_entrega: ciudad,
-                    fecha_entrega_deseada: document.getElementById('fecha-entrega').value || null,
-                    notas: document.getElementById('notas-entrega').value.trim() || null,
+                    ciudad_entrega:          ciudad,
+                    fecha_entrega_deseada:   fecha || null,
+                    notas:                   document.getElementById('notas-entrega').value.trim() || null,
+                    // Nuevos campos de logística
+                    direccion_entrega_exacta: direccion,
+                    contacto_nombre:          nombre,
+                    contacto_telefono:        telefono,
+                    tipo_vehiculo:            vehiculo,
+                    ventana_inicio:           ventanaInicio,
+                    ventana_fin:              ventanaFin,
                 }),
             });
 
@@ -271,7 +368,7 @@ tailwind.config = {
                 description:  cp.description || 'Pedido ViveroOnline',
                 invoice:      cp.invoice,
                 currency:     cp.currency    || 'cop',
-                amount:       String(cp.amount || Math.round(total)),
+                amount:       String(cp.amount || Math.round(totalComprador)),
                 tax_base:     String(cp.tax_base || 0),
                 tax:          String(cp.tax || 0),
                 country:      cp.country     || 'co',
