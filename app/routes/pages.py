@@ -20,6 +20,10 @@ def _tpl(name: str) -> FileResponse:
     path = TEMPLATES_DIR / name
     return FileResponse(path, media_type="text/html")
 
+@router.get("/mi-cuenta/suscripcion", response_class=HTMLResponse)
+async def app_suscripcion():
+    return _tpl("suscripcion.html")
+
 
 # ─────────────────── LANDING PÚBLICA ───────────────────
 
