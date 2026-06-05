@@ -1,228 +1,419 @@
 <!DOCTYPE html>
-
-<html lang="es"><head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<title>Detalle del pedido · ViveroOnline</title>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Confirmar pedido · ViveroOnline</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
-            theme: {
-                extend: {
-                    colors: {
-                        "primary": "#325926",
-                        "background-light": "#f7f7f6",
-                        "background-dark": "#171d15",
-                    },
-                    fontFamily: {
-                        "display": ["Inter"]
-                    },
-                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
-                },
-            },
-        }
-    </script>
-<style>
-        body { font-family: 'Inter', sans-serif; min-height: max(884px, 100dvh); }
-        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
-    </style>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<script src="https://checkout.epayco.co/checkout.js"></script>
+<script>
+tailwind.config = {
+    darkMode: "class",
+    theme: { extend: {
+        colors: { "primary": "#325926", "background-light": "#f7f7f6", "background-dark": "#171d15" },
+        fontFamily: { "display": ["Inter", "sans-serif"] },
+        borderRadius: {"DEFAULT":"1rem","lg":"2rem","xl":"3rem","full":"9999px"},
+    }},
+}
+</script>
+<style>body { min-height: max(884px, 100dvh); font-family: 'Inter', sans-serif; }</style>
 </head>
-<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 font-display">
-<div class="relative flex h-auto min-h-screen w-full max-w-md mx-auto flex-col bg-background-light dark:bg-background-dark overflow-x-hidden">
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 pb-32">
 
 <!-- Header -->
-<header class="flex items-center bg-white dark:bg-background-dark p-4 pb-2 justify-between sticky top-0 z-50">
-<a id="back-link" href="/comprador" title="Volver" class="text-primary flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-primary/10 transition-colors">
-<span class="material-symbols-outlined">arrow_back</span>
-</a>
-<h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center">Detalle del pedido</h2>
-<div class="size-10"></div>
+<header class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-primary/10">
+    <div class="max-w-lg mx-auto px-4 h-16 flex items-center gap-3">
+        <a href="/comprador" class="flex items-center justify-center w-9 h-9 rounded-full hover:bg-primary/10 transition-colors text-primary">
+            <span class="material-symbols-outlined text-xl">arrow_back</span>
+        </a>
+        <div class="flex-1">
+            <h1 class="text-base font-bold leading-tight">Confirmar pedido</h1>
+            <p class="text-xs text-slate-500">Revisá los detalles antes de pagar</p>
+        </div>
+        <span class="material-symbols-outlined text-primary text-2xl">energy_savings_leaf</span>
+    </div>
 </header>
 
-<!-- Loading state (visible por defecto) -->
-<div id="pedido-loading" class="flex flex-col items-center justify-center py-16 text-slate-500">
-<span class="material-symbols-outlined animate-spin text-4xl text-primary mb-3">progress_activity</span>
-<p class="text-sm">Cargando detalle del pedido…</p>
-</div>
+<main class="max-w-lg mx-auto px-4 py-6 space-y-5">
 
-<!-- Error state (oculto por defecto, JS lo activa) -->
-<div id="pedido-error" class="hidden flex-col items-center justify-center py-16 px-6 text-center">
-<span class="material-symbols-outlined text-red-500 text-5xl mb-3">error</span>
-<h3 id="error-title" class="font-bold text-lg text-slate-900 dark:text-slate-100 mb-1">Error</h3>
-<p id="error-message" class="text-sm text-slate-500 mb-6 max-w-xs">No pudimos cargar este pedido.</p>
-<a id="error-back" href="/comprador" class="inline-flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-full font-semibold hover:bg-primary/90 transition-colors">
-<span class="material-symbols-outlined">arrow_back</span>
-Volver al inicio
-</a>
-</div>
+    <!-- LOADING -->
+    <div id="state-loading" class="space-y-4">
+        <div class="animate-pulse bg-white dark:bg-slate-800 rounded-xl p-5 space-y-3">
+            <div class="h-5 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
+            <div class="h-16 bg-slate-100 dark:bg-slate-700 rounded-lg"></div>
+            <div class="h-16 bg-slate-100 dark:bg-slate-700 rounded-lg"></div>
+        </div>
+        <div class="animate-pulse bg-white dark:bg-slate-800 rounded-xl p-5 h-32"></div>
+    </div>
 
-<!-- Content state (oculto por defecto, JS lo activa al recibir data) -->
-<div id="pedido-content" class="hidden flex-col gap-4 p-4">
+    <!-- ERROR -->
+    <div id="state-error" class="hidden text-center py-16">
+        <span class="material-symbols-outlined text-5xl text-red-300 mb-3">error_outline</span>
+        <p class="font-bold text-lg text-slate-700 dark:text-slate-200">No se pudo cargar el pedido</p>
+        <p id="error-msg" class="text-sm text-slate-500 mt-1 mb-4"></p>
+        <a href="/comprador" class="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-full font-bold text-sm">
+            <span class="material-symbols-outlined text-base">arrow_back</span>
+            Volver a mis proyectos
+        </a>
+    </div>
 
-<!-- Estado + ID -->
-<section class="bg-white dark:bg-slate-900 rounded-xl p-5 shadow-sm border border-primary/5 flex items-center justify-between">
-<div>
-<p class="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider mb-1">Estado del pedido</p>
-<span id="t-estado" class="inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold bg-slate-100 text-slate-700">—</span>
-</div>
-<div class="text-right">
-<p class="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider mb-1">Pedido #</p>
-<p id="t-id" class="text-sm font-bold text-slate-900 dark:text-slate-100">—</p>
-</div>
-</section>
+    <!-- CONTENIDO -->
+    <div id="state-content" class="hidden space-y-5">
 
-<!-- Vivero -->
-<section class="bg-white dark:bg-slate-900 rounded-xl p-5 shadow-sm border border-primary/5">
-<p class="text-xs text-slate-500 dark:text-slate-400 font-semibold uppercase tracking-wider mb-2">Vivero</p>
-<div class="flex items-center gap-3">
-<div class="size-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
-<span class="material-symbols-outlined">forest</span>
-</div>
-<p id="t-vivero" class="font-semibold text-slate-900 dark:text-slate-100 truncate">—</p>
-</div>
-</section>
+        <!-- Badge aprobado -->
+        <div class="flex items-center gap-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl px-4 py-3">
+            <span class="material-symbols-outlined text-emerald-600 text-xl">verified</span>
+            <div>
+                <p class="text-sm font-bold text-emerald-800 dark:text-emerald-200">Pedido aprobado por el vivero</p>
+                <p class="text-xs text-emerald-600 dark:text-emerald-400">El stock está reservado. Completá el pago para confirmar.</p>
+            </div>
+        </div>
 
-<!-- Producto -->
-<section class="bg-white dark:bg-slate-900 rounded-xl p-5 shadow-sm border border-primary/5">
-<h3 class="font-bold text-slate-900 dark:text-slate-100 text-base mb-4">Producto</h3>
-<div class="flex items-center gap-4">
-<div class="size-16 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
-<span class="material-symbols-outlined text-3xl">potted_plant</span>
-</div>
-<div class="flex-1 min-w-0">
-<p id="t-planta" class="text-slate-900 dark:text-slate-100 font-medium truncate">—</p>
-<p id="t-cantidad" class="text-slate-500 dark:text-slate-400 text-sm">—</p>
-</div>
-<p id="t-subtotal" class="font-bold text-slate-900 dark:text-slate-100 whitespace-nowrap">—</p>
-</div>
-</section>
+        <!-- Resumen del pedido -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-primary/10 shadow-sm overflow-hidden">
+            <div class="px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-700">
+                <h2 class="font-bold text-base flex items-center gap-2">
+                    <span class="material-symbols-outlined text-primary text-lg">receipt_long</span>
+                    Resumen del pedido
+                </h2>
+                <p id="nombre-proyecto" class="text-xs text-slate-500 mt-0.5"></p>
+            </div>
+            <div id="lista-items" class="divide-y divide-slate-100 dark:divide-slate-700"></div>
+            <!-- Totales -->
+            <div class="px-5 py-4 bg-slate-50 dark:bg-slate-900/50 space-y-2">
+                <div class="flex justify-between text-sm text-slate-500">
+                    <span>Subtotal plantas</span>
+                    <span id="subtotal-plantas">—</span>
+                </div>
+                <div id="flete-row" class="hidden flex justify-between text-sm text-slate-500">
+                    <span class="flex items-center gap-1">
+                        Flete
+                        <span id="flete-tier-badge" class="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold"></span>
+                    </span>
+                    <span id="flete-valor">—</span>
+                </div>
+                <div id="flete-loading" class="hidden text-xs text-slate-400 flex items-center gap-1">
+                    <span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                    Calculando flete...
+                </div>
+                <div class="flex justify-between items-center pt-2 border-t border-slate-200 dark:border-slate-700">
+                    <span class="font-bold">Total</span>
+                    <span id="total" class="text-xl font-black text-primary">—</span>
+                </div>
+            </div>
+        </div>
 
-<!-- Total -->
-<section class="bg-primary/5 rounded-xl p-5 border border-primary/10 flex items-center justify-between">
-<span class="text-slate-700 dark:text-slate-300 font-semibold">Total pagado</span>
-<span id="t-total" class="text-2xl font-black text-primary">—</span>
-</section>
+        <!-- DATOS DE ENTREGA -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-primary/10 shadow-sm p-5 space-y-4">
+            <h2 class="font-bold text-base flex items-center gap-2">
+                <span class="material-symbols-outlined text-primary text-lg">local_shipping</span>
+                Datos de entrega en obra
+            </h2>
+            <p class="text-xs text-slate-500 -mt-2">Campos con * son obligatorios. El flete se calcula automáticamente.</p>
 
-<!-- Fecha -->
-<section class="bg-white dark:bg-slate-900 rounded-xl p-5 shadow-sm border border-primary/5 flex items-center justify-between">
-<span class="text-sm text-slate-500 dark:text-slate-400 font-medium">Fecha del pedido</span>
-<span id="t-fecha" class="text-sm font-semibold text-slate-900 dark:text-slate-100">—</span>
-</section>
+            <!-- Ciudad -->
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Ciudad de entrega *</label>
+                <select id="ciudad-entrega"
+                    class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
+                    <option value="">Seleccioná la ciudad</option>
+                    <option>Cajicá</option><option>Chía</option><option>Zipaquirá</option>
+                    <option>Sopó</option><option>La Calera</option><option>Tabio</option>
+                    <option>Tenjo</option><option>Facatativá</option><option>Madrid</option>
+                    <option>Mosquera</option><option>Funza</option><option>Cota</option>
+                    <option>Tocancipá</option><option>Bogotá D.C.</option>
+                    <option>Bogotá Norte</option><option>Bogotá Sur</option>
+                    <option>Bogotá Centro</option><option>Otro</option>
+                </select>
+            </div>
 
-</div>
+            <!-- Dirección exacta -->
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Dirección exacta de entrega *</label>
+                <input type="text" id="direccion-entrega"
+                    placeholder="Ej: Cra 15 #80-20, Conjunto Las Palmas, Portería Norte"
+                    class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
+            </div>
 
-<!-- Help button (siempre visible) -->
-<div class="p-4 mb-8">
-<a id="help-link" href="mailto:viveroonline.com.co@gmail.com?subject=Ayuda%20con%20pedido" class="w-full bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-100 font-bold py-4 rounded-xl flex items-center justify-center gap-2 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
-<span class="material-symbols-outlined">help_outline</span>
-¿Necesitás ayuda con tu pedido?
-</a>
-</div>
+            <!-- Contacto -->
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Encargado de recibir *</label>
+                    <input type="text" id="contacto-nombre" placeholder="Carlos Pérez"
+                        class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Celular del encargado *</label>
+                    <input type="tel" id="contacto-telefono" placeholder="300 123 4567"
+                        class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
+                </div>
+            </div>
 
+            <!-- Fecha y ventana -->
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Fecha de entrega deseada</label>
+                <input type="date" id="fecha-entrega"
+                    class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
+            </div>
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Horario desde</label>
+                    <input type="time" id="ventana-inicio"
+                        class="w-full px-3 py-2.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">Hasta</label>
+                    <input type="time" id="ventana-fin"
+                        class="w-full px-3 py-2.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
+                </div>
+            </div>
+
+            <!-- Notas -->
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Notas para el vivero</label>
+                <textarea id="notas-entrega" rows="2" maxlength="500"
+                    placeholder="Ej: Ingresar por portería norte, no tienen montacargas..."
+                    class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm resize-none"></textarea>
+            </div>
+
+            <!-- Info flete incluido -->
+            <div class="bg-primary/5 border border-primary/10 rounded-xl px-4 py-3">
+                <p class="text-xs text-primary font-semibold flex items-start gap-2">
+                    <span class="material-symbols-outlined text-sm mt-0.5">info</span>
+                    El flete está incluido en el pago — calculado según el tamaño de tus plantas y la distancia. El vivero se encarga del transporte.
+                </p>
+            </div>
+        </div>
+
+        <!-- Sandbox info -->
+        <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3">
+            <div class="flex items-start gap-2">
+                <span class="material-symbols-outlined text-amber-600 text-base mt-0.5">info</span>
+                <div>
+                    <p class="text-xs font-bold text-amber-800 dark:text-amber-200">Modo sandbox (pruebas)</p>
+                    <p class="text-xs text-amber-700 dark:text-amber-300 mt-0.5">Visa: <span class="font-mono font-bold">4575623182290326</span> · CVV: <span class="font-mono">123</span> · Vence: 12/27</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Error -->
+        <div id="checkout-error" class="hidden bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl px-4 py-3">
+            <p class="text-sm text-red-700 dark:text-red-300 font-semibold" id="checkout-error-msg"></p>
+        </div>
+    </div>
+</main>
+
+<!-- Footer sticky -->
+<div id="sticky-footer" class="hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 p-4 z-40">
+    <div class="max-w-lg mx-auto">
+        <button id="btn-pagar"
+            class="w-full bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-lg py-4 rounded-full flex items-center justify-center gap-3 shadow-lg shadow-primary/25 transition active:scale-95">
+            <span class="material-symbols-outlined text-2xl">credit_card</span>
+            <span id="btn-pagar-text">Pagar con ePayco</span>
+        </button>
+        <p class="text-center text-xs text-slate-400 mt-2">🔒 Pago seguro · Plantas + flete en un solo cobro</p>
+    </div>
 </div>
 
 <script src="/static/js/vivero.js"></script>
-
 <script>
-if (!VO.requireAuth()) throw new Error('auth');
+(async function() {
+    const match = window.location.pathname.match(/\/checkout\/(\d+)/);
+    if (!match) { showError('URL inválida'); return; }
+    const cotizacionId = parseInt(match[1]);
 
-// Mapeo de estado → clases de Tailwind para el badge de color
-const ESTADO_COLOR = {
-    pendiente: 'bg-yellow-100 text-yellow-800',
-    confirmada: 'bg-blue-100 text-blue-800',
-    pagada: 'bg-primary/10 text-primary',
-    completada: 'bg-emerald-100 text-emerald-800',
-    cancelada: 'bg-red-100 text-red-800',
-};
+    if (!VO.requireAuth()) return;
+    let me;
+    try { me = await VO.me(); } catch { showError('No se pudo verificar tu sesión.'); return; }
+    if (me.rol !== 'comprador' && me.rol !== 'admin') {
+        window.location.href = '/comprador'; return;
+    }
 
-document.addEventListener('DOMContentLoaded', async () => {
-    // Extraer transaccion_id de la URL: /pedido/{id}
-    const id = window.location.pathname.split('/').filter(Boolean).pop();
-    if (!id || isNaN(parseInt(id))) {
-        showError('ID de pedido inválido', 'El link que abriste no contiene un identificador válido.');
+    const MARKUP = 0.18;
+    let totalViverista = 0;
+    let fleteCop = 0;
+
+    function fmt(v) { return '$' + Math.round(parseFloat(v) || 0).toLocaleString('es-CO'); }
+    function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    function setState(id) {
+        ['state-loading','state-error','state-content'].forEach(s => document.getElementById(s).classList.add('hidden'));
+        document.getElementById(id).classList.remove('hidden');
+    }
+    function showError(msg) {
+        document.getElementById('error-msg').textContent = msg;
+        setState('state-error');
+    }
+
+    function actualizarTotales() {
+        const montoPlantas = Math.round(totalViverista * (1 + MARKUP));
+        const totalFinal   = montoPlantas + fleteCop;
+        document.getElementById('subtotal-plantas').textContent = fmt(montoPlantas);
+        document.getElementById('total').textContent = fmt(totalFinal);
+    }
+
+    // Cargar cotización
+    let cotizacion;
+    try {
+        const data = await VO.api(`/api/marketplace/cotizacion/${cotizacionId}`);
+        cotizacion = data.cotizacion;
+    } catch (e) { showError('No se pudo cargar el pedido: ' + e.message); return; }
+
+    if (cotizacion.estado !== 'aceptada') {
+        showError(`Estado "${cotizacion.estado}". Solo los pedidos aprobados se pueden pagar.`);
         return;
     }
 
-    try {
-        // En paralelo: info del usuario (para el back-link según rol) + detalle de la transacción
-        const [me, txn] = await Promise.all([
-            VO.me().catch(() => ({ rol: 'comprador' })),
-            VO.api(`/api/transacciones/${id}`)
-        ]);
+    totalViverista = parseFloat(cotizacion.total_estimado || 0);
+    document.getElementById('nombre-proyecto').textContent = cotizacion.nombre_proyecto || `Pedido #${cotizacionId}`;
 
-        // Cablear el back-link según el rol del usuario autenticado
-        const back = me.rol === 'viverista' ? '/viverista'
-                   : me.rol === 'admin' ? '/admin'
-                   : '/comprador';
-        document.getElementById('back-link').href = back;
-        document.getElementById('error-back').href = back;
+    const items = cotizacion.items || [];
+    document.getElementById('lista-items').innerHTML = items.map(it => `
+        <div class="flex items-center gap-3 px-5 py-3">
+            <img src="${esc(it.foto_ia_url || 'https://placehold.co/64x64/e2e8f0/64748b?text=%F0%9F%8C%B1')}"
+                 alt="${esc(it.nombre_comun || '')}"
+                 class="w-12 h-12 rounded-lg object-cover flex-shrink-0"
+                 onerror="this.src='https://placehold.co/64x64/e2e8f0/64748b?text=%F0%9F%8C%B1'">
+            <div class="flex-1 min-w-0">
+                <p class="font-semibold text-sm truncate">${esc(it.nombre_comun || 'Planta')}</p>
+                <p class="text-xs text-slate-500">${it.cantidad} × ${fmt(it.precio_unitario)}</p>
+                <p class="text-xs text-slate-400 truncate">${esc(it.nombre_vivero || '')}${it.ciudad_vivero ? ' · '+esc(it.ciudad_vivero) : ''}</p>
+            </div>
+            <span class="font-bold text-primary text-sm whitespace-nowrap">${fmt(it.subtotal)}</span>
+        </div>
+    `).join('');
 
-        renderPedido(txn);
-    } catch (e) {
-        const msg = (e.message || '').toLowerCase();
-        if (msg.includes('404') || msg.includes('encontrad')) {
-            showError('Pedido no encontrado', 'Este pedido no existe o fue eliminado.');
-        } else if (msg.includes('403') || msg.includes('acceso') || msg.includes('autoriz')) {
-            showError('Sin acceso a este pedido', 'No tenés permiso para ver este pedido.');
-        } else {
-            showError('No pudimos cargar el pedido', e.message || 'Intentalo de nuevo en unos minutos.');
+    const manana = new Date();
+    manana.setDate(manana.getDate() + 1);
+    document.getElementById('fecha-entrega').min = manana.toISOString().split('T')[0];
+
+    actualizarTotales();
+    setState('state-content');
+    document.getElementById('sticky-footer').classList.remove('hidden');
+
+    // ── Calcular flete al seleccionar ciudad ─────────────────
+    document.getElementById('ciudad-entrega').addEventListener('change', async (e) => {
+        const ciudad = e.target.value;
+        if (!ciudad) {
+            fleteCop = 0;
+            document.getElementById('flete-row').classList.add('hidden');
+            actualizarTotales();
+            return;
         }
-    }
-});
 
-function showError(title, message) {
-    document.getElementById('pedido-loading').classList.add('hidden');
-    document.getElementById('pedido-content').classList.add('hidden');
-    const err = document.getElementById('pedido-error');
-    err.classList.remove('hidden');
-    err.classList.add('flex');
-    document.getElementById('error-title').textContent = title;
-    document.getElementById('error-message').textContent = message;
-}
+        document.getElementById('flete-loading').classList.remove('hidden');
+        document.getElementById('flete-row').classList.add('hidden');
 
-function renderPedido(t) {
-    document.getElementById('pedido-loading').classList.add('hidden');
-    const content = document.getElementById('pedido-content');
-    content.classList.remove('hidden');
-    content.classList.add('flex');
+        try {
+            const res = await VO.api(
+                `/api/pedidos/${cotizacionId}/calcular-flete?ciudad=${encodeURIComponent(ciudad)}`
+            );
+            fleteCop = res.total_flete || 0;
 
-    // Datos básicos — uso textContent (anti-XSS) para todo lo que viene del backend
-    document.getElementById('t-id').textContent = t.transaccion_id;
-    document.getElementById('t-planta').textContent = t.nombre_planta || 'Planta';
-    document.getElementById('t-cantidad').textContent =
-        `${t.cantidad} unidad(es) · ${VO.formatCOPFull(t.precio_unitario)} c/u`;
-    document.getElementById('t-vivero').textContent = t.nombre_vivero || 'Vivero no disponible';
-    document.getElementById('t-subtotal').textContent = VO.formatCOPFull(t.precio_total);
-    document.getElementById('t-total').textContent = VO.formatCOPFull(t.precio_total);
+            // Mostrar flete desglosado
+            const tierLabels = { S: 'Tier S · Pequeño', M: 'Tier M · Mediano', L: 'Tier L · Grande', XL: 'Tier XL · Árbol' };
+            document.getElementById('flete-tier-badge').textContent = tierLabels[res.tier] || res.tier;
+            document.getElementById('flete-valor').textContent = fmt(fleteCop);
+            document.getElementById('flete-row').classList.remove('hidden');
+        } catch {
+            fleteCop = 0;
+        } finally {
+            document.getElementById('flete-loading').classList.add('hidden');
+            actualizarTotales();
+        }
+    });
 
-    // Estado con color (badge)
-    const estadoEl = document.getElementById('t-estado');
-    estadoEl.textContent = (t.estado || '—').toUpperCase();
-    const colorClass = ESTADO_COLOR[(t.estado || '').toLowerCase()]
-                     || 'bg-slate-100 text-slate-700';
-    estadoEl.className = 'inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ' + colorClass;
+    // ── Botón pagar ───────────────────────────────────────────
+    document.getElementById('btn-pagar').addEventListener('click', async () => {
+        const ciudad    = document.getElementById('ciudad-entrega').value;
+        const direccion = document.getElementById('direccion-entrega').value.trim();
+        const nombre    = document.getElementById('contacto-nombre').value.trim();
+        const telefono  = document.getElementById('contacto-telefono').value.trim();
+        const errBox    = document.getElementById('checkout-error');
+        const btn       = document.getElementById('btn-pagar');
+        const btnText   = document.getElementById('btn-pagar-text');
 
-    // Fecha formateada en español
-    if (t.fecha_transaccion) {
-        const d = new Date(t.fecha_transaccion);
-        if (!isNaN(d.getTime())) {
-            document.getElementById('t-fecha').textContent = d.toLocaleDateString('es-CO', {
-                year: 'numeric', month: 'long', day: 'numeric'
+        // Validaciones obligatorias
+        const errores = [
+            [!ciudad,    'Seleccioná la ciudad de entrega.',             'ciudad-entrega'],
+            [!direccion, 'La dirección exacta de entrega es obligatoria.','direccion-entrega'],
+            [!nombre,    'El nombre del encargado es obligatorio.',       'contacto-nombre'],
+            [!telefono,  'El celular del encargado es obligatorio.',      'contacto-telefono'],
+        ];
+        for (const [cond, msg, id] of errores) {
+            if (cond) {
+                document.getElementById('checkout-error-msg').textContent = msg;
+                errBox.classList.remove('hidden');
+                document.getElementById(id)?.focus();
+                return;
+            }
+        }
+
+        errBox.classList.add('hidden');
+        btn.disabled = true;
+        btnText.textContent = 'Preparando pago...';
+
+        const fecha     = document.getElementById('fecha-entrega').value;
+        const horaIni   = document.getElementById('ventana-inicio').value;
+        const horaFin   = document.getElementById('ventana-fin').value;
+
+        try {
+            const payload = await VO.api(`/api/pedidos/${cotizacionId}/checkout`, {
+                method: 'POST',
+                body: JSON.stringify({
+                    ciudad_entrega:           ciudad,
+                    fecha_entrega_deseada:    fecha || null,
+                    notas:                    document.getElementById('notas-entrega').value.trim() || null,
+                    direccion_entrega_exacta: direccion,
+                    contacto_nombre:          nombre,
+                    contacto_telefono:        telefono,
+                    ventana_inicio:           fecha && horaIni ? `${fecha}T${horaIni}:00` : null,
+                    ventana_fin:              fecha && horaFin ? `${fecha}T${horaFin}:00` : null,
+                    flete_cop:                fleteCop,
+                }),
             });
-        } else {
-            document.getElementById('t-fecha').textContent = t.fecha_transaccion;
+
+            if (payload.pago_id) localStorage.setItem('vivero_pago_id', String(payload.pago_id));
+
+            const cp = payload.checkout_payload;
+            if (!cp) throw new Error('No se recibió el payload de pago.');
+
+            const handler = ePayco.checkout.configure({
+                key: cp.p_cust_id_cliente || cp.key,
+                test: true,
+            });
+
+            handler.open({
+                name:         cp.name        || 'ViveroOnline',
+                description:  cp.description || 'Pedido ViveroOnline',
+                invoice:      cp.invoice,
+                currency:     cp.currency    || 'cop',
+                amount:       String(cp.amount || (Math.round(totalViverista * (1+MARKUP)) + fleteCop)),
+                tax_base:     String(cp.tax_base || 0),
+                tax:          String(cp.tax || 0),
+                country:      cp.country     || 'co',
+                lang:         cp.lang        || 'es',
+                external:     'false',
+                extra1:       String(cotizacionId),
+                extra2:       String(payload.transaccion_id || ''),
+                response:     cp.response    || `${window.location.origin}/pagos/resultado`,
+                confirmation: cp.confirmation || `${window.location.origin}/api/pagos/confirmacion`,
+            });
+
+            btnText.textContent = 'Pagar con ePayco';
+            btn.disabled = false;
+
+        } catch (e) {
+            document.getElementById('checkout-error-msg').textContent = e.message || 'Error al iniciar el pago.';
+            errBox.classList.remove('hidden');
+            btnText.textContent = 'Pagar con ePayco';
+            btn.disabled = false;
         }
-    } else {
-        document.getElementById('t-fecha').textContent = '—';
-    }
+    });
 
-    // Help link con el ID en el subject (le facilita la vida a soporte)
-    document.getElementById('help-link').href =
-        `mailto:viveroonline.com.co@gmail.com?subject=Ayuda%20con%20pedido%20%23${t.transaccion_id}`;
-}
+})();
 </script>
-
-</body></html>
+</body>
+</html>
