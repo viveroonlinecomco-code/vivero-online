@@ -1,257 +1,219 @@
-"""Endpoints para gestión de suscripciones al plan Inteligencia.
+"""Gestión del Plan Inteligencia — suscripción mensual $120.000 COP.
 
-Flujo de pago:
-1. Comprador hace POST /api/suscripcion/iniciar-pago
-2. Si ya tiene suscripción activa → 400
-3. Si ePayco no configurado → 503 con info para activación manual via WhatsApp
-4. Si ePayco configurado → crea/reusa suscripción pendiente_pago + pago + payload checkout
-5. Webhook de ePayco activa la suscripción por 30 días cuando confirma el pago
+Flujo:
+  POST /api/suscripciones/contratar     → genera checkout ePayco recurrente
+  POST /api/suscripciones/confirmacion  → webhook de ePayco confirma cobro
+  GET  /api/suscripciones/mi-plan       → estado actual del plan
+  POST /api/suscripciones/cancelar      → cancela renovación automática
 """
+from __future__ import annotations
 import logging
-from typing import Optional
-
-from fastapi import APIRouter, Depends, HTTPException
-
-from app.auth.deps import UserContext, require_user
+from datetime import datetime, timedelta
+from fastapi import APIRouter, Depends, HTTPException, Request
+from app.auth.deps import UserContext, require_comprador
 from app.config import get_settings
-from app.services.epayco import CheckoutRequest, get_epayco
-from app.services.supabase import admin
-
-
-router = APIRouter(prefix="/api/suscripcion", tags=["suscripcion"])
+from app.services.supabase import admin as db_admin
 
 logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/suscripciones", tags=["suscripciones"])
 
-MONTO_PLAN_INTELIGENCIA_COP = 79900
-WHATSAPP_ACTIVACION = "+57 310 224 6099"
-WHATSAPP_URL = (
-    "https://wa.me/573102246099?text=Hola%2C+quiero+suscribirme+al+plan+Inteligencia"
-)
-
-
-def _extraer_user_id(user) -> Optional[str]:
-    """Extrae user_id del UserContext (defensivo: id, user_id, sub, uid)."""
-    for attr in ("id", "user_id", "sub", "uid"):
-        val = getattr(user, attr, None)
-        if val:
-            return str(val)
-    return None
+# ── Precio Plan Inteligencia ──────────────────────────────────
+PLAN_NOMBRE        = "Plan Inteligencia"
+MONTO_TOTAL        = 120_000   # COP con IVA incluido
+MONTO_BASE         = 100_840   # sin IVA
+MONTO_IVA          = 19_160    # 19% IVA
+PERIODO_DIAS       = 30
 
 
-@router.get("/estado")
-async def estado_suscripcion(user: UserContext = Depends(require_user)):
-    """Estado de suscripción del usuario actual.
+# ── GET: estado del plan ──────────────────────────────────────
 
-    Siempre responde algo válido (nunca falla), aunque no haya suscripción.
-    """
-    user_id = _extraer_user_id(user)
-    if not user_id:
-        return {"tiene_suscripcion": False, "plan": "free"}
+@router.get("/mi-plan")
+async def mi_plan(user: UserContext = Depends(require_comprador)):
+    db = db_admin()
+    sus = db.table("suscripciones").select(
+        "suscripcion_id, plan, estado, monto_mensual_cop, "
+        "fecha_inicio, fecha_proximo_cobro, fecha_cancelacion"
+    ).eq("user_id", user.user_id).eq("plan", "inteligencia").order(
+        "fecha_inicio", desc=True
+    ).limit(1).execute()
 
-    try:
-        db = admin()
-        resp = (
-            db.table("suscripciones")
-            .select("suscripcion_id, plan, estado, fecha_inicio, fecha_proximo_cobro, fecha_cancelacion")
-            .eq("user_id", user_id)
-            .in_("estado", ["activa", "pendiente_pago"])
-            .order("fecha_inicio", desc=True)
-            .limit(1)
-            .execute()
+    if not sus.data:
+        return {"ok": True, "suscripcion": None, "activa": False}
+
+    s = sus.data[0]
+    activa = (
+        s["estado"] == "activa"
+        and (
+            s.get("fecha_proximo_cobro") is None
+            or datetime.fromisoformat(
+                s["fecha_proximo_cobro"].replace("Z", "+00:00")
+            ) > datetime.now().astimezone()
         )
-        if not resp.data:
-            return {"tiene_suscripcion": False, "plan": "free"}
-
-        s = resp.data[0]
-        activa = s["estado"] == "activa"
-        return {
-            "tiene_suscripcion": activa,
-            "plan": s["plan"] if activa else "free",
-            "suscripcion_id": s["suscripcion_id"],
-            "estado": s["estado"],
-            "fecha_inicio": s.get("fecha_inicio"),
-            "fecha_proximo_cobro": s.get("fecha_proximo_cobro"),
-            "fecha_cancelacion": s.get("fecha_cancelacion"),
-        }
-    except Exception as e:
-        logger.error("Error en estado_suscripcion: %r", e)
-        return {"tiene_suscripcion": False, "plan": "free"}
-
-
-@router.post("/iniciar-pago")
-async def iniciar_pago_suscripcion(user: UserContext = Depends(require_user)):
-    """Inicia el flujo de pago para el plan Inteligencia.
-
-    Devuelve el payload del checkout ePayco que el frontend abre en modal.
-    Si ePayco no esta configurado, devuelve 503 con info para activacion manual.
-    """
-    if user.rol not in ("comprador", "admin"):
-        raise HTTPException(
-            status_code=403,
-            detail="Solo los compradores pueden suscribirse al plan Inteligencia",
-        )
-
-    user_id = _extraer_user_id(user)
-    if not user_id:
-        raise HTTPException(500, detail="No se pudo determinar tu identidad")
-
-    db = admin()
-
-    # 1. Validar que no tenga ya suscripcion activa
-    existing = (
-        db.table("suscripciones")
-        .select("suscripcion_id")
-        .eq("user_id", user_id)
-        .eq("estado", "activa")
-        .limit(1)
-        .execute()
     )
-    if existing.data:
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "code": "already_subscribed",
-                "mensaje": "Ya tenes una suscripcion activa al plan Inteligencia.",
-            },
-        )
+    return {"ok": True, "suscripcion": s, "activa": activa}
 
-    # 2. ePayco configurado?
+
+# ── POST: generar checkout ePayco ─────────────────────────────
+
+@router.post("/contratar")
+async def contratar_plan(user: UserContext = Depends(require_comprador)):
+    """Genera el payload ePayco para el checkout del Plan Inteligencia."""
+    db = db_admin()
     s = get_settings()
+    from app.services.epayco import get_epayco
+
     epayco = get_epayco()
     if not epayco.is_configured:
-        raise HTTPException(
-            status_code=503,
-            detail={
-                "code": "epayco_not_configured",
-                "mensaje": (
-                    "El sistema de pagos esta en activacion. "
-                    "Contactanos por WhatsApp para activar tu plan manualmente."
-                ),
-                "whatsapp_url": WHATSAPP_URL,
-                "whatsapp_numero": WHATSAPP_ACTIVACION,
-            },
-        )
+        raise HTTPException(503, "Servicio de pagos no configurado")
 
-    # 3. Crear o reusar suscripcion pendiente_pago
-    pendiente = (
-        db.table("suscripciones")
-        .select("suscripcion_id")
-        .eq("user_id", user_id)
-        .eq("estado", "pendiente_pago")
-        .limit(1)
-        .execute()
-    )
-    if pendiente.data:
-        suscripcion_id = pendiente.data[0]["suscripcion_id"]
-    else:
-        new_sus = (
-            db.table("suscripciones")
-            .insert({
-                "user_id": user_id,
-                "plan": "inteligencia",
-                "estado": "pendiente_pago",
-                "monto_mensual_cop": MONTO_PLAN_INTELIGENCIA_COP,
-                "metadata": {"source": "self_checkout"},
-            })
-            .execute()
-        )
-        if not new_sus.data:
-            raise HTTPException(500, detail="No se pudo crear la suscripcion")
-        suscripcion_id = new_sus.data[0]["suscripcion_id"]
+    # Verificar si ya tiene suscripción activa
+    sus = db.table("suscripciones").select("suscripcion_id, estado").eq(
+        "user_id", user.user_id
+    ).eq("plan", "inteligencia").eq("estado", "activa").limit(1).execute()
+    if sus.data:
+        raise HTTPException(400, "Ya tenés una suscripción activa al Plan Inteligencia")
 
-    # 4. Datos del comprador para precompletar checkout
-    nombre = "Comprador"
-    telefono = None
-    cliente_id = getattr(user, "cliente_id", None)
-    if cliente_id:
-        cliente_resp = (
-            db.table("clientes")
-            .select("nombre_empresa, nombre_representante, whatsapp_numero")
-            .eq("cliente_id", cliente_id)
-            .limit(1)
-            .execute()
-        )
-        if cliente_resp.data:
-            c = cliente_resp.data[0]
-            nombre = c.get("nombre_representante") or c.get("nombre_empresa") or "Comprador"
-            telefono = c.get("whatsapp_numero")
+    # Datos del cliente
+    cliente = db.table("clientes").select(
+        "nombre_representante, nombre_empresa, whatsapp_numero"
+    ).eq("cliente_id", user.cliente_id).limit(1).execute()
+    cli = cliente.data[0] if cliente.data else {}
+    nombre = cli.get("nombre_representante") or cli.get("nombre_empresa") or "Cliente"
 
-    # 5. Construir payload ePayco
-    # IMPORTANTE: pasamos suscripcion_id como transaccion_id "virtual". La tabla pagos.tipo
-    # distingue despues si fue suscripcion o transaccion B2B real.
-    response_url = f"{s.app_base_url}/pagos/resultado"
-    confirmation_url = f"{s.app_base_url}/api/pagos/confirmacion"
+    # Crear suscripción en estado pendiente
+    fecha_proximo = (datetime.utcnow() + timedelta(days=PERIODO_DIAS)).isoformat()
+    sus_resp = db.table("suscripciones").insert({
+        "user_id": user.user_id,
+        "plan": "inteligencia",
+        "estado": "pendiente",
+        "monto_mensual_cop": MONTO_TOTAL,
+        "fecha_proximo_cobro": fecha_proximo,
+    }).execute()
+    suscripcion_id = sus_resp.data[0]["suscripcion_id"] if sus_resp.data else None
 
-    checkout_req = CheckoutRequest(
-        transaccion_id=suscripcion_id,
-        monto_cop=MONTO_PLAN_INTELIGENCIA_COP,
-        descripcion="ViveroOnline · Plan Inteligencia (30 dias)",
-        nombre_cliente=nombre,
-        telefono_cliente=telefono,
-    )
-    payload = epayco.build_checkout_payload(checkout_req, response_url, confirmation_url)
-    referencia = payload["invoice"]
+    # Referencia única para el pago
+    referencia = f"SUS-{suscripcion_id or 'NEW'}-{int(datetime.utcnow().timestamp())}"
 
-    # 6. Registrar pago en BD con tipo='suscripcion'
-    pago_resp = (
-        db.table("pagos")
-        .insert({
-            "tipo": "suscripcion",
-            "suscripcion_id": suscripcion_id,
-            "transaccion_id": None,
-            "monto_total": MONTO_PLAN_INTELIGENCIA_COP,
-            "moneda": "COP",
-            "estado_pago": "pendiente",
-            "metodo": "epayco",
-            "referencia_externa": referencia,
-            "monto_viverista": 0,
-            "monto_plataforma": MONTO_PLAN_INTELIGENCIA_COP,
-        })
-        .execute()
-    )
-    if not pago_resp.data:
-        raise HTTPException(500, detail="No se pudo registrar el pago")
+    # Payload ePayco (suscripción recurrente mensual)
+    checkout_payload = {
+        "name": PLAN_NOMBRE,
+        "description": "Acceso mensual a ubicaciones exactas de viveros en la Sabana de Bogotá",
+        "invoice": referencia,
+        "currency": "cop",
+        "amount": str(MONTO_TOTAL),
+        "tax_base": str(MONTO_BASE),
+        "tax": str(MONTO_IVA),
+        "country": "co",
+        "lang": "es",
+        "external": "false",
+        "extra1": str(suscripcion_id or ""),
+        "extra2": str(user.user_id),
+        "response": f"{s.app_base_url}/pagos/resultado",
+        "confirmation": f"{s.app_base_url}/api/suscripciones/confirmacion",
+        # Parámetros de suscripción recurrente ePayco
+        "typeSell": "3",          # tipo suscripción
+        "periodicityType": "m",   # mensual
+        "frequency": "1",         # cada 1 mes
+        "p_cust_id_cliente": epayco.public_key or "",
+    }
 
     return {
         "ok": True,
-        "pago_id": pago_resp.data[0]["pago_id"],
         "suscripcion_id": suscripcion_id,
         "referencia": referencia,
-        "checkout_payload": payload,
-        "monto_cop": MONTO_PLAN_INTELIGENCIA_COP,
+        "monto_total": MONTO_TOTAL,
+        "monto_base": MONTO_BASE,
+        "monto_iva": MONTO_IVA,
+        "checkout_payload": checkout_payload,
     }
 
+
+# ── POST: webhook confirmación ePayco ─────────────────────────
+
+@router.post("/confirmacion")
+async def confirmacion_pago(request: Request):
+    """ePayco llama a este endpoint cuando procesa un cobro (inicial o renovación)."""
+    try:
+        data = await request.json()
+    except Exception:
+        data = dict(await request.form())
+
+    estado = str(data.get("x_response", data.get("x_respuesta", ""))).lower()
+    referencia = str(data.get("x_id_factura", data.get("x_ref_payco", "")))
+    extra1 = str(data.get("x_extra1", ""))  # suscripcion_id
+    extra2 = str(data.get("x_extra2", ""))  # user_id
+    monto = data.get("x_amount", MONTO_TOTAL)
+
+    logger.info(f"Confirmación suscripción: estado={estado} ref={referencia} sus_id={extra1}")
+
+    if estado not in ("aceptada", "aprobada", "accepted", "approved"):
+        logger.warning(f"Pago suscripción rechazado: {estado}")
+        return {"ok": False, "estado": estado}
+
+    db = db_admin()
+
+    # Activar suscripción
+    if extra1 and extra1.isdigit():
+        fecha_proximo = (datetime.utcnow() + timedelta(days=PERIODO_DIAS)).isoformat()
+        db.table("suscripciones").update({
+            "estado": "activa",
+            "fecha_inicio": datetime.utcnow().isoformat(),
+            "fecha_proximo_cobro": fecha_proximo,
+            "epayco_subscription_id": referencia,
+            "metadata": {"ultimo_cobro": str(monto), "referencia": referencia},
+        }).eq("suscripcion_id", int(extra1)).execute()
+
+    # Registrar pago
+    if extra2:
+        db.table("pagos").insert({
+            "monto_total": int(float(monto or MONTO_TOTAL)),
+            "moneda": "COP",
+            "estado_pago": "aprobado",
+            "metodo": "epayco",
+            "referencia_externa": referencia,
+            "monto_plataforma": int(float(monto or MONTO_TOTAL)),
+            "monto_viverista": 0,
+            "metadata": {"tipo": "suscripcion", "user_id": extra2, "sus_id": extra1},
+        }).execute()
+
+    # Notificar por WhatsApp
+    try:
+        if extra2:
+            perfil = db.table("perfiles").select(
+                "whatsapp_numero, nombre_display"
+            ).eq("id", extra2).limit(1).execute()
+            if perfil.data and perfil.data[0].get("whatsapp_numero"):
+                from app.services.whatsapp_meta import send_text_message
+                from app.config import get_settings
+                base = get_settings().app_base_url
+                await send_text_message(
+                    perfil.data[0]["whatsapp_numero"],
+                    f"✅ *Plan Inteligencia activado — ViveroOnline*\n\n"
+                    f"Ya podés ver la ubicación exacta de todos los viveros.\n"
+                    f"Tu próximo cobro es en 30 días: $120.000 COP\n\n"
+                    f"👉 {base}/marketplace"
+                )
+    except Exception:
+        pass
+
+    return {"ok": True, "estado": "activa"}
+
+
+# ── POST: cancelar suscripción ────────────────────────────────
 
 @router.post("/cancelar")
-async def cancelar_suscripcion(user: UserContext = Depends(require_user)):
-    """Cancela la suscripcion activa del usuario.
+async def cancelar_plan(user: UserContext = Depends(require_comprador)):
+    db = db_admin()
+    sus = db.table("suscripciones").select("suscripcion_id").eq(
+        "user_id", user.user_id
+    ).eq("plan", "inteligencia").eq("estado", "activa").limit(1).execute()
 
-    Marca como 'cancelada' pero mantiene acceso hasta fecha_proximo_cobro.
-    """
-    user_id = _extraer_user_id(user)
-    if not user_id:
-        raise HTTPException(500, detail="No se pudo determinar tu identidad")
+    if not sus.data:
+        raise HTTPException(404, "No tenés una suscripción activa")
 
-    db = admin()
-    resp = (
-        db.table("suscripciones")
-        .select("suscripcion_id, fecha_proximo_cobro")
-        .eq("user_id", user_id)
-        .eq("estado", "activa")
-        .limit(1)
-        .execute()
-    )
-    if not resp.data:
-        raise HTTPException(404, detail="No tenes suscripcion activa para cancelar")
-
-    sus = resp.data[0]
     db.table("suscripciones").update({
         "estado": "cancelada",
-        "fecha_cancelacion": "now()",
-    }).eq("suscripcion_id", sus["suscripcion_id"]).execute()
+        "fecha_cancelacion": datetime.utcnow().isoformat(),
+    }).eq("suscripcion_id", sus.data[0]["suscripcion_id"]).execute()
 
-    return {
-        "ok": True,
-        "mensaje": "Tu suscripcion fue cancelada. Mantenes acceso hasta tu proxima fecha de cobro.",
-        "acceso_hasta": sus.get("fecha_proximo_cobro"),
-    }
+    return {"ok": True, "mensaje": "Suscripción cancelada. Mantenés acceso hasta el próximo vencimiento."}
