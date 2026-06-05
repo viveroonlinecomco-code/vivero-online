@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Plan Inteligencia · ViveroOnline</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<script src="https://checkout.epayco.co/checkout.js"></script>
+<script>
+tailwind.config = {
+    darkMode:"class",
+    theme:{extend:{
+        colors:{"primary":"#325926","background-light":"#f7f7f6","background-dark":"#171d15"},
+        fontFamily:{"display":["Inter","sans-serif"]},
+        borderRadius:{"DEFAULT":"1rem","lg":"2rem","xl":"3rem","full":"9999px"},
+    }},
+}
+</script>
+<style>body{min-height:max(884px,100dvh);font-family:'Inter',sans-serif;}</style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 pb-16">
+
+<header class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-primary/10">
+    <div class="max-w-lg mx-auto px-4 h-16 flex items-center gap-3">
+        <a href="/comprador" class="flex items-center justify-center w-9 h-9 rounded-full hover:bg-primary/10 text-primary transition-colors">
+            <span class="material-symbols-outlined text-xl">arrow_back</span>
+        </a>
+        <div class="flex-1">
+            <h1 class="text-base font-bold">Plan Inteligencia</h1>
+            <p class="text-xs text-slate-500">Marketplace ViveroOnline</p>
+        </div>
+        <span class="material-symbols-outlined text-primary text-2xl">psychology</span>
+    </div>
+</header>
+
+<main class="max-w-lg mx-auto px-4 py-8 space-y-6">
+
+    <!-- ESTADO: cargando -->
+    <div id="state-loading" class="text-center py-16">
+        <span class="material-symbols-outlined text-primary text-4xl animate-spin">progress_activity</span>
+    </div>
+
+    <!-- ESTADO: ya suscrito -->
+    <div id="state-activo" class="hidden space-y-5">
+        <div class="text-center py-8">
+            <div class="w-24 h-24 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-4 mx-auto">
+                <span class="material-symbols-outlined text-emerald-600" style="font-size:3rem">verified</span>
+            </div>
+            <h2 class="text-2xl font-black mb-2">Plan Inteligencia activo</h2>
+            <p class="text-slate-500">Tenés acceso completo a las ubicaciones de todos los viveros.</p>
+        </div>
+
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-primary/10 p-5 space-y-3">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Detalle del plan</p>
+            <div class="flex justify-between text-sm">
+                <span class="text-slate-500">Plan</span>
+                <span class="font-semibold">Plan Inteligencia</span>
+            </div>
+            <div class="flex justify-between text-sm">
+                <span class="text-slate-500">Monto mensual</span>
+                <span class="font-bold text-primary">$120.000 COP</span>
+            </div>
+            <div class="flex justify-between text-sm">
+                <span class="text-slate-500">Próximo cobro</span>
+                <span class="font-semibold" id="proximo-cobro">—</span>
+            </div>
+        </div>
+
+        <!-- Beneficios activos -->
+        <div class="bg-primary/5 rounded-xl p-5">
+            <p class="text-xs font-bold text-primary uppercase tracking-wider mb-3 flex items-center gap-1">
+                <span class="material-symbols-outlined text-sm">star</span>
+                Tus beneficios activos
+            </p>
+            <ul class="space-y-2 text-sm text-slate-700 dark:text-slate-300">
+                <li class="flex items-start gap-2"><span class="material-symbols-outlined text-emerald-500 text-base mt-0.5">place</span>Dirección exacta de cada vivero</li>
+                <li class="flex items-start gap-2"><span class="material-symbols-outlined text-emerald-500 text-base mt-0.5">map</span>Ubicación en Google Maps</li>
+                <li class="flex items-start gap-2"><span class="material-symbols-outlined text-emerald-500 text-base mt-0.5">storefront</span>Acceso completo a los 108+ productos</li>
+                <li class="flex items-start gap-2"><span class="material-symbols-outlined text-emerald-500 text-base mt-0.5">support_agent</span>Soporte prioritario</li>
+            </ul>
+        </div>
+
+        <button id="btn-cancelar"
+            class="w-full text-sm text-slate-500 hover:text-red-600 py-3 text-center transition">
+            Cancelar suscripción
+        </button>
+    </div>
+
+    <!-- ESTADO: sin plan -->
+    <div id="state-sin-plan" class="hidden space-y-6">
+
+        <!-- Hero del plan -->
+        <div class="bg-primary rounded-2xl p-8 text-white text-center relative overflow-hidden">
+            <div class="absolute inset-0 opacity-10 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white via-transparent to-transparent pointer-events-none"></div>
+            <span class="material-symbols-outlined text-5xl mb-3 relative z-10">psychology</span>
+            <h2 class="text-3xl font-black mb-2 relative z-10">Plan Inteligencia</h2>
+            <p class="opacity-90 mb-4 relative z-10">Accedé a la ubicación exacta de cada vivero y optimizá tus compras.</p>
+            <div class="bg-white/20 rounded-xl px-6 py-4 inline-block relative z-10">
+                <p class="text-4xl font-black">$120.000</p>
+                <p class="text-sm opacity-90">COP / mes · IVA incluido</p>
+            </div>
+        </div>
+
+        <!-- Qué incluye -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-primary/10 p-5 space-y-4">
+            <p class="font-bold">¿Qué incluye?</p>
+            <ul class="space-y-3">
+                <li class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span class="material-symbols-outlined text-primary text-base">place</span>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-sm">Ubicación exacta de viveros</p>
+                        <p class="text-xs text-slate-500">Dirección completa + mapa de todos los viveros de la Sabana de Bogotá</p>
+                    </div>
+                </li>
+                <li class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span class="material-symbols-outlined text-primary text-base">local_shipping</span>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-sm">Optimizá tus rutas de compra</p>
+                        <p class="text-xs text-slate-500">Conocé qué vivero queda más cerca de tu obra o proyecto</p>
+                    </div>
+                </li>
+                <li class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span class="material-symbols-outlined text-primary text-base">autorenew</span>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-sm">Renovación automática</p>
+                        <p class="text-xs text-slate-500">Se cobra $120.000 mensual. Cancelá cuando quieras.</p>
+                    </div>
+                </li>
+                <li class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <span class="material-symbols-outlined text-primary text-base">storefront</span>
+                    </div>
+                    <div>
+                        <p class="font-semibold text-sm">Acceso completo al marketplace</p>
+                        <p class="text-xs text-slate-500">108+ productos disponibles, cotizá y comprá sin límites</p>
+                    </div>
+                </li>
+            </ul>
+        </div>
+
+        <!-- Desglose de precio -->
+        <div class="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-4 text-sm">
+            <p class="font-bold mb-2 text-slate-700 dark:text-slate-300">Desglose del precio</p>
+            <div class="flex justify-between text-slate-500 mb-1">
+                <span>Precio base</span><span>$100.840 COP</span>
+            </div>
+            <div class="flex justify-between text-slate-500 mb-2">
+                <span>IVA (19%)</span><span>$19.160 COP</span>
+            </div>
+            <div class="flex justify-between font-bold text-slate-900 dark:text-slate-100 pt-2 border-t border-slate-200 dark:border-slate-700">
+                <span>Total mensual</span><span class="text-primary">$120.000 COP</span>
+            </div>
+        </div>
+
+        <!-- Error -->
+        <div id="error-box" class="hidden bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl px-4 py-3">
+            <p class="text-sm text-red-700 dark:text-red-300 font-semibold" id="error-msg"></p>
+        </div>
+
+        <!-- CTA -->
+        <button id="btn-contratar"
+            class="w-full bg-primary hover:bg-primary/90 text-white font-black text-lg py-5 rounded-full flex items-center justify-center gap-3 shadow-lg shadow-primary/25 transition active:scale-95 disabled:opacity-60">
+            <span class="material-symbols-outlined text-2xl">credit_card</span>
+            <span id="btn-text">Contratar Plan Inteligencia</span>
+        </button>
+        <p class="text-center text-xs text-slate-400">🔒 Pago seguro con ePayco · Cancelá en cualquier momento</p>
+    </div>
+
+</main>
+
+<script src="/static/js/vivero.js"></script>
+<script>
+(async function() {
+    if (!VO.requireAuth()) return;
+    let me;
+    try { me = await VO.me(); } catch { return; }
+    if (me.rol !== 'comprador' && me.rol !== 'admin') {
+        window.location.href = '/comprador'; return;
+    }
+
+    function setState(id) {
+        ['state-loading','state-activo','state-sin-plan'].forEach(s =>
+            document.getElementById(s).classList.add('hidden'));
+        document.getElementById(id).classList.remove('hidden');
+    }
+
+    // Cargar estado del plan
+    try {
+        const data = await VO.api('/api/suscripciones/mi-plan');
+        if (data.activa && data.suscripcion) {
+            const s = data.suscripcion;
+            if (s.fecha_proximo_cobro) {
+                const d = new Date(s.fecha_proximo_cobro);
+                document.getElementById('proximo-cobro').textContent =
+                    d.toLocaleDateString('es-CO', { day:'2-digit', month:'long', year:'numeric' });
+            }
+            setState('state-activo');
+        } else {
+            setState('state-sin-plan');
+        }
+    } catch (e) {
+        setState('state-sin-plan');
+    }
+
+    // Botón contratar
+    document.getElementById('btn-contratar')?.addEventListener('click', async () => {
+        const btn = document.getElementById('btn-contratar');
+        const btnText = document.getElementById('btn-text');
+        const errBox = document.getElementById('error-box');
+        errBox.classList.add('hidden');
+        btn.disabled = true;
+        btnText.textContent = 'Preparando pago...';
+
+        try {
+            const data = await VO.api('/api/suscripciones/contratar', { method: 'POST' });
+            const cp = data.checkout_payload;
+            if (!cp) throw new Error('No se recibió el payload de pago');
+
+            const handler = ePayco.checkout.configure({
+                key: cp.p_cust_id_cliente,
+                test: true, // sandbox
+            });
+
+            handler.open({
+                name: cp.name,
+                description: cp.description,
+                invoice: cp.invoice,
+                currency: cp.currency,
+                amount: cp.amount,
+                tax_base: cp.tax_base,
+                tax: cp.tax,
+                country: cp.country,
+                lang: cp.lang,
+                external: 'false',
+                extra1: cp.extra1,
+                extra2: cp.extra2,
+                response: cp.response,
+                confirmation: cp.confirmation,
+                typeSell: cp.typeSell || '3',
+                periodicityType: cp.periodicityType || 'm',
+                frequency: cp.frequency || '1',
+            });
+
+            btnText.textContent = 'Contratar Plan Inteligencia';
+            btn.disabled = false;
+
+        } catch (e) {
+            document.getElementById('error-msg').textContent = e.message || 'Error al iniciar el pago. Intentá de nuevo.';
+            errBox.classList.remove('hidden');
+            btnText.textContent = 'Contratar Plan Inteligencia';
+            btn.disabled = false;
+        }
+    });
+
+    // Botón cancelar
+    document.getElementById('btn-cancelar')?.addEventListener('click', async () => {
+        if (!confirm('¿Cancelar el Plan Inteligencia?\n\nSeguís teniendo acceso hasta la fecha de vencimiento.')) return;
+        try {
+            await VO.api('/api/suscripciones/cancelar', { method: 'POST' });
+            if (VO.showToast) VO.showToast('Suscripción cancelada.', 'success');
+            setTimeout(() => window.location.reload(), 1500);
+        } catch (e) {
+            alert(e.message || 'No se pudo cancelar');
+        }
+    });
+
+})();
+</script>
+</body>
+</html>
