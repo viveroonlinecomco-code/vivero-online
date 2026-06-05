@@ -17,231 +17,226 @@ tailwind.config = {
     }},
 }
 </script>
-<style>
-body { min-height: 100dvh; font-family: 'Inter', sans-serif; }
-@keyframes check-in { 0% { transform: scale(0) rotate(-15deg); opacity:0; } 80% { transform: scale(1.1); } 100% { transform: scale(1) rotate(0); opacity:1; } }
-@keyframes fade-up { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
-.anim-check { animation: check-in .5s cubic-bezier(.34,1.56,.64,1) both; }
-.anim-up { animation: fade-up .4s ease both; }
-.anim-up-d1 { animation: fade-up .4s .1s ease both; }
-.anim-up-d2 { animation: fade-up .4s .2s ease both; }
-.anim-up-d3 { animation: fade-up .4s .35s ease both; }
-</style>
+<style>body { min-height: max(884px, 100dvh); font-family: 'Inter', sans-serif; }</style>
 </head>
 <body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100">
 
-<div class="flex flex-col min-h-dvh max-w-md mx-auto px-6 items-center justify-center py-12">
+<header class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-primary/10">
+    <div class="max-w-lg mx-auto px-4 h-16 flex items-center gap-2">
+        <span class="material-symbols-outlined text-primary text-3xl">energy_savings_leaf</span>
+        <h2 class="text-lg font-bold">ViveroOnline</h2>
+    </div>
+</header>
 
-    <!-- CARGANDO -->
-    <div id="estado-loading" class="text-center">
-        <div class="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center mb-6 mx-auto">
+<main class="max-w-lg mx-auto px-4 py-12 flex flex-col items-center gap-6 text-center">
+
+    <!-- Estado: procesando -->
+    <div id="state-processing" class="flex flex-col items-center gap-4">
+        <div class="w-24 h-24 rounded-full bg-primary/10 flex items-center justify-center">
             <span class="material-symbols-outlined text-primary text-5xl animate-spin">progress_activity</span>
         </div>
-        <h1 class="text-2xl font-bold mb-2">Verificando tu pago...</h1>
-        <p class="text-slate-500 text-sm">Esto puede tomar unos segundos.</p>
-        <div class="flex justify-center gap-1 mt-6">
-            <div class="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style="animation-delay:0s"></div>
-            <div class="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style="animation-delay:.15s"></div>
-            <div class="w-2 h-2 rounded-full bg-primary/40 animate-bounce" style="animation-delay:.3s"></div>
-        </div>
+        <h1 class="text-2xl font-black">Verificando tu pago...</h1>
+        <p class="text-slate-500">Estamos confirmando la transacción con ePayco. Esto puede tomar unos segundos.</p>
     </div>
 
-    <!-- APROBADO -->
-    <div id="estado-aprobado" class="hidden text-center w-full">
-        <div class="w-28 h-28 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-6 mx-auto anim-check">
-            <span class="material-symbols-outlined text-emerald-600 dark:text-emerald-400" style="font-size:3.5rem;">check_circle</span>
+    <!-- Estado: aprobado -->
+    <div id="state-aprobado" class="hidden flex flex-col items-center gap-4 w-full">
+        <div class="w-24 h-24 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center">
+            <span class="material-symbols-outlined text-emerald-600 text-5xl">check_circle</span>
         </div>
-        <h1 class="text-3xl font-black mb-2 anim-up">¡Pago aprobado! 🎉</h1>
-        <p class="text-slate-600 dark:text-slate-400 mb-8 anim-up-d1">Tu transacción se confirmó correctamente.</p>
+        <h1 class="text-2xl font-black text-emerald-700 dark:text-emerald-400">¡Pago confirmado!</h1>
+        <p class="text-slate-500">Tu pedido está confirmado. El vivero recibirá una notificación y coordinará la entrega.</p>
 
-        <!-- Detalle del pago -->
-        <div class="bg-white dark:bg-slate-800 rounded-xl border border-emerald-200 dark:border-emerald-800 p-5 text-left mb-6 w-full anim-up-d1">
-            <p class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Detalle del pago</p>
-            <div class="space-y-2">
-                <div class="flex justify-between text-sm">
-                    <span class="text-slate-500">Monto</span>
-                    <span class="font-bold" id="monto-aprobado"></span>
-                </div>
-                <div class="flex justify-between text-sm">
-                    <span class="text-slate-500">Referencia</span>
-                    <span class="font-mono text-xs font-medium" id="ref-aprobado"></span>
-                </div>
-                <div class="flex justify-between text-sm">
-                    <span class="text-slate-500">Método</span>
-                    <span class="font-medium" id="metodo-aprobado">ePayco</span>
-                </div>
-                <div class="flex justify-between text-sm">
-                    <span class="text-slate-500">Fecha</span>
-                    <span class="font-medium" id="fecha-aprobado"></span>
-                </div>
+        <div class="w-full bg-white dark:bg-slate-800 rounded-xl border border-primary/10 p-5 space-y-3 text-left">
+            <p class="text-xs font-bold text-slate-500 uppercase tracking-wider">Detalle del pago</p>
+            <div class="flex justify-between text-sm">
+                <span class="text-slate-500">Referencia</span>
+                <span id="ref-aprobado" class="font-mono font-semibold text-xs">—</span>
+            </div>
+            <div class="flex justify-between text-sm">
+                <span class="text-slate-500">Monto</span>
+                <span id="monto-aprobado" class="font-bold text-primary">—</span>
+            </div>
+            <div class="flex justify-between text-sm">
+                <span class="text-slate-500">Estado</span>
+                <span class="font-bold text-emerald-600">Aprobado ✓</span>
             </div>
         </div>
 
-        <!-- Próximos pasos -->
-        <div class="bg-primary/5 dark:bg-primary/10 rounded-xl p-4 text-left mb-6 w-full anim-up-d2">
-            <p class="text-xs font-bold text-primary uppercase tracking-wider mb-3 flex items-center gap-1">
-                <span class="material-symbols-outlined text-sm">checklist</span>
-                ¿Qué pasa ahora?
+        <div class="bg-primary/5 border border-primary/10 rounded-xl px-4 py-3 w-full text-left">
+            <p class="text-xs text-primary font-semibold flex items-start gap-2">
+                <span class="material-symbols-outlined text-sm mt-0.5">local_shipping</span>
+                El vivero fue notificado y coordinará la entrega según los datos que ingresaste. Recibirás un mensaje de WhatsApp cuando lo despachen.
             </p>
-            <div class="space-y-2">
-                <div class="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
-                    <span class="material-symbols-outlined text-emerald-500 text-base mt-0.5">notifications</span>
-                    <span>El vivero recibirá una notificación por WhatsApp con tu pedido.</span>
-                </div>
-                <div class="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
-                    <span class="material-symbols-outlined text-emerald-500 text-base mt-0.5">local_shipping</span>
-                    <span>El viverista coordinará la entrega directamente con vos.</span>
-                </div>
-                <div class="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-300">
-                    <span class="material-symbols-outlined text-emerald-500 text-base mt-0.5">check_circle</span>
-                    <span>Podés ver el estado del pedido en tu dashboard.</span>
-                </div>
+        </div>
+
+        <a href="/comprador"
+            class="w-full bg-primary text-white font-bold py-4 rounded-full flex items-center justify-center gap-2 hover:bg-primary/90 transition">
+            <span class="material-symbols-outlined">home</span>
+            Ir a mis pedidos
+        </a>
+    </div>
+
+    <!-- Estado: pendiente -->
+    <div id="state-pendiente" class="hidden flex flex-col items-center gap-4 w-full">
+        <div class="w-24 h-24 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+            <span class="material-symbols-outlined text-amber-600 text-5xl">schedule</span>
+        </div>
+        <h1 class="text-2xl font-black text-amber-700 dark:text-amber-400">Pago en proceso</h1>
+        <p class="text-slate-500">Tu pago está siendo procesado. Te notificaremos cuando se confirme.</p>
+
+        <div class="w-full bg-white dark:bg-slate-800 rounded-xl border border-primary/10 p-5 space-y-3 text-left">
+            <div class="flex justify-between text-sm">
+                <span class="text-slate-500">Referencia</span>
+                <span id="ref-pendiente" class="font-mono font-semibold text-xs">—</span>
+            </div>
+            <div class="flex justify-between text-sm">
+                <span class="text-slate-500">Estado</span>
+                <span class="font-bold text-amber-600">Pendiente ⏳</span>
             </div>
         </div>
 
-        <a href="/comprador" class="block w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-full text-center transition active:scale-95 shadow-lg shadow-primary/20 anim-up-d3">
-            Ir a mis proyectos
-        </a>
-        <a href="/marketplace" class="block w-full text-primary font-semibold py-3 text-center text-sm mt-2 hover:underline anim-up-d3">
-            Seguir comprando
-        </a>
-    </div>
-
-    <!-- PENDIENTE (PSE / transferencia) -->
-    <div id="estado-pendiente" class="hidden text-center w-full">
-        <div class="w-28 h-28 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center mb-6 mx-auto">
-            <span class="material-symbols-outlined text-amber-600 dark:text-amber-400" style="font-size:3.5rem;">schedule</span>
-        </div>
-        <h1 class="text-2xl font-black mb-2">Pago en proceso</h1>
-        <p class="text-slate-600 dark:text-slate-400 mb-2">Tu pago está siendo verificado.</p>
-        <p class="text-slate-500 text-sm mb-8">Si pagaste por PSE o transferencia, puede tomar unos minutos. Te notificamos por WhatsApp cuando se confirme.</p>
-        <a href="/comprador" class="block w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-full text-center transition mb-3 shadow-lg shadow-primary/20">
-            Ir a mis proyectos
-        </a>
-        <a href="/marketplace" class="block w-full text-primary font-semibold py-3 text-center text-sm hover:underline">
-            Seguir comprando
+        <a href="/comprador"
+            class="w-full bg-primary text-white font-bold py-4 rounded-full flex items-center justify-center gap-2 hover:bg-primary/90 transition">
+            <span class="material-symbols-outlined">home</span>
+            Ir a mis pedidos
         </a>
     </div>
 
-    <!-- RECHAZADO -->
-    <div id="estado-rechazado" class="hidden text-center w-full">
-        <div class="w-28 h-28 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mb-6 mx-auto">
-            <span class="material-symbols-outlined text-red-500 dark:text-red-400" style="font-size:3.5rem;">cancel</span>
+    <!-- Estado: rechazado -->
+    <div id="state-rechazado" class="hidden flex flex-col items-center gap-4 w-full">
+        <div class="w-24 h-24 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+            <span class="material-symbols-outlined text-red-500 text-5xl">cancel</span>
         </div>
-        <h1 class="text-2xl font-black mb-2">Pago rechazado</h1>
-        <p class="text-slate-600 dark:text-slate-400 mb-2" id="motivo-rechazo">No pudimos procesar tu pago.</p>
-        <p class="text-slate-500 text-sm mb-8">Podés intentar con otro método de pago. Tu pedido sigue aprobado.</p>
+        <h1 class="text-2xl font-black text-red-600 dark:text-red-400">Pago rechazado</h1>
+        <p class="text-slate-500">Tu pago no pudo procesarse. El pedido sigue pendiente y podés intentar de nuevo.</p>
 
-        <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-xl px-4 py-3 mb-6 text-left">
-            <p class="text-xs font-bold text-amber-800 dark:text-amber-200">💳 Tarjeta de prueba sandbox</p>
-            <p class="text-xs text-amber-700 dark:text-amber-300 mt-1">Visa: <span class="font-mono font-bold">4575623182290326</span> · CVV: 123 · Vence: 12/27</p>
+        <div class="w-full bg-white dark:bg-slate-800 rounded-xl border border-red-200 p-5 space-y-3 text-left">
+            <div class="flex justify-between text-sm">
+                <span class="text-slate-500">Referencia</span>
+                <span id="ref-rechazado" class="font-mono font-semibold text-xs">—</span>
+            </div>
+            <div class="flex justify-between text-sm">
+                <span class="text-slate-500">Estado</span>
+                <span class="font-bold text-red-600">Rechazado ✗</span>
+            </div>
         </div>
 
-        <button id="btn-reintentar" onclick="history.back()"
-            class="block w-full bg-primary hover:bg-primary/90 text-white font-bold py-4 rounded-full text-center transition mb-3 shadow-lg shadow-primary/20">
+        <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-xl px-4 py-3 w-full text-left">
+            <p class="text-xs text-amber-700 dark:text-amber-300 font-semibold">
+                💳 Tarjeta de prueba: <span class="font-mono">4575623182290326</span> · CVV: 123 · Vence: 12/27
+            </p>
+        </div>
+
+        <button id="btn-reintentar"
+            class="w-full bg-primary text-white font-bold py-4 rounded-full flex items-center justify-center gap-2 hover:bg-primary/90 transition">
+            <span class="material-symbols-outlined">refresh</span>
             Intentar de nuevo
         </button>
-        <a href="/comprador" class="block w-full text-slate-500 font-semibold py-3 text-center text-sm hover:underline">
-            Volver a mis proyectos
+        <a href="/comprador" class="text-sm text-slate-500 hover:text-primary transition">
+            Volver a mis pedidos
         </a>
     </div>
 
-</div>
+</main>
 
 <script src="/static/js/vivero.js"></script>
 <script>
-(async function() {
-    const params = new URLSearchParams(window.location.search);
+(async function () {
+    // Leer parámetros que envía ePayco en la URL
+    const params  = new URLSearchParams(window.location.search);
+    const ref     = params.get('ref_payco') || params.get('x_ref_payco') || '';
+    const respuesta = (params.get('x_response') || params.get('response') || '').toLowerCase();
+    const monto   = params.get('x_amount') || params.get('amount') || '';
+    const pagoId  = localStorage.getItem('vivero_pago_id') || '';
 
-    // Params que envía ePayco en el response_url
-    const xResponse    = params.get('x_response') || params.get('x_respuesta') || '';
-    const xAmount      = params.get('x_amount') || params.get('x_monto') || '0';
-    const xFactura     = params.get('x_id_factura') || params.get('x_id_invoice') || '';
-    const xRefPayco    = params.get('x_ref_payco') || '';
-    const xReason      = params.get('x_response_reason_text') || params.get('x_motivo') || '';
-    const xTxId        = params.get('x_transaction_id') || '';
-
-    const pagoId = localStorage.getItem('vivero_pago_id');
-
-    function show(stateId) {
-        ['estado-loading','estado-aprobado','estado-pendiente','estado-rechazado'].forEach(id => {
-            document.getElementById(id).classList.add('hidden');
-        });
-        document.getElementById(stateId).classList.remove('hidden');
+    function showState(id) {
+        ['state-processing','state-aprobado','state-pendiente','state-rechazado']
+            .forEach(s => document.getElementById(s).classList.add('hidden'));
+        document.getElementById(id).classList.remove('hidden');
     }
 
-    function fmt(v) { return '$' + Math.round(parseFloat(v) || 0).toLocaleString('es-CO'); }
-
-    function mostrarAprobado(monto, ref) {
-        document.getElementById('monto-aprobado').textContent = fmt(monto);
-        document.getElementById('ref-aprobado').textContent = ref || xRefPayco || '—';
-        document.getElementById('fecha-aprobado').textContent = new Date().toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
-        localStorage.removeItem('vivero_pago_id');
-        show('estado-aprobado');
+    function fmt(v) {
+        return '$' + Math.round(parseFloat(v) || 0).toLocaleString('es-CO') + ' COP';
     }
 
-    function mostrarRechazado(motivo) {
-        document.getElementById('motivo-rechazo').textContent = motivo || 'No pudimos procesar tu pago.';
-        show('estado-rechazado');
-    }
-
-    // ── 1. Si ePayco devolvió x_response directamente en la URL ──
-    const estado = xResponse.toLowerCase();
-    if (estado === 'aceptada' || estado === 'accepted') {
-        mostrarAprobado(xAmount, xFactura);
-        return;
-    }
-    if (estado === 'rechazada' || estado === 'declined' || estado === 'fallida' || estado === 'failed') {
-        mostrarRechazado(xReason);
+    // Si ePayco envió la respuesta directamente en la URL
+    if (respuesta) {
+        if (['aceptada','aprobada','accepted','approved'].includes(respuesta)) {
+            document.getElementById('ref-aprobado').textContent = ref || '—';
+            document.getElementById('monto-aprobado').textContent = monto ? fmt(monto) : '—';
+            showState('state-aprobado');
+            localStorage.removeItem('vivero_pago_id');
+            return;
+        }
+        if (['rechazada','rechazado','rejected','failed','declined'].includes(respuesta)) {
+            document.getElementById('ref-rechazado').textContent = ref || '—';
+            showState('state-rechazado');
+            return;
+        }
+        // pendiente
+        document.getElementById('ref-pendiente').textContent = ref || '—';
+        showState('state-pendiente');
         return;
     }
 
-    // ── 2. Sin params de ePayco → polling al backend por pago_id ──
-    if (!pagoId && !xFactura && !xRefPayco) {
-        show('estado-pendiente');
+    // Sin respuesta en URL → consultar el estado al backend con polling
+    if (!pagoId) {
+        showState('state-pendiente');
         return;
     }
 
-    // ── 3. Polling al backend (máx 16s, cada 2s) ──
     let intentos = 0;
-    const maxIntentos = 8;
+    const MAX_INTENTOS = 8;
+    const INTERVALO_MS = 2500;
 
-    const poll = setInterval(async () => {
-        intentos++;
+    async function consultarEstado() {
         try {
-            // Intentar por pago_id si está disponible
-            if (pagoId) {
-                const me = await VO.me().catch(() => null);
-                if (!me) { clearInterval(poll); show('estado-pendiente'); return; }
+            const data = await VO.api(`/api/pagos/estado/${pagoId}`);
+            const estado = (data.pago?.estado_pago || '').toLowerCase();
 
-                const data = await VO.api(`/api/pagos/estado/${pagoId}`).catch(() => null);
-                if (data && data.pago) {
-                    const est = (data.pago.estado_pago || '').toLowerCase();
-                    if (est === 'aprobado') {
-                        clearInterval(poll);
-                        mostrarAprobado(data.pago.monto_total, data.pago.referencia_externa);
-                        return;
-                    }
-                    if (est === 'rechazado' || est === 'fallido') {
-                        clearInterval(poll);
-                        mostrarRechazado(xReason);
-                        return;
-                    }
-                }
+            if (['aprobado','aprobada','approved'].includes(estado)) {
+                document.getElementById('ref-aprobado').textContent =
+                    data.pago?.referencia_externa || ref || '—';
+                document.getElementById('monto-aprobado').textContent =
+                    data.pago?.monto_total ? fmt(data.pago.monto_total) : '—';
+                showState('state-aprobado');
+                localStorage.removeItem('vivero_pago_id');
+                return;
             }
 
-            // Timeout: mostrar pendiente
-            if (intentos >= maxIntentos) {
-                clearInterval(poll);
-                show('estado-pendiente');
+            if (['rechazado','rechazada','rejected','failed'].includes(estado)) {
+                document.getElementById('ref-rechazado').textContent =
+                    data.pago?.referencia_externa || ref || '—';
+                showState('state-rechazado');
+                return;
             }
-        } catch (e) {
-            if (intentos >= maxIntentos) {
-                clearInterval(poll);
-                show('estado-pendiente');
+
+            // Sigue pendiente
+            intentos++;
+            if (intentos < MAX_INTENTOS) {
+                setTimeout(consultarEstado, INTERVALO_MS);
+            } else {
+                document.getElementById('ref-pendiente').textContent =
+                    data.pago?.referencia_externa || ref || '—';
+                showState('state-pendiente');
+            }
+        } catch {
+            intentos++;
+            if (intentos < MAX_INTENTOS) {
+                setTimeout(consultarEstado, INTERVALO_MS);
+            } else {
+                showState('state-pendiente');
             }
         }
-    }, 2000);
+    }
+
+    consultarEstado();
+
+    // Botón reintentar → volver al checkout
+    document.getElementById('btn-reintentar')?.addEventListener('click', () => {
+        window.history.back();
+    });
 
 })();
 </script>
