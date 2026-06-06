@@ -58,9 +58,7 @@
         </div>
     </section>
 
-    <!-- ══════════════════════════════════════════════
-         PEDIDOS PENDIENTES — sección nueva
-         ══════════════════════════════════════════════ -->
+    <!-- Pedidos Pendientes -->
     <section class="space-y-3" id="seccion-pedidos">
         <div class="flex items-center justify-between">
             <h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold flex items-center gap-2">
@@ -89,7 +87,7 @@
                 <span class="material-symbols-outlined text-primary text-3xl">monitoring</span>
                 <div class="flex-1">
                     <h3 class="font-bold text-slate-800 dark:text-slate-100">Predicción IA por temporada</h3>
-                    <p class="text-sm text-slate-500 mt-1">Próximamente vas a ver qué plantas se proyectan con alta demanda según el clima de la Sabana de Bogotá. Mientras tanto, consultá al asistente IA desde el botón de cámara.</p>
+                    <p class="text-sm text-slate-500 mt-1">Próximamente vas a ver qué plantas se proyectan con alta demanda según el clima de la Sabana de Bogotá.</p>
                 </div>
             </div>
         </div>
@@ -116,8 +114,6 @@
             <span class="text-xs text-slate-400">Visible en el marketplace</span>
         </div>
         <div class="bg-white dark:bg-slate-900 rounded-xl border border-primary/10 shadow-sm p-5 space-y-4">
-
-            <!-- Foto principal -->
             <div class="space-y-2">
                 <label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Foto principal (portada)</label>
                 <div class="relative">
@@ -131,8 +127,6 @@
                 </div>
                 <p class="text-xs text-slate-500">Click en la imagen para subir. Máx 10MB.</p>
             </div>
-
-            <!-- Galería -->
             <div class="space-y-2">
                 <label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Galería (hasta 3 fotos adicionales)</label>
                 <div data-vo="galeria-container" class="grid grid-cols-3 gap-2">
@@ -142,7 +136,6 @@
                 </div>
                 <p class="text-xs text-slate-500">Compartí fotos del invernadero, plantas, equipo de trabajo, etc.</p>
             </div>
-
             <div class="space-y-2">
                 <label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Historia del vivero</label>
                 <textarea data-vo="historia-input" rows="5" maxlength="2000"
@@ -150,14 +143,12 @@
                     class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent resize-none"></textarea>
                 <p class="text-xs text-slate-500 text-right"><span data-vo="historia-charcount">0</span>/2000 caracteres</p>
             </div>
-
             <div class="space-y-2">
                 <label class="text-sm font-medium text-slate-700 dark:text-slate-300 block">Dirección</label>
                 <input type="text" data-vo="direccion-input" maxlength="500" placeholder="Ej: Vereda Canelón, Km 2 vía Cajicá-Tabio"
                     class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"/>
                 <p class="text-xs text-slate-500">Visible para compradores con suscripción activa.</p>
             </div>
-
             <button data-vo="guardar-perfil"
                 class="w-full py-3 bg-primary text-white rounded-full font-semibold hover:bg-primary/90 active:scale-95 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                 <span class="material-symbols-outlined">save</span>
@@ -197,7 +188,9 @@
     </div>
 </nav>
 
-<!-- Modal Editar Inventario -->
+<!-- ══════════════════════════════════════════
+     Modal Editar Inventario
+     ══════════════════════════════════════════ -->
 <div data-vo="modal-editar" class="hidden fixed inset-0 bg-black/50 z-50 items-end sm:items-center justify-center p-0 sm:p-4">
     <div class="bg-white dark:bg-slate-900 rounded-t-xl sm:rounded-xl max-w-md w-full max-h-[92vh] overflow-y-auto p-6 space-y-4 shadow-2xl">
         <div class="flex items-center justify-between">
@@ -214,16 +207,19 @@
             </div>
         </div>
         <div class="space-y-3">
+            <!-- Stock -->
             <div>
                 <label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">Stock disponible</label>
                 <input type="number" min="0" data-vo="modal-stock"
                     class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"/>
             </div>
+            <!-- Precio -->
             <div>
                 <label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">Precio mayorista (COP)</label>
                 <input type="number" min="0" step="100" data-vo="modal-precio"
                     class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"/>
             </div>
+            <!-- Estado -->
             <div>
                 <label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">Estado</label>
                 <select data-vo="modal-estado"
@@ -233,6 +229,22 @@
                     <option value="reservado">Reservado</option>
                     <option value="en_crecimiento">En crecimiento</option>
                 </select>
+            </div>
+            <!-- ✅ NUEVO: Categoría logística (tier) -->
+            <div>
+                <label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">
+                    Categoría logística
+                    <span class="text-xs text-slate-400 font-normal ml-1">— afecta el flete del comprador</span>
+                </label>
+                <select data-vo="modal-tier"
+                    class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent">
+                    <option value="">Auto (calculado desde altura)</option>
+                    <option value="S">🏍️ S — Pequeña (moto / caja · suculentas, plantas mini)</option>
+                    <option value="M">🚐 M — Mediana (camioneta · calatea, helecho, anturio)</option>
+                    <option value="L">🚛 L — Grande (furgón · ficus, palma, bambú)</option>
+                    <option value="XL">🚚 XL — Árbol / Cerca viva (camión · >1.8m)</option>
+                </select>
+                <p class="text-xs text-slate-400 mt-1">Si lo dejás en "Auto", el sistema usa la altura para calcularlo.</p>
             </div>
         </div>
         <div class="flex gap-2 pt-2">
@@ -256,7 +268,6 @@ if (!VO.requireAuth()) throw new Error('auth');
 document.addEventListener('DOMContentLoaded', async () => {
     try {
         const me = await VO.me();
-
         if (me.rol !== 'viverista' && me.rol !== 'admin') {
             window.location.href = me.rol === 'comprador' ? '/comprador' : '/';
             return;
@@ -279,12 +290,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             VO.api('/api/viveros/me').catch(() => null),
         ]);
 
-        // KPI 1 — Inventario total
+        // KPIs
         const inventoryTotal = (cat.items || []).reduce((s, i) => s + (i.stock || 0), 0);
         const tot = document.querySelector('[data-vo="inventario-total"]');
         if (tot) tot.textContent = inventoryTotal.toLocaleString('es-CO');
 
-        // KPI 2 — Ventas del mes
         const mesActual = new Date().toISOString().substring(0, 7);
         const ventasMes = (txn.items || [])
             .filter(t => (t.fecha_transaccion || '').startsWith(mesActual))
@@ -300,7 +310,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 list.innerHTML = `
                     <div class="text-center py-8 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
                         <span class="material-symbols-outlined text-slate-400 text-4xl mb-2">potted_plant</span>
-                        <p class="font-semibold text-slate-700 dark:text-slate-200 mb-1">Aún no tienes plantas en tu inventario</p>
+                        <p class="font-semibold text-slate-700 dark:text-slate-200 mb-1">Aún no tenés plantas en tu inventario</p>
                         <p class="text-sm text-slate-500 mb-4 max-w-xs mx-auto px-4">Tomá una foto de la planta y la IA arma la ficha por vos.</p>
                         <a href="/viverista/identificar" class="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-full font-semibold hover:bg-primary/90 transition-colors">
                             <span class="material-symbols-outlined">add_a_photo</span>
@@ -308,6 +318,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </a>
                     </div>`;
             } else {
+                // Etiquetas de tier para mostrar en la tarjeta
+                const tierLabel = { S: '🏍️S', M: '🚐M', L: '🚛L', XL: '🚚XL' };
                 list.innerHTML = (cat.items || []).slice(0, 20).map(i => {
                     const estadoColors = {
                         'disponible': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
@@ -317,6 +329,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     };
                     const estado = i.estado_planta || 'disponible';
                     const estadoCls = estadoColors[estado] || estadoColors.disponible;
+                    const tier = i.logistics_tier || 'M';
                     const itemJSON = encodeURIComponent(JSON.stringify({
                         inventario_id: i.inventario_id,
                         nombre_comun: i.nombre_comun,
@@ -328,6 +341,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         altura_cm: i.altura_cm || 0,
                         unidad_medida: i.unidad_medida || 'unidad',
                         foto_ia_url: i.foto_ia_url || '',
+                        tier_manual: i.tier_manual || '',
+                        logistics_tier: tier,
                     }));
                     return `
                         <div class="flex items-center gap-4 p-4 bg-white dark:bg-slate-900 rounded-lg border border-primary/10 shadow-sm">
@@ -338,6 +353,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <div class="flex items-center gap-2 mt-1 flex-wrap">
                                     <span class="text-xs text-slate-500">Stock: ${i.stock || 0} ${i.unidad_medida || ''}</span>
                                     <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider ${estadoCls}">${estado}</span>
+                                    <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-bold">${tierLabel[tier] || tier}</span>
                                 </div>
                             </div>
                             <div class="flex flex-col items-end gap-1.5 shrink-0">
@@ -354,28 +370,29 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // ── Modal Editar Inventario ──────────────────────────
-
-        const modal = document.querySelector('[data-vo="modal-editar"]');
+        const modal       = document.querySelector('[data-vo="modal-editar"]');
         const modalNombre = document.querySelector('[data-vo="modal-nombre"]');
         const modalAltura = document.querySelector('[data-vo="modal-altura"]');
-        const modalFoto = document.querySelector('[data-vo="modal-foto"]');
-        const modalStock = document.querySelector('[data-vo="modal-stock"]');
+        const modalFoto   = document.querySelector('[data-vo="modal-foto"]');
+        const modalStock  = document.querySelector('[data-vo="modal-stock"]');
         const modalPrecio = document.querySelector('[data-vo="modal-precio"]');
         const modalEstado = document.querySelector('[data-vo="modal-estado"]');
-        const btnGuardar = document.querySelector('[data-vo="modal-guardar"]');
+        const modalTier   = document.querySelector('[data-vo="modal-tier"]');   // ← NUEVO
+        const btnGuardar  = document.querySelector('[data-vo="modal-guardar"]');
         const btnEliminar = document.querySelector('[data-vo="modal-eliminar"]');
-        const btnCerrar = document.querySelector('[data-vo="modal-cerrar"]');
+        const btnCerrar   = document.querySelector('[data-vo="modal-cerrar"]');
         const btnCancelar = document.querySelector('[data-vo="modal-cancelar"]');
-        let currentItem = null;
+        let currentItem   = null;
 
         function openModal(item) {
             currentItem = item;
             if (modalNombre) modalNombre.textContent = item.nombre_comun || 'Planta';
-            if (modalAltura) modalAltura.textContent = item.altura_cm ? `${item.altura_cm} cm de altura` : (item.nombre_cientifico || '');
-            if (modalFoto) modalFoto.style.backgroundImage = item.foto_ia_url ? `url(${JSON.stringify(item.foto_ia_url)})` : '';
-            if (modalStock) modalStock.value = item.stock || 0;
+            if (modalAltura) modalAltura.textContent = item.altura_cm ? `${item.altura_cm} cm` : (item.nombre_cientifico || '');
+            if (modalFoto)   modalFoto.style.backgroundImage = item.foto_ia_url ? `url(${JSON.stringify(item.foto_ia_url)})` : '';
+            if (modalStock)  modalStock.value  = item.stock || 0;
             if (modalPrecio) modalPrecio.value = item.precio_mayorista || 0;
             if (modalEstado) modalEstado.value = item.estado_planta || 'disponible';
+            if (modalTier)   modalTier.value   = item.tier_manual || '';  // ← NUEVO
             modal.classList.remove('hidden');
             modal.classList.add('flex');
             document.body.style.overflow = 'hidden';
@@ -400,18 +417,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         });
 
-        if (btnCerrar) btnCerrar.addEventListener('click', closeModal);
+        if (btnCerrar)   btnCerrar.addEventListener('click', closeModal);
         if (btnCancelar) btnCancelar.addEventListener('click', closeModal);
         if (modal) modal.addEventListener('click', (ev) => { if (ev.target === modal) closeModal(); });
 
         if (btnGuardar) {
             btnGuardar.addEventListener('click', async () => {
                 if (!currentItem) return;
-                const stock = parseInt(modalStock.value);
+                const stock  = parseInt(modalStock.value);
                 const precio = parseFloat(modalPrecio.value);
                 const estado = modalEstado.value;
-                if (isNaN(stock) || stock < 0) { VO.showToast('Stock inválido (mínimo 0)', 'error'); return; }
+                const tier   = modalTier ? (modalTier.value || null) : null;  // ← NUEVO
+
+                if (isNaN(stock) || stock < 0)  { VO.showToast('Stock inválido (mínimo 0)', 'error'); return; }
                 if (isNaN(precio) || precio < 0) { VO.showToast('Precio inválido (mínimo 0)', 'error'); return; }
+
                 btnGuardar.disabled = true;
                 const orig = btnGuardar.innerHTML;
                 btnGuardar.innerHTML = '<span class="material-symbols-outlined animate-spin">progress_activity</span><span>Guardando…</span>';
@@ -419,7 +439,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const res = await fetch(`/api/catalogo/inventario/${currentItem.inventario_id}`, {
                         method: 'PATCH',
                         headers: { 'Authorization': `Bearer ${VO.getToken()}`, 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ stock, precio_mayorista: precio, estado_planta: estado }),
+                        body: JSON.stringify({
+                            stock,
+                            precio_mayorista: precio,
+                            estado_planta: estado,
+                            tier_manual: tier,   // ← NUEVO
+                        }),
                     });
                     if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Error al guardar'); }
                     VO.showToast('Inventario actualizado ✓', 'success');
@@ -458,18 +483,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // ── Perfil del vivero ──────────────────────────────
-
-        const historiaInput = document.querySelector('[data-vo="historia-input"]');
-        const direccionInput = document.querySelector('[data-vo="direccion-input"]');
-        const charcount = document.querySelector('[data-vo="historia-charcount"]');
-        const fotoPreview = document.querySelector('[data-vo="foto-preview"]');
-        const fotoPlaceholder = document.querySelector('[data-vo="foto-placeholder"]');
-        const fotoSpinner = document.querySelector('[data-vo="foto-spinner"]');
-        const fotoInput = document.querySelector('[data-vo="foto-input"]');
+        const historiaInput    = document.querySelector('[data-vo="historia-input"]');
+        const direccionInput   = document.querySelector('[data-vo="direccion-input"]');
+        const charcount        = document.querySelector('[data-vo="historia-charcount"]');
+        const fotoPreview      = document.querySelector('[data-vo="foto-preview"]');
+        const fotoPlaceholder  = document.querySelector('[data-vo="foto-placeholder"]');
+        const fotoSpinner      = document.querySelector('[data-vo="foto-spinner"]');
+        const fotoInput        = document.querySelector('[data-vo="foto-input"]');
         const btnGuardarPerfil = document.querySelector('[data-vo="guardar-perfil"]');
 
         if (perfil) {
-            if (historiaInput) { historiaInput.value = perfil.historia || ''; if (charcount) charcount.textContent = (perfil.historia || '').length; }
+            if (historiaInput)  { historiaInput.value = perfil.historia || ''; if (charcount) charcount.textContent = (perfil.historia || '').length; }
             if (direccionInput) direccionInput.value = perfil.direccion || '';
             if (fotoPreview && perfil.foto_url) { fotoPreview.style.backgroundImage = `url('${perfil.foto_url}')`; if (fotoPlaceholder) fotoPlaceholder.style.display = 'none'; }
         }
@@ -503,7 +527,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         if (btnGuardarPerfil) {
             btnGuardarPerfil.addEventListener('click', async () => {
-                const historia = historiaInput ? historiaInput.value : null;
+                const historia  = historiaInput  ? historiaInput.value  : null;
                 const direccion = direccionInput ? direccionInput.value : null;
                 btnGuardarPerfil.disabled = true;
                 const orig = btnGuardarPerfil.innerHTML;
@@ -522,7 +546,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         // ── Galería ────────────────────────────────────────
-
         const MAX_GALERIA = 3;
         const galeriaContainer = document.querySelector('[data-vo="galeria-container"]');
 
@@ -609,76 +632,40 @@ async function cargarPedidosPendientes() {
     const lista = document.getElementById('lista-pedidos');
     const badge = document.getElementById('badge-pedidos');
     if (!lista) return;
-
     lista.innerHTML = '<div class="text-center py-4 text-slate-400 text-sm"><span class="material-symbols-outlined animate-spin">progress_activity</span></div>';
-
     try {
-        const resp = await fetch('/api/pedidos/pendientes', {
-            headers: { 'Authorization': `Bearer ${VO.getToken()}` },
-        });
+        const resp = await fetch('/api/pedidos/pendientes', { headers: { 'Authorization': `Bearer ${VO.getToken()}` } });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         const pedidos = data.pendientes || [];
-
-        if (pedidos.length > 0) {
-            badge.textContent = pedidos.length;
-            badge.classList.remove('hidden');
-        } else {
-            badge.classList.add('hidden');
-        }
-
+        if (pedidos.length > 0) { badge.textContent = pedidos.length; badge.classList.remove('hidden'); } else { badge.classList.add('hidden'); }
         if (pedidos.length === 0) {
-            lista.innerHTML = `
-                <div class="text-center py-6 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
-                    <span class="material-symbols-outlined text-slate-300 text-4xl">inbox</span>
-                    <p class="text-sm text-slate-500 mt-2">Sin pedidos pendientes por ahora.</p>
-                    <p class="text-xs text-slate-400 mt-1">Cuando un comprador te envíe una cotización aparecerá acá.</p>
-                </div>`;
+            lista.innerHTML = `<div class="text-center py-6 bg-white dark:bg-slate-900 rounded-xl border border-dashed border-slate-200 dark:border-slate-700"><span class="material-symbols-outlined text-slate-300 text-4xl">inbox</span><p class="text-sm text-slate-500 mt-2">Sin pedidos pendientes por ahora.</p></div>`;
             return;
         }
-
         lista.innerHTML = pedidos.map(p => `
             <div class="bg-white dark:bg-slate-900 rounded-xl border border-amber-200 dark:border-amber-800 shadow-sm p-4 space-y-3 mb-3">
                 <div class="flex items-start justify-between gap-2">
                     <div class="flex-1 min-w-0">
                         <p class="font-bold text-sm truncate">${escHTML(p.nombre_proyecto)}</p>
-                        <p class="text-xs text-slate-500 mt-0.5">
-                            🧑 ${escHTML(p.nombre_comprador)} · ${p.items.length} producto${p.items.length !== 1 ? 's' : ''}
-                        </p>
+                        <p class="text-xs text-slate-500 mt-0.5">🧑 ${escHTML(p.nombre_comprador)} · ${p.items.length} producto${p.items.length !== 1 ? 's' : ''}</p>
                         <p class="text-xs text-slate-400 mt-0.5">${formatFechaCorta(p.fecha_creacion)}</p>
                     </div>
                     <p class="font-black text-primary text-sm whitespace-nowrap">$${Math.round(p.total_estimado).toLocaleString('es-CO')}</p>
                 </div>
-
-                ${p.notas_cliente ? `
-                    <div class="bg-slate-50 dark:bg-slate-800 rounded-lg p-2">
-                        <p class="text-xs text-slate-600 dark:text-slate-300">📝 "${escHTML(p.notas_cliente)}"</p>
-                    </div>` : ''}
-
+                ${p.notas_cliente ? `<div class="bg-slate-50 dark:bg-slate-800 rounded-lg p-2"><p class="text-xs text-slate-600 dark:text-slate-300">📝 "${escHTML(p.notas_cliente)}"</p></div>` : ''}
                 <div class="space-y-1 border border-slate-100 dark:border-slate-700 rounded-lg p-2">
-                    ${p.items.map(it => `
-                        <div class="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 py-0.5">
-                            <span class="truncate flex-1">${escHTML(it.nombre_comun || `Item #${it.inventario_id}`)}</span>
-                            <span class="font-semibold ml-2 shrink-0 text-primary">${it.cantidad} uds</span>
-                        </div>
-                    `).join('')}
+                    ${p.items.map(it => `<div class="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 py-0.5"><span class="truncate flex-1">${escHTML(it.nombre_comun || `Item #${it.inventario_id}`)}</span><span class="font-semibold ml-2 shrink-0 text-primary">${it.cantidad} uds</span></div>`).join('')}
                 </div>
-
                 <div class="flex gap-2">
-                    <button onclick="aprobarPedido(${p.cotizacion_id})"
-                        class="flex-1 bg-primary text-white text-sm font-bold py-2.5 rounded-full flex items-center justify-center gap-1 hover:bg-primary/90 transition active:scale-95">
-                        <span class="material-symbols-outlined text-base">check_circle</span>
-                        Aprobar
+                    <button onclick="aprobarPedido(${p.cotizacion_id})" class="flex-1 bg-primary text-white text-sm font-bold py-2.5 rounded-full flex items-center justify-center gap-1 hover:bg-primary/90 transition active:scale-95">
+                        <span class="material-symbols-outlined text-base">check_circle</span>Aprobar
                     </button>
-                    <button onclick="rechazarPedido(${p.cotizacion_id})"
-                        class="flex-1 bg-red-50 dark:bg-red-900/20 text-red-600 text-sm font-bold py-2.5 rounded-full flex items-center justify-center gap-1 hover:bg-red-100 transition border border-red-200 dark:border-red-800 active:scale-95">
-                        <span class="material-symbols-outlined text-base">cancel</span>
-                        Rechazar
+                    <button onclick="rechazarPedido(${p.cotizacion_id})" class="flex-1 bg-red-50 dark:bg-red-900/20 text-red-600 text-sm font-bold py-2.5 rounded-full flex items-center justify-center gap-1 hover:bg-red-100 transition border border-red-200 dark:border-red-800 active:scale-95">
+                        <span class="material-symbols-outlined text-base">cancel</span>Rechazar
                     </button>
                 </div>
-            </div>
-        `).join('');
-
+            </div>`).join('');
     } catch (e) {
         lista.innerHTML = `<p class="text-xs text-red-500 text-center py-4">Error al cargar pedidos: ${escHTML(e.message)}</p>`;
     }
@@ -687,53 +674,27 @@ async function cargarPedidosPendientes() {
 async function aprobarPedido(cotizacion_id) {
     if (!confirm('¿Aprobar este pedido?\n\nConfirmás que tenés el stock disponible y podés despachar.')) return;
     try {
-        const resp = await fetch(`/api/pedidos/${cotizacion_id}/aprobar`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${VO.getToken()}` },
-        });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.detail || 'Error al aprobar');
-        }
+        const resp = await fetch(`/api/pedidos/${cotizacion_id}/aprobar`, { method: 'POST', headers: { 'Authorization': `Bearer ${VO.getToken()}` } });
+        if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || 'Error al aprobar'); }
         VO.showToast('✅ Pedido aprobado. El comprador fue notificado.', 'success');
         setTimeout(cargarPedidosPendientes, 1200);
-    } catch (e) {
-        VO.showToast(e.message || 'No se pudo aprobar', 'error');
-    }
+    } catch (e) { VO.showToast(e.message || 'No se pudo aprobar', 'error'); }
 }
 
 async function rechazarPedido(cotizacion_id) {
-    const motivo = prompt('¿Por qué rechazás este pedido? (opcional)\n\nEj: Sin stock, fuera de temporada, zona no cubierta...');
-    if (motivo === null) return; // Canceló
+    const motivo = prompt('¿Por qué rechazás este pedido? (opcional)');
+    if (motivo === null) return;
     try {
-        const resp = await fetch(`/api/pedidos/${cotizacion_id}/rechazar`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${VO.getToken()}`, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ motivo: motivo || null }),
-        });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.detail || 'Error al rechazar');
-        }
+        const resp = await fetch(`/api/pedidos/${cotizacion_id}/rechazar`, { method: 'POST', headers: { 'Authorization': `Bearer ${VO.getToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ motivo: motivo || null }) });
+        if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || 'Error al rechazar'); }
         VO.showToast('Pedido rechazado. El comprador fue notificado.', 'success');
         setTimeout(cargarPedidosPendientes, 1200);
-    } catch (e) {
-        VO.showToast(e.message || 'No se pudo rechazar', 'error');
-    }
+    } catch (e) { VO.showToast(e.message || 'No se pudo rechazar', 'error'); }
 }
 
-function escHTML(s) {
-    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
+function escHTML(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function formatFechaCorta(s) { if (!s || s === 'None') return ''; try { return new Date(s).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } }
 
-function formatFechaCorta(s) {
-    if (!s || s === 'None') return '';
-    try {
-        return new Date(s).toLocaleDateString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-    } catch { return ''; }
-}
-
-// Cargar pedidos al inicio
 cargarPedidosPendientes();
 </script>
 </body></html>
