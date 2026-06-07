@@ -49,6 +49,8 @@ app.add_middleware(
     allow_origins=[
         settings.app_base_url,
         "https://vivero-online-j3gi.vercel.app",
+        "https://www.viveroonline.com.co",
+        "https://viveroonline.com.co",
         "http://localhost:3000",
         "http://localhost:8000",
     ],
