@@ -7,7 +7,7 @@ Flujo de estados:
 
 Modelo de precios:
   - precio_mayorista en BD = precio BASE del viverista (lo que él recibe)
-  - El comprador paga: total_cotizacion × 1.18 (18% de markup de plataforma)
+  - El comprador paga: total_cotizacion × 1.18 (18% de markup de plataforma) + flete
   - ViveroOnline retiene: total_cotizacion × 0.18
 """
 from __future__ import annotations
@@ -148,8 +148,8 @@ async def listar_pendientes(user: UserContext = Depends(require_viverista)):
             "nombre_comprador": nombre_comprador,
             "estado": cot["estado"],
             "items": mis_items,
-            "total_estimado": total_base,  # precio base del viverista
-            "total_comprador": round(total_base * (1 + MARKUP_PLATAFORMA)),  # lo que paga el comprador
+            "total_estimado": total_base,
+            "total_comprador": round(total_base * (1 + MARKUP_PLATAFORMA)),
             "notas_cliente": cot.get("notas_cliente"),
             "fecha_creacion": str(cot.get("fecha_creacion") or ""),
         })
@@ -248,19 +248,81 @@ async def rechazar_cotizacion(
     return {"ok": True, "estado": "rechazada", "cotizacion_id": cotizacion_id}
 
 
-# ═══════════ 5. COMPRADOR: Iniciar pago (con markup 18%) ═══════════
+# ═══════════ 5. COMPRADOR: Calcular flete antes del pago ═══════════
+
+@router.get("/{cotizacion_id}/calcular-flete")
+async def calcular_flete_cotizacion(
+    cotizacion_id: int,
+    ciudad: str,
+    user: UserContext = Depends(require_comprador),
+):
+    """Calcula el flete automáticamente según tier logístico y zona.
+    El frontend lo llama al seleccionar la ciudad para mostrar el precio antes de pagar.
+    """
+    db = db_admin()
+
+    cot = db.table("cotizaciones").select(
+        "cotizacion_id, cliente_id, estado"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+
+    if not cot.data:
+        raise HTTPException(404, "Cotización no encontrada")
+    if cot.data[0]["cliente_id"] != user.cliente_id:
+        raise HTTPException(403, "No podés ver esta cotización")
+
+    FALLBACK = {
+        "ok": True, "tier": "M", "zona": "sabana_entre_municipios",
+        "precio_base": 65000, "fee_carga_viva": 6500, "total_flete": 71500, "detalle": [],
+    }
+
+    try:
+        result = db.rpc("calcular_flete", {
+            "p_cotizacion_id": cotizacion_id,
+            "p_ciudad_destino": ciudad,
+        }).execute()
+
+        if not result.data:
+            return FALLBACK
+
+        r = result.data[0]
+        return {
+            "ok":            True,
+            "tier":          r.get("tier_calculado", "M"),
+            "zona":          r.get("zona_calculada", ""),
+            "precio_base":   r.get("precio_base_cop", 0),
+            "fee_carga_viva": r.get("fee_carga_viva_cop", 0),
+            "total_flete":   r.get("total_flete_cop", 0),
+            "detalle":       r.get("detalle", []),
+        }
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception(f"Error calculando flete: {e}")
+        return FALLBACK
+
+
+# ═══════════ 6. COMPRADOR: Iniciar pago (markup 18% + flete) ═══════════
 
 class CheckoutReq(BaseModel):
-    ciudad_entrega: Optional[str] = None
-    fecha_entrega_deseada: Optional[str] = None
-    notas: Optional[str] = None
+    ciudad_entrega:           Optional[str] = None
+    fecha_entrega_deseada:    Optional[str] = None
+    notas:                    Optional[str] = None
+    # Campos logísticos nuevos
+    direccion_entrega_exacta: Optional[str] = None
+    contacto_nombre:          Optional[str] = None
+    contacto_telefono:        Optional[str] = None
+    tipo_vehiculo:            Optional[str] = None
+    ventana_inicio:           Optional[str] = None
+    ventana_fin:              Optional[str] = None
+    flete_cop:                Optional[int] = None  # calculado por el frontend
 
 
 @router.post("/{cotizacion_id}/checkout")
 async def iniciar_checkout(
     cotizacion_id: int, req: CheckoutReq, user: UserContext = Depends(require_comprador)
 ):
-    """Convierte cotización aprobada en transacción con markup del 18%."""
+    """Convierte cotización aprobada en transacción.
+    El total incluye: plantas × 1.18 (markup) + flete calculado por tier/zona.
+    """
     from app.services.epayco import get_epayco, CheckoutRequest
 
     db = db_admin()
@@ -276,25 +338,34 @@ async def iniciar_checkout(
     if not epayco.is_configured:
         raise HTTPException(503, "Servicio de pagos no configurado")
 
-    update_data = {}
-    if req.ciudad_entrega:
-        update_data["ciudad_entrega"] = req.ciudad_entrega
-    if req.fecha_entrega_deseada:
-        update_data["fecha_entrega_deseada"] = req.fecha_entrega_deseada
-    if req.notas:
-        update_data["notas_cliente"] = req.notas
+    # Guardar todos los datos logísticos en la cotización
+    update_data: dict = {}
+    if req.ciudad_entrega:           update_data["ciudad_entrega"]           = req.ciudad_entrega
+    if req.fecha_entrega_deseada:    update_data["fecha_entrega_deseada"]    = req.fecha_entrega_deseada
+    if req.notas:                    update_data["notas_cliente"]             = req.notas
+    if req.direccion_entrega_exacta: update_data["direccion_entrega_exacta"] = req.direccion_entrega_exacta
+    if req.contacto_nombre:          update_data["contacto_nombre"]           = req.contacto_nombre
+    if req.contacto_telefono:        update_data["contacto_telefono"]         = req.contacto_telefono
+    if req.tipo_vehiculo:            update_data["tipo_vehiculo"]             = req.tipo_vehiculo
+    if req.ventana_inicio:           update_data["ventana_inicio"]            = req.ventana_inicio
+    if req.ventana_fin:              update_data["ventana_fin"]               = req.ventana_fin
     if update_data:
         db.table("cotizaciones").update(update_data).eq("cotizacion_id", cotizacion_id).execute()
 
-    # Precio base del viverista (lo que está guardado en BD)
+    # Precio base del viverista
     total_viverista = float(cot.get("total_estimado") or 0)
     if total_viverista <= 0:
         raise HTTPException(400, "El total de la cotización es inválido")
 
-    # El comprador paga: precio_base × 1.18
-    monto_cop = round(total_viverista * (1 + MARKUP_PLATAFORMA))
-    monto_plataforma = monto_cop - round(total_viverista)
-    monto_viverista_final = round(total_viverista)
+    # Markup 18%
+    monto_plantas   = round(total_viverista * (1 + MARKUP_PLATAFORMA))
+    monto_plataforma = monto_plantas - round(total_viverista)
+
+    # Flete (enviado por el frontend tras calcular-flete)
+    flete_cop = int(req.flete_cop or 0)
+
+    # Total final que cobra ePayco
+    monto_cop = monto_plantas + flete_cop
 
     cliente = db.table("clientes").select(
         "nombre_empresa, nombre_representante, whatsapp_numero"
@@ -304,15 +375,15 @@ async def iniciar_checkout(
 
     items = cot.get("items") or []
     txn_resp = db.table("transacciones_b2b").insert({
-        "cliente_id": user.cliente_id,
-        "inventario_id": items[0].get("inventario_id") if items else None,
-        "cantidad": sum(it.get("cantidad", 0) for it in items),
-        "precio_unitario": float(items[0].get("precio_unitario", 0)) if items else 0,
-        "precio_total": monto_cop,              # lo que paga el comprador (con markup)
-        "comision_plataforma": monto_plataforma, # el 18%
-        "porcentaje_comision": MARKUP_PLATAFORMA * 100,  # 18.0
-        "estado": "pendiente",
-        "cotizacion_id": cotizacion_id,
+        "cliente_id":          user.cliente_id,
+        "inventario_id":       items[0].get("inventario_id") if items else None,
+        "cantidad":            sum(it.get("cantidad", 0) for it in items),
+        "precio_unitario":     float(items[0].get("precio_unitario", 0)) if items else 0,
+        "precio_total":        monto_cop,
+        "comision_plataforma": monto_plataforma,
+        "porcentaje_comision": MARKUP_PLATAFORMA * 100,
+        "estado":              "pendiente",
+        "cotizacion_id":       cotizacion_id,
     }).execute()
 
     if not txn_resp.data:
@@ -321,9 +392,9 @@ async def iniciar_checkout(
     transaccion_id = txn_resp.data[0]["transaccion_id"]
 
     db.table("cotizaciones").update({
-        "estado": "convertida",
+        "estado":           "convertida",
         "fecha_conversion": datetime.utcnow().isoformat(),
-        "transaccion_id": transaccion_id,
+        "transaccion_id":   transaccion_id,
     }).eq("cotizacion_id", cotizacion_id).execute()
 
     checkout_req = CheckoutRequest(
@@ -333,31 +404,33 @@ async def iniciar_checkout(
         nombre_cliente=nombre,
         telefono_cliente=cli.get("whatsapp_numero"),
     )
-    response_url = f"{s.app_base_url}/pagos/resultado"
+    response_url     = f"{s.app_base_url}/pagos/resultado"
     confirmation_url = f"{s.app_base_url}/api/pagos/confirmacion"
     payload = epayco.build_checkout_payload(checkout_req, response_url, confirmation_url)
 
     pago_resp = db.table("pagos").insert({
-        "transaccion_id": transaccion_id,
-        "monto_total": monto_cop,
-        "moneda": "COP",
-        "estado_pago": "pendiente",
-        "metodo": "epayco",
+        "transaccion_id":    transaccion_id,
+        "monto_total":       monto_cop,
+        "moneda":            "COP",
+        "estado_pago":       "pendiente",
+        "metodo":            "epayco",
         "referencia_externa": payload["invoice"],
-        "monto_viverista": monto_viverista_final,  # precio base (lo que recibe el vivero)
-        "monto_plataforma": monto_plataforma,       # el 18%
+        "monto_viverista":   round(total_viverista),
+        "monto_plataforma":  monto_plataforma,
     }).execute()
 
     pago_id = pago_resp.data[0]["pago_id"] if pago_resp.data else None
 
     return {
-        "ok": True,
-        "pago_id": pago_id,
-        "transaccion_id": transaccion_id,
-        "cotizacion_id": cotizacion_id,
-        "referencia": payload["invoice"],
+        "ok":              True,
+        "pago_id":         pago_id,
+        "transaccion_id":  transaccion_id,
+        "cotizacion_id":   cotizacion_id,
+        "referencia":      payload["invoice"],
         "checkout_payload": payload,
-        "monto_cop": monto_cop,                  # total que cobra ePayco
-        "monto_viverista": monto_viverista_final, # lo que recibe el vivero
-        "monto_plataforma": monto_plataforma,     # el 18% de ViveroOnline
+        "monto_plantas":   monto_plantas,
+        "flete_cop":       flete_cop,
+        "monto_cop":       monto_cop,
+        "monto_viverista": round(total_viverista),
+        "monto_plataforma": monto_plataforma,
     }
