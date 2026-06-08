@@ -382,7 +382,7 @@ tailwind.config = {
 
             const handler = ePayco.checkout.configure({
                 key: cp.p_cust_id_cliente || cp.key,
-                test: true,
+                test: false,
             });
 
             handler.open({
