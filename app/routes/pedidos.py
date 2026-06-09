@@ -322,6 +322,10 @@ async def iniciar_checkout(
 ):
     """Convierte cotización aprobada en transacción.
     El total incluye: plantas × 1.18 (markup) + flete calculado por tier/zona.
+
+    IMPORTANTE: el estado de la cotización se mantiene en "aceptada" hasta que
+    ePayco confirme el pago vía webhook (/api/pagos/confirmacion).
+    Esto permite que el comprador reintente si el pago falla.
     """
     from app.services.epayco import get_epayco, CheckoutRequest
 
@@ -330,7 +334,9 @@ async def iniciar_checkout(
 
     if cot["cliente_id"] != user.cliente_id:
         raise HTTPException(403, "No podés pagar esta cotización")
-    if cot["estado"] != "aceptada":
+
+    # ── Permitir reintentos: aceptada O ya en proceso de pago (convertida con pago pendiente) ──
+    if cot["estado"] not in ("aceptada", "convertida"):
         raise HTTPException(400, f"Solo se pueden pagar cotizaciones aceptadas. Estado: {cot['estado']}")
 
     s = get_settings()
@@ -358,7 +364,7 @@ async def iniciar_checkout(
         raise HTTPException(400, "El total de la cotización es inválido")
 
     # Markup 18%
-    monto_plantas   = round(total_viverista * (1 + MARKUP_PLATAFORMA))
+    monto_plantas    = round(total_viverista * (1 + MARKUP_PLATAFORMA))
     monto_plataforma = monto_plantas - round(total_viverista)
 
     # Flete (enviado por el frontend tras calcular-flete)
@@ -374,28 +380,41 @@ async def iniciar_checkout(
     nombre = cli.get("nombre_representante") or cli.get("nombre_empresa") or "Cliente"
 
     items = cot.get("items") or []
-    txn_resp = db.table("transacciones_b2b").insert({
-        "cliente_id":          user.cliente_id,
-        "inventario_id":       items[0].get("inventario_id") if items else None,
-        "cantidad":            sum(it.get("cantidad", 0) for it in items),
-        "precio_unitario":     float(items[0].get("precio_unitario", 0)) if items else 0,
-        "precio_total":        monto_cop,
-        "comision_plataforma": monto_plataforma,
-        "porcentaje_comision": MARKUP_PLATAFORMA * 100,
-        "estado":              "pendiente",
-        "cotizacion_id":       cotizacion_id,
-    }).execute()
 
-    if not txn_resp.data:
-        raise HTTPException(500, "No se pudo crear la transacción")
+    # ── Reutilizar transacción existente si ya hay una pendiente (reintento) ──
+    transaccion_id = None
+    if cot.get("estado") == "convertida":
+        txn_existente = db.table("transacciones_b2b").select(
+            "transaccion_id, estado"
+        ).eq("cotizacion_id", cotizacion_id).eq("estado", "pendiente").limit(1).execute()
+        if txn_existente.data:
+            transaccion_id = txn_existente.data[0]["transaccion_id"]
 
-    transaccion_id = txn_resp.data[0]["transaccion_id"]
+    if not transaccion_id:
+        txn_resp = db.table("transacciones_b2b").insert({
+            "cliente_id":          user.cliente_id,
+            "inventario_id":       items[0].get("inventario_id") if items else None,
+            "cantidad":            sum(it.get("cantidad", 0) for it in items),
+            "precio_unitario":     float(items[0].get("precio_unitario", 0)) if items else 0,
+            "precio_total":        monto_cop,
+            "comision_plataforma": monto_plataforma,
+            "porcentaje_comision": MARKUP_PLATAFORMA * 100,
+            "estado":              "pendiente",
+            "cotizacion_id":       cotizacion_id,
+        }).execute()
 
-    db.table("cotizaciones").update({
-        "estado":           "convertida",
-        "fecha_conversion": datetime.utcnow().isoformat(),
-        "transaccion_id":   transaccion_id,
-    }).eq("cotizacion_id", cotizacion_id).execute()
+        if not txn_resp.data:
+            raise HTTPException(500, "No se pudo crear la transacción")
+
+        transaccion_id = txn_resp.data[0]["transaccion_id"]
+
+        # Marcar cotización como "convertida" solo al crear la transacción por primera vez.
+        # El estado FINAL ("pagada") lo pone el webhook /api/pagos/confirmacion.
+        db.table("cotizaciones").update({
+            "estado":           "convertida",
+            "fecha_conversion": datetime.utcnow().isoformat(),
+            "transaccion_id":   transaccion_id,
+        }).eq("cotizacion_id", cotizacion_id).execute()
 
     checkout_req = CheckoutRequest(
         transaccion_id=transaccion_id,
@@ -409,28 +428,28 @@ async def iniciar_checkout(
     payload = epayco.build_checkout_payload(checkout_req, response_url, confirmation_url)
 
     pago_resp = db.table("pagos").insert({
-        "transaccion_id":    transaccion_id,
-        "monto_total":       monto_cop,
-        "moneda":            "COP",
-        "estado_pago":       "pendiente",
-        "metodo":            "epayco",
+        "transaccion_id":     transaccion_id,
+        "monto_total":        monto_cop,
+        "moneda":             "COP",
+        "estado_pago":        "pendiente",
+        "metodo":             "epayco",
         "referencia_externa": payload["invoice"],
-        "monto_viverista":   round(total_viverista),
-        "monto_plataforma":  monto_plataforma,
+        "monto_viverista":    round(total_viverista),
+        "monto_plataforma":   monto_plataforma,
     }).execute()
 
     pago_id = pago_resp.data[0]["pago_id"] if pago_resp.data else None
 
     return {
-        "ok":              True,
-        "pago_id":         pago_id,
-        "transaccion_id":  transaccion_id,
-        "cotizacion_id":   cotizacion_id,
-        "referencia":      payload["invoice"],
+        "ok":               True,
+        "pago_id":          pago_id,
+        "transaccion_id":   transaccion_id,
+        "cotizacion_id":    cotizacion_id,
+        "referencia":       payload["invoice"],
         "checkout_payload": payload,
-        "monto_plantas":   monto_plantas,
-        "flete_cop":       flete_cop,
-        "monto_cop":       monto_cop,
-        "monto_viverista": round(total_viverista),
+        "monto_plantas":    monto_plantas,
+        "flete_cop":        flete_cop,
+        "monto_cop":        monto_cop,
+        "monto_viverista":  round(total_viverista),
         "monto_plataforma": monto_plataforma,
     }
