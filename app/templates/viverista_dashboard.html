@@ -58,6 +58,28 @@
         </div>
     </section>
 
+    <!-- ✅ NUEVO: Alerta tier logístico -->
+    <div id="alerta-tier" class="hidden bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-3">
+        <div class="flex items-start gap-3">
+            <span class="material-symbols-outlined text-amber-500 text-xl mt-0.5">warning</span>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-bold text-amber-800 dark:text-amber-200">Plantas sin categoría logística</p>
+                <p class="text-xs text-amber-700 dark:text-amber-300 mt-0.5">
+                    Tenés <span id="alerta-tier-count" class="font-bold"></span> planta(s) con altura mayor a 80 cm sin categoría asignada.
+                    El flete puede calcularse mal. Editá cada planta y elegí su categoría (L o XL).
+                </p>
+                <button onclick="document.querySelector('[data-vo=&quot;lista-inventario&quot;]')?.scrollIntoView({behavior:'smooth'})"
+                    class="mt-2 text-xs font-bold text-amber-700 dark:text-amber-300 underline underline-offset-2">
+                    Ver inventario →
+                </button>
+            </div>
+            <button onclick="document.getElementById('alerta-tier').classList.add('hidden')"
+                class="text-amber-400 hover:text-amber-600 shrink-0">
+                <span class="material-symbols-outlined text-base">close</span>
+            </button>
+        </div>
+    </div>
+
     <!-- Pedidos Pendientes -->
     <section class="space-y-3" id="seccion-pedidos">
         <div class="flex items-center justify-between">
@@ -230,7 +252,7 @@
                     <option value="en_crecimiento">En crecimiento</option>
                 </select>
             </div>
-            <!-- ✅ NUEVO: Categoría logística (tier) -->
+            <!-- Categoría logística (tier) -->
             <div>
                 <label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">
                     Categoría logística
@@ -295,6 +317,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         const tot = document.querySelector('[data-vo="inventario-total"]');
         if (tot) tot.textContent = inventoryTotal.toLocaleString('es-CO');
 
+        // ✅ NUEVO: Alerta tier logístico — plantas >80cm sin categoría manual
+        const sinTier = (cat.items || []).filter(i =>
+            (i.altura_cm || 0) > 80 && !i.tier_manual
+        );
+        if (sinTier.length > 0) {
+            const alertaEl = document.getElementById('alerta-tier');
+            const countEl  = document.getElementById('alerta-tier-count');
+            if (alertaEl) alertaEl.classList.remove('hidden');
+            if (countEl)  countEl.textContent = sinTier.length;
+        }
+
         const mesActual = new Date().toISOString().substring(0, 7);
         const ventasMes = (txn.items || [])
             .filter(t => (t.fecha_transaccion || '').startsWith(mesActual))
@@ -318,7 +351,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                         </a>
                     </div>`;
             } else {
-                // Etiquetas de tier para mostrar en la tarjeta
                 const tierLabel = { S: '🏍️S', M: '🚐M', L: '🚛L', XL: '🚚XL' };
                 list.innerHTML = (cat.items || []).slice(0, 20).map(i => {
                     const estadoColors = {
@@ -330,6 +362,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     const estado = i.estado_planta || 'disponible';
                     const estadoCls = estadoColors[estado] || estadoColors.disponible;
                     const tier = i.logistics_tier || 'M';
+                    // ✅ Resaltar plantas >80cm sin tier_manual
+                    const necesitaTier = (i.altura_cm || 0) > 80 && !i.tier_manual;
                     const itemJSON = encodeURIComponent(JSON.stringify({
                         inventario_id: i.inventario_id,
                         nombre_comun: i.nombre_comun,
@@ -345,7 +379,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         logistics_tier: tier,
                     }));
                     return `
-                        <div class="flex items-center gap-4 p-4 bg-white dark:bg-slate-900 rounded-lg border border-primary/10 shadow-sm">
+                        <div class="flex items-center gap-4 p-4 bg-white dark:bg-slate-900 rounded-lg border ${necesitaTier ? 'border-amber-300 dark:border-amber-700' : 'border-primary/10'} shadow-sm">
                             <div class="w-14 h-14 rounded-lg bg-primary/10 bg-cover bg-center flex-shrink-0"
                                  style="background-image: url('${i.foto_ia_url || ''}');"></div>
                             <div class="flex-1 min-w-0">
@@ -353,7 +387,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                                 <div class="flex items-center gap-2 mt-1 flex-wrap">
                                     <span class="text-xs text-slate-500">Stock: ${i.stock || 0} ${i.unidad_medida || ''}</span>
                                     <span class="text-[10px] px-2 py-0.5 rounded-full font-semibold uppercase tracking-wider ${estadoCls}">${estado}</span>
-                                    <span class="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-bold">${tierLabel[tier] || tier}</span>
+                                    <span class="text-[10px] px-1.5 py-0.5 rounded-full ${necesitaTier ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-primary/10 text-primary'} font-bold">${necesitaTier ? '⚠️ Sin tier' : tierLabel[tier] || tier}</span>
                                 </div>
                             </div>
                             <div class="flex flex-col items-end gap-1.5 shrink-0">
@@ -377,7 +411,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const modalStock  = document.querySelector('[data-vo="modal-stock"]');
         const modalPrecio = document.querySelector('[data-vo="modal-precio"]');
         const modalEstado = document.querySelector('[data-vo="modal-estado"]');
-        const modalTier   = document.querySelector('[data-vo="modal-tier"]');   // ← NUEVO
+        const modalTier   = document.querySelector('[data-vo="modal-tier"]');
         const btnGuardar  = document.querySelector('[data-vo="modal-guardar"]');
         const btnEliminar = document.querySelector('[data-vo="modal-eliminar"]');
         const btnCerrar   = document.querySelector('[data-vo="modal-cerrar"]');
@@ -392,7 +426,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (modalStock)  modalStock.value  = item.stock || 0;
             if (modalPrecio) modalPrecio.value = item.precio_mayorista || 0;
             if (modalEstado) modalEstado.value = item.estado_planta || 'disponible';
-            if (modalTier)   modalTier.value   = item.tier_manual || '';  // ← NUEVO
+            if (modalTier)   modalTier.value   = item.tier_manual || '';
             modal.classList.remove('hidden');
             modal.classList.add('flex');
             document.body.style.overflow = 'hidden';
@@ -427,7 +461,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const stock  = parseInt(modalStock.value);
                 const precio = parseFloat(modalPrecio.value);
                 const estado = modalEstado.value;
-                const tier   = modalTier ? (modalTier.value || null) : null;  // ← NUEVO
+                const tier   = modalTier ? (modalTier.value || null) : null;
 
                 if (isNaN(stock) || stock < 0)  { VO.showToast('Stock inválido (mínimo 0)', 'error'); return; }
                 if (isNaN(precio) || precio < 0) { VO.showToast('Precio inválido (mínimo 0)', 'error'); return; }
@@ -443,7 +477,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                             stock,
                             precio_mayorista: precio,
                             estado_planta: estado,
-                            tier_manual: tier,   // ← NUEVO
+                            tier_manual: tier,
                         }),
                     });
                     if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.detail || 'Error al guardar'); }
