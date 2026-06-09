@@ -22,7 +22,6 @@ tailwind.config = {
 </head>
 <body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 pb-32">
 
-<!-- Header -->
 <header class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-primary/10">
     <div class="max-w-lg mx-auto px-4 h-16 flex items-center gap-3">
         <a href="/comprador" class="flex items-center justify-center w-9 h-9 rounded-full hover:bg-primary/10 transition-colors text-primary">
@@ -38,28 +37,23 @@ tailwind.config = {
 
 <main class="max-w-lg mx-auto px-4 py-6 space-y-5">
 
-    <!-- LOADING -->
     <div id="state-loading" class="space-y-4">
         <div class="animate-pulse bg-white dark:bg-slate-800 rounded-xl p-5 space-y-3">
             <div class="h-5 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
-            <div class="h-16 bg-slate-100 dark:bg-slate-700 rounded-lg"></div>
             <div class="h-16 bg-slate-100 dark:bg-slate-700 rounded-lg"></div>
         </div>
         <div class="animate-pulse bg-white dark:bg-slate-800 rounded-xl p-5 h-32"></div>
     </div>
 
-    <!-- ERROR -->
     <div id="state-error" class="hidden text-center py-16">
         <span class="material-symbols-outlined text-5xl text-red-300 mb-3">error_outline</span>
         <p class="font-bold text-lg text-slate-700 dark:text-slate-200">No se pudo cargar el pedido</p>
         <p id="error-msg" class="text-sm text-slate-500 mt-1 mb-4"></p>
         <a href="/comprador" class="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-full font-bold text-sm">
-            <span class="material-symbols-outlined text-base">arrow_back</span>
-            Volver a mis proyectos
+            <span class="material-symbols-outlined text-base">arrow_back</span>Volver
         </a>
     </div>
 
-    <!-- CONTENIDO -->
     <div id="state-content" class="hidden space-y-5">
 
         <!-- Badge aprobado -->
@@ -81,22 +75,27 @@ tailwind.config = {
                 <p id="nombre-proyecto" class="text-xs text-slate-500 mt-0.5"></p>
             </div>
             <div id="lista-items" class="divide-y divide-slate-100 dark:divide-slate-700"></div>
-            <!-- Totales -->
             <div class="px-5 py-4 bg-slate-50 dark:bg-slate-900/50 space-y-2">
                 <div class="flex justify-between text-sm text-slate-500">
                     <span>Subtotal plantas</span>
                     <span id="subtotal-plantas">—</span>
                 </div>
-                <div id="flete-row" class="hidden flex justify-between text-sm text-slate-500">
+                <!-- Flete — aparece al seleccionar ciudad -->
+                <div id="flete-row" class="hidden justify-between text-sm text-slate-500">
                     <span class="flex items-center gap-1">
-                        Flete
+                        Flete estimado
                         <span id="flete-tier-badge" class="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold"></span>
                     </span>
-                    <span id="flete-valor">—</span>
+                    <span id="flete-valor" class="font-semibold text-slate-700">—</span>
                 </div>
-                <div id="flete-loading" class="hidden text-xs text-slate-400 flex items-center gap-1">
-                    <span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>
-                    Calculando flete...
+                <div id="flete-loading" class="hidden justify-between text-xs text-slate-400 items-center gap-1">
+                    <span class="flex items-center gap-1">
+                        <span class="material-symbols-outlined text-sm animate-spin">progress_activity</span>
+                        Calculando flete...
+                    </span>
+                </div>
+                <div id="flete-error" class="hidden text-xs text-amber-600">
+                    ⚠️ No se pudo calcular el flete. Seleccioná la ciudad para reintentarlo.
                 </div>
                 <div class="flex justify-between items-center pt-2 border-t border-slate-200 dark:border-slate-700">
                     <span class="font-bold">Total</span>
@@ -105,15 +104,14 @@ tailwind.config = {
             </div>
         </div>
 
-        <!-- DATOS DE ENTREGA -->
+        <!-- Datos de entrega -->
         <div class="bg-white dark:bg-slate-800 rounded-xl border border-primary/10 shadow-sm p-5 space-y-4">
             <h2 class="font-bold text-base flex items-center gap-2">
                 <span class="material-symbols-outlined text-primary text-lg">local_shipping</span>
                 Datos de entrega en obra
             </h2>
-            <p class="text-xs text-slate-500 -mt-2">Campos con * son obligatorios. El flete se calcula automáticamente.</p>
+            <p class="text-xs text-slate-500 -mt-2">Campos con * son obligatorios. El flete se calcula automáticamente al seleccionar la ciudad.</p>
 
-            <!-- Ciudad -->
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Ciudad de entrega *</label>
                 <select id="ciudad-entrega"
@@ -129,7 +127,6 @@ tailwind.config = {
                 </select>
             </div>
 
-            <!-- Dirección exacta -->
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Dirección exacta de entrega *</label>
                 <input type="text" id="direccion-entrega"
@@ -137,7 +134,6 @@ tailwind.config = {
                     class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
             </div>
 
-            <!-- Contacto -->
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Encargado de recibir *</label>
@@ -151,7 +147,6 @@ tailwind.config = {
                 </div>
             </div>
 
-            <!-- Fecha y ventana -->
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Fecha de entrega deseada</label>
                 <input type="date" id="fecha-entrega"
@@ -170,7 +165,6 @@ tailwind.config = {
                 </div>
             </div>
 
-            <!-- Notas -->
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Notas para el vivero</label>
                 <textarea id="notas-entrega" rows="2" maxlength="500"
@@ -178,7 +172,6 @@ tailwind.config = {
                     class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm resize-none"></textarea>
             </div>
 
-            <!-- Info flete incluido -->
             <div class="bg-primary/5 border border-primary/10 rounded-xl px-4 py-3">
                 <p class="text-xs text-primary font-semibold flex items-start gap-2">
                     <span class="material-symbols-outlined text-sm mt-0.5">info</span>
@@ -187,18 +180,7 @@ tailwind.config = {
             </div>
         </div>
 
-        <!-- Sandbox info -->
-        <div class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3">
-            <div class="flex items-start gap-2">
-                <span class="material-symbols-outlined text-amber-600 text-base mt-0.5">info</span>
-                <div>
-                    <p class="text-xs font-bold text-amber-800 dark:text-amber-200">Modo sandbox (pruebas)</p>
-                    <p class="text-xs text-amber-700 dark:text-amber-300 mt-0.5">Visa: <span class="font-mono font-bold">4575623182290326</span> · CVV: <span class="font-mono">123</span> · Vence: 12/27</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Error -->
+        <!-- Error checkout -->
         <div id="checkout-error" class="hidden bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl px-4 py-3">
             <p class="text-sm text-red-700 dark:text-red-300 font-semibold" id="checkout-error-msg"></p>
         </div>
@@ -246,7 +228,6 @@ tailwind.config = {
         document.getElementById('error-msg').textContent = msg;
         setState('state-error');
     }
-
     function actualizarTotales() {
         const montoPlantas = Math.round(totalViverista * (1 + MARKUP));
         const totalFinal   = montoPlantas + fleteCop;
@@ -254,7 +235,6 @@ tailwind.config = {
         document.getElementById('total').textContent = fmt(totalFinal);
     }
 
-    // Cargar cotización
     let cotizacion;
     try {
         const data = await VO.api(`/api/marketplace/cotizacion/${cotizacionId}`);
@@ -293,18 +273,25 @@ tailwind.config = {
     setState('state-content');
     document.getElementById('sticky-footer').classList.remove('hidden');
 
-    // ── Calcular flete al seleccionar ciudad ─────────────────
+    // ── Calcular flete al seleccionar ciudad ──────────────────
     document.getElementById('ciudad-entrega').addEventListener('change', async (e) => {
         const ciudad = e.target.value;
+        const fleRow  = document.getElementById('flete-row');
+        const fleLoad = document.getElementById('flete-loading');
+        const fleErr  = document.getElementById('flete-error');
+
         if (!ciudad) {
             fleteCop = 0;
-            document.getElementById('flete-row').classList.add('hidden');
+            fleRow.classList.add('hidden');
+            fleRow.style.display = '';
+            fleErr.classList.add('hidden');
             actualizarTotales();
             return;
         }
 
-        document.getElementById('flete-loading').classList.remove('hidden');
-        document.getElementById('flete-row').classList.add('hidden');
+        fleLoad.style.display = 'flex';
+        fleRow.classList.add('hidden');
+        fleErr.classList.add('hidden');
 
         try {
             const res = await VO.api(
@@ -312,15 +299,17 @@ tailwind.config = {
             );
             fleteCop = res.total_flete || 0;
 
-            // Mostrar flete desglosado
             const tierLabels = { S: 'Tier S · Pequeño', M: 'Tier M · Mediano', L: 'Tier L · Grande', XL: 'Tier XL · Árbol' };
-            document.getElementById('flete-tier-badge').textContent = tierLabels[res.tier] || res.tier;
+            document.getElementById('flete-tier-badge').textContent = tierLabels[res.tier] || res.tier || '';
             document.getElementById('flete-valor').textContent = fmt(fleteCop);
-            document.getElementById('flete-row').classList.remove('hidden');
-        } catch {
+            fleRow.style.display = 'flex';
+            fleRow.classList.remove('hidden');
+        } catch (err) {
+            console.error('Error calculando flete:', err);
             fleteCop = 0;
+            fleErr.classList.remove('hidden');
         } finally {
-            document.getElementById('flete-loading').classList.add('hidden');
+            fleLoad.style.display = 'none';
             actualizarTotales();
         }
     });
@@ -335,12 +324,11 @@ tailwind.config = {
         const btn       = document.getElementById('btn-pagar');
         const btnText   = document.getElementById('btn-pagar-text');
 
-        // Validaciones obligatorias
         const errores = [
-            [!ciudad,    'Seleccioná la ciudad de entrega.',             'ciudad-entrega'],
+            [!ciudad,    'Seleccioná la ciudad de entrega.',              'ciudad-entrega'],
             [!direccion, 'La dirección exacta de entrega es obligatoria.','direccion-entrega'],
-            [!nombre,    'El nombre del encargado es obligatorio.',       'contacto-nombre'],
-            [!telefono,  'El celular del encargado es obligatorio.',      'contacto-telefono'],
+            [!nombre,    'El nombre del encargado es obligatorio.',        'contacto-nombre'],
+            [!telefono,  'El celular del encargado es obligatorio.',       'contacto-telefono'],
         ];
         for (const [cond, msg, id] of errores) {
             if (cond) {
@@ -355,9 +343,9 @@ tailwind.config = {
         btn.disabled = true;
         btnText.textContent = 'Preparando pago...';
 
-        const fecha     = document.getElementById('fecha-entrega').value;
-        const horaIni   = document.getElementById('ventana-inicio').value;
-        const horaFin   = document.getElementById('ventana-fin').value;
+        const fecha   = document.getElementById('fecha-entrega').value;
+        const horaIni = document.getElementById('ventana-inicio').value;
+        const horaFin = document.getElementById('ventana-fin').value;
 
         try {
             const payload = await VO.api(`/api/pedidos/${cotizacionId}/checkout`, {
