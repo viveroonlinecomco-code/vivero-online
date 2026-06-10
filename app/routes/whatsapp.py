@@ -6,8 +6,9 @@ Cuando alguien escribe al número WhatsApp del bot:
 3. Identificamos al usuario por whatsapp_numero (tabla perfiles)
 4. Imagen → YOLO + Gemini Vision → identificación de planta
 5. Texto → LangGraph router → 8 agentes IA → respuesta
-6. Persistimos sesión en sesiones_agente
-7. Respondemos 200 OK rápido y enviamos el mensaje en background
+6. Copilot Layer → detecta acciones → propone CTA o ejecuta si confirmado
+7. Persistimos sesión en sesiones_agente
+8. Respondemos 200 OK rápido y enviamos el mensaje en background
    (Meta Cloud API NO usa respuesta inline — hay que hacer POST aparte)
 
 Configuración en Meta Business Manager:
@@ -26,6 +27,8 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 
 from app.agents import route_message, AgentContext
 from app.agents.plant_identifier import PlantIdentifierAgent
+from app.agents.copilot import get_copilot, get_inventario_snapshot
+from app.agents.executor import ejecutar_accion
 from app.services.supabase import admin
 from app.services.whatsapp_meta import (
     download_media_bytes,
@@ -36,8 +39,14 @@ from app.services.whatsapp_meta import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
 
+# ─── Palabras de confirmación ──────────────────────────────────────────────────
+CONFIRMACIONES = {
+    "sí", "si", "sí!", "si!", "dale", "ok", "okey", "listo",
+    "confirmo", "confirmado", "apruebo", "aprueba", "actualiza",
+    "actualizar", "guardar", "guarda", "agregar", "agrega", "yes",
+}
 
-# ─── Helpers de sesión (sin cambios vs versión Twilio) ────────────────────────
+# ─── Helpers de sesión ────────────────────────────────────────────────────────
 
 def _find_user_by_whatsapp(whatsapp: str) -> dict | None:
     db = admin()
@@ -61,7 +70,7 @@ def _get_or_create_session(
     db = admin()
     existing = (
         db.table("sesiones_agente")
-        .select("sesion_id, contexto_json, mensajes_count")
+        .select("sesion_id, contexto_json, mensajes_count, accion_pendiente")
         .eq("whatsapp_numero", whatsapp)
         .eq("estado", "activa")
         .limit(1)
@@ -80,11 +89,13 @@ def _get_or_create_session(
         "contexto_json": {"historial": []},
         "mensajes_count": 0,
         "fotos_procesadas": 0,
+        "accion_pendiente": None,
     }).execute()
     return new.data[0] if new.data else {
         "sesion_id": None,
         "contexto_json": {"historial": []},
         "mensajes_count": 0,
+        "accion_pendiente": None,
     }
 
 
@@ -119,6 +130,18 @@ def _save_message(
     db.table("sesiones_agente").update(update).eq("sesion_id", sesion_id).execute()
 
 
+def _set_accion_pendiente(sesion_id: int, accion: dict | None):
+    """Guarda o limpia la acción pendiente de confirmación."""
+    if not sesion_id:
+        return
+    try:
+        admin().table("sesiones_agente").update({
+            "accion_pendiente": accion,
+        }).eq("sesion_id", sesion_id).execute()
+    except Exception as e:
+        logger.warning(f"No se pudo guardar accion_pendiente: {e}")
+
+
 def _close_session(sesion_id: int):
     if not sesion_id:
         return
@@ -126,6 +149,7 @@ def _close_session(sesion_id: int):
         admin().table("sesiones_agente").update({
             "estado": "cerrada",
             "fecha_cierre": "now()",
+            "accion_pendiente": None,
         }).eq("sesion_id", sesion_id).execute()
     except Exception:
         pass
@@ -135,18 +159,20 @@ def _help_text(rol: str | None) -> str:
     if rol == "viverista":
         return (
             "🌿 *ViveroOnline · Comandos*\n\n"
-            "📷 Enviá una *foto* → identifico la planta + precio sugerido\n"
+            "📷 Enviá una *foto* → identifico la planta + la agrego a tu catálogo\n"
             "💬 Pregunta libre → agente IA responde\n\n"
             "Ejemplos:\n"
-            "• ¿Qué plantas vender en mayo?\n"
+            "• Subir precio del Helecho a $15.000\n"
             "• Bajar 10 unidades del Yarumo\n"
-            "• Subir precio del Helecho a $15.000\n\n"
+            "• Marcar el Ficus como agotado\n"
+            "• ¿Qué plantas vender en mayo?\n\n"
+            "Respondé *SÍ* para confirmar cualquier cambio propuesto.\n"
             "Escribí *salir* para cerrar la sesión."
         )
     if rol == "comprador":
         return (
             "🌿 *ViveroOnline · Comandos*\n\n"
-            "💬 Consultá sobre plantas y paisajismo\n"
+            "💬 Describí tu proyecto → te recomiendo plantas y armo la cotización\n"
             "📷 Enviá foto de inspiración → identifico la planta\n\n"
             "Escribí *salir* para cerrar."
         )
@@ -233,7 +259,7 @@ async def _handle_message(msg: dict):
         )
         return
 
-    # 2. Sesión
+    # 2. Sesión (ahora incluye accion_pendiente)
     session = _get_or_create_session(
         whatsapp,
         user.get("id"),
@@ -242,45 +268,64 @@ async def _handle_message(msg: dict):
         cliente_id=user.get("cliente_id"),
     )
     sesion_id = session.get("sesion_id")
+    rol = user.get("rol")
+    vivero_id = user.get("vivero_id")
 
     # 3. Imagen → identificar planta
     if msg_type == "image":
         image_id = (msg.get("image") or {}).get("id")
-        await _handle_image(image_id, user, sesion_id, whatsapp)
+        await _handle_image(image_id, user, sesion_id, whatsapp, session)
         return
 
-    # 4. Texto → router de agentes
+    # 4. Texto → flujo principal
     if msg_type == "text":
         body = (msg.get("text") or {}).get("body", "").strip()
         if not body:
             return
 
-        lower = body.lower()
+        lower = body.lower().strip()
+
+        # Comandos especiales — sin cambios
         if lower in ("ayuda", "help", "menu", "menú"):
-            await send_text_message(whatsapp, _help_text(user.get("rol")))
+            await send_text_message(whatsapp, _help_text(rol))
             return
         if lower in ("salir", "exit", "fin"):
             _close_session(sesion_id)
             await send_text_message(whatsapp, "Sesión cerrada. ¡Hasta pronto! 🌿")
             return
 
+        # ── NUEVO: Verificar si hay acción pendiente de confirmación ──────────
+        accion_pendiente = session.get("accion_pendiente")
+        if accion_pendiente and lower in CONFIRMACIONES and rol in ("viverista", "admin"):
+            await _ejecutar_accion_confirmada(
+                accion_pendiente, vivero_id, user.get("id"),
+                sesion_id, whatsapp
+            )
+            return
+
+        # Si hay acción pendiente pero el usuario no confirma → limpiarla y seguir
+        if accion_pendiente and rol in ("viverista", "admin"):
+            _set_accion_pendiente(sesion_id, None)
+
+        # ── Flujo normal: router LangGraph → copilot ──────────────────────────
         _save_message(sesion_id, "user", body)
         history = session.get("contexto_json", {}).get("historial", [])
         ctx = AgentContext(
             user_id=user.get("id"),
             whatsapp=whatsapp,
-            rol=user.get("rol"),
-            vivero_id=user.get("vivero_id"),
+            rol=rol,
+            vivero_id=vivero_id,
             cliente_id=user.get("cliente_id"),
             historial=history[-6:],
         )
 
+        # Agentes LangGraph (sin cambios)
         try:
             result = route_message(body, ctx)
-            respuesta = result.get("respuesta", "Hubo un problema. Intentá de nuevo.")
+            respuesta_agente = result.get("respuesta", "Hubo un problema. Intentá de nuevo.")
             agente = result.get("agente", "ai_ceo")
         except Exception as e:
-            respuesta = "Disculpá, tuve un problema. Intentá de nuevo en un momento."
+            respuesta_agente = "Disculpá, tuve un problema. Intentá de nuevo en un momento."
             agente = "error"
             try:
                 admin().table("log_ia").insert({
@@ -291,10 +336,45 @@ async def _handle_message(msg: dict):
             except Exception:
                 pass
 
-        _save_message(sesion_id, "model", respuesta, agente=agente)
-        if len(respuesta) > 4000:
-            respuesta = respuesta[:3997] + "..."
-        await send_text_message(whatsapp, respuesta)
+        # ── NUEVO: Copilot Layer (solo para viveristas) ───────────────────────
+        respuesta_final = respuesta_agente
+        if rol in ("viverista", "admin") and vivero_id:
+            try:
+                inventario = get_inventario_snapshot(vivero_id)
+                copilot = get_copilot()
+                copilot_result = copilot.procesar(
+                    mensaje_usuario=body,
+                    respuesta_agente=respuesta_agente,
+                    ctx=ctx,
+                    inventario_snapshot=inventario,
+                )
+                respuesta_final = copilot_result.get("respuesta", respuesta_agente)
+                acciones = copilot_result.get("acciones", [])
+
+                # Si hay acciones propuestas → guardar la primera como pendiente
+                if acciones:
+                    primera_accion = acciones[0]
+                    if primera_accion.get("confirmed"):
+                        # El usuario ya confirmó en el mismo mensaje → ejecutar
+                        await _ejecutar_accion_confirmada(
+                            primera_accion, vivero_id, user.get("id"),
+                            sesion_id, whatsapp
+                        )
+                        return
+                    elif not primera_accion.get("needs_clarification"):
+                        # Acción propuesta → guardar para confirmar
+                        _set_accion_pendiente(sesion_id, primera_accion)
+                    # Si needs_clarification → no guardar, el bot ya preguntó
+
+            except Exception as e:
+                logger.warning(f"Copilot Layer error (usando respuesta original): {e}")
+                respuesta_final = respuesta_agente
+
+        # Guardar y enviar respuesta
+        _save_message(sesion_id, "model", respuesta_final, agente=agente)
+        if len(respuesta_final) > 4000:
+            respuesta_final = respuesta_final[:3997] + "..."
+        await send_text_message(whatsapp, respuesta_final)
         return
 
     # 5. Tipo no soportado
@@ -305,10 +385,32 @@ async def _handle_message(msg: dict):
     )
 
 
+# ─── Ejecutar acción confirmada ────────────────────────────────────────────────
+
+async def _ejecutar_accion_confirmada(
+    accion: dict,
+    vivero_id: int,
+    user_id: str,
+    sesion_id: int,
+    whatsapp: str,
+):
+    """Ejecuta una acción ya confirmada por el viverista y limpia la sesión."""
+    _set_accion_pendiente(sesion_id, None)  # Limpiar acción pendiente
+
+    resultado = ejecutar_accion(accion, vivero_id, user_id)
+
+    _save_message(sesion_id, "model", resultado.mensaje, agente="executor")
+    await send_text_message(whatsapp, resultado.mensaje)
+
+
 # ─── Pipeline imagen → identificar planta ─────────────────────────────────────
 
 async def _handle_image(
-    image_id: str | None, user: dict, sesion_id: int, whatsapp: str
+    image_id: str | None,
+    user: dict,
+    sesion_id: int,
+    whatsapp: str,
+    session: dict,
 ):
     if not image_id:
         await send_text_message(whatsapp, "No pude acceder a la imagen. Intentá enviarla de nuevo.")
@@ -326,7 +428,7 @@ async def _handle_image(
         yolo = get_yolo()
         image_bytes, _ = await yolo.crop_plant(image_bytes)
     except Exception:
-        pass  # Si YOLO no está disponible, seguimos con la imagen original
+        pass
 
     try:
         agent = PlantIdentifierAgent()
@@ -336,6 +438,9 @@ async def _handle_image(
         logger.error(f"Error identificando planta: {e}")
         return
 
+    rol = user.get("rol")
+    vivero_id = user.get("vivero_id")
+
     if analisis.confianza < 0.3 or analisis.nombre_comun == "No identificada":
         msg = (
             "🤔 No pude identificar esta planta con confianza.\n\n"
@@ -344,26 +449,52 @@ async def _handle_image(
             "• Centrando la planta\n"
             "• Sin manos ni objetos delante"
         )
+        _set_accion_pendiente(sesion_id, None)
     else:
-        precio_str = (
-            f"${analisis.precio_estimado_cop:,} COP".replace(",", ".")
-            if analisis.precio_estimado_cop
-            else "Consultar"
-        )
-        msg = (
-            f"🌿 *{analisis.nombre_comun}*\n"
-            f"_{analisis.nombre_cientifico or ''}_\n\n"
-            f"💰 Precio sugerido: {precio_str}\n"
-            f"☀️ Luz: {analisis.luz or 'N/D'}\n"
-            f"💧 Riego: {analisis.riego or 'N/D'}\n"
-            f"📏 Altura aprox: {analisis.altura_cm_estimada or 'N/D'} cm\n\n"
-            f"✅ Confianza: {int(analisis.confianza * 100)}%\n\n"
-        )
-        if user.get("rol") == "viverista":
-            msg += (
-                "¿Querés guardarla en tu inventario?\n"
-                "Respondé *sí* o entrá a la app:\n"
-                "https://app.viveroonline.com.co/viverista"
+        precio = analisis.precio_estimado_cop or 0
+        precio_str = f"${precio:,} COP" if precio else "a definir"
+        precio_comprador = round(precio * 1.18) if precio else 0
+        altura = analisis.altura_cm_estimada or 30
+
+        if rol in ("viverista", "admin") and vivero_id:
+            # ── NUEVO: Para viveristas → proponer agregar al inventario ───────
+            msg = (
+                f"🌿 *{analisis.nombre_comun}*\n"
+                f"_{analisis.nombre_cientifico or ''}_\n\n"
+                f"📏 Altura: {altura} cm\n"
+                f"💰 Tu precio sugerido: {precio_str}\n"
+                f"🛒 Comprador pagaría: ${precio_comprador:,} COP\n"
+                f"✅ Confianza: {int(analisis.confianza * 100)}%\n\n"
+                f"¿La agrego a tu catálogo con {precio_str}?\n"
+                f"Respondé *SÍ* para confirmar."
+            )
+            # Guardar acción pendiente con todos los datos para ejecutar
+            accion_pendiente = {
+                "type": "agregar_producto",
+                "confirmed": False,
+                "params": {
+                    "nombre_comun": analisis.nombre_comun,
+                    "nombre_cientifico": analisis.nombre_cientifico,
+                    "precio_mayorista": precio,
+                    "stock": 1,
+                    "altura_cm": altura,
+                    "foto_url": None,  # No tenemos URL pública aún desde WhatsApp
+                    "confianza_yolo": analisis.confianza,
+                }
+            }
+            _set_accion_pendiente(sesion_id, accion_pendiente)
+        else:
+            # ── Comprador → solo informar ──────────────────────────────────────
+            msg = (
+                f"🌿 *{analisis.nombre_comun}*\n"
+                f"_{analisis.nombre_cientifico or ''}_\n\n"
+                f"💰 Precio referencia: {precio_str}\n"
+                f"☀️ Luz: {analisis.luz or 'N/D'}\n"
+                f"💧 Riego: {analisis.riego or 'N/D'}\n"
+                f"📏 Altura aprox: {altura} cm\n\n"
+                f"✅ Confianza: {int(analisis.confianza * 100)}%\n\n"
+                f"¿Querés cotizar esta planta para tu proyecto?\n"
+                f"Describime cuántas necesitás y dónde."
             )
 
     _save_message(sesion_id, "user", "[Imagen enviada]", is_photo=True)
