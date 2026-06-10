@@ -449,9 +449,32 @@ async def _handle_image(
     try:
         agent = PlantIdentifierAgent()
         analisis = agent.identify_from_bytes(image_bytes, "image/jpeg")
+    except RuntimeError as e:
+        error_msg = str(e)
+        logger.error(f"Error identificando planta: {error_msg}")
+        if "cuota_agotada" in error_msg:
+            await send_text_message(
+                whatsapp,
+                "⏳ El servicio de IA está ocupado en este momento.\n"
+                "Intentá de nuevo en unos minutos. 🌿"
+            )
+        else:
+            await send_text_message(
+                whatsapp,
+                "🤔 No pude procesar esta imagen.\n\n"
+                "Intentá:\n"
+                "• Tomar la foto con más luz\n"
+                "• Que la planta ocupe la mayor parte de la foto\n"
+                "• Enviar la foto directamente (no como documento)"
+            )
+        return
     except Exception as e:
-        await send_text_message(whatsapp, "Error procesando la imagen. Intentá de nuevo.")
-        logger.error(f"Error identificando planta: {e}")
+        logger.error(f"Error inesperado identificando planta: {e}")
+        await send_text_message(
+            whatsapp,
+            "🤔 No pude procesar esta imagen.\n\n"
+            "Intentá enviando la foto directamente desde la cámara."
+        )
         return
 
     rol = user.get("rol")
