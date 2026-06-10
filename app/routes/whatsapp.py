@@ -4,12 +4,12 @@ Cuando alguien escribe al número WhatsApp del bot:
 1. Meta hace POST al webhook con JSON estructurado
 2. Validamos firma HMAC-SHA256 + App Secret
 3. Identificamos al usuario por whatsapp_numero (tabla perfiles)
+   → Si hay duplicados (admin + viverista mismo número), prioriza viverista
 4. Imagen → YOLO + Gemini Vision → identificación de planta
 5. Texto → LangGraph router → 8 agentes IA → respuesta
 6. Copilot Layer → detecta acciones → propone CTA o ejecuta si confirmado
 7. Persistimos sesión en sesiones_agente
 8. Respondemos 200 OK rápido y enviamos el mensaje en background
-   (Meta Cloud API NO usa respuesta inline — hay que hacer POST aparte)
 
 Configuración en Meta Business Manager:
   WhatsApp > Configuración > Webhook
@@ -49,15 +49,39 @@ CONFIRMACIONES = {
 # ─── Helpers de sesión ────────────────────────────────────────────────────────
 
 def _find_user_by_whatsapp(whatsapp: str) -> dict | None:
+    """Busca el perfil del usuario por número WhatsApp.
+
+    Regla de prioridad cuando hay múltiples perfiles con el mismo número
+    (caso admin que también es viverista):
+    1. Viverista con vivero_id → prioridad máxima
+    2. Comprador con cliente_id
+    3. Admin sin vivero_id → último recurso
+    """
     db = admin()
     resp = (
         db.table("perfiles")
         .select("id, rol, vivero_id, cliente_id, whatsapp_numero, nombre_display")
         .eq("whatsapp_numero", whatsapp)
-        .limit(1)
         .execute()
     )
-    return resp.data[0] if resp.data else None
+    if not resp.data:
+        return None
+
+    perfiles = resp.data
+
+    # Si solo hay uno, retornarlo directamente
+    if len(perfiles) == 1:
+        return perfiles[0]
+
+    # Prioridad: viverista con vivero_id > comprador > admin sin vivero_id
+    for p in perfiles:
+        if p.get("rol") == "viverista" and p.get("vivero_id"):
+            return p
+    for p in perfiles:
+        if p.get("rol") == "comprador" and p.get("cliente_id"):
+            return p
+    # Fallback: primer perfil
+    return perfiles[0]
 
 
 def _get_or_create_session(
@@ -234,7 +258,7 @@ async def _process_payload(payload: dict):
                     continue
                 value = change.get("value", {})
                 if "statuses" in value and "messages" not in value:
-                    continue  # Ignorar delivered/read
+                    continue
                 for msg in value.get("messages", []) or []:
                     await _handle_message(msg)
     except Exception as e:
@@ -249,7 +273,7 @@ async def _handle_message(msg: dict):
     if not whatsapp:
         return
 
-    # 1. Buscar usuario
+    # 1. Buscar usuario — prioriza viverista con vivero_id
     user = _find_user_by_whatsapp(whatsapp)
     if not user:
         await send_text_message(
@@ -259,7 +283,7 @@ async def _handle_message(msg: dict):
         )
         return
 
-    # 2. Sesión (ahora incluye accion_pendiente)
+    # 2. Sesión
     session = _get_or_create_session(
         whatsapp,
         user.get("id"),
@@ -285,7 +309,7 @@ async def _handle_message(msg: dict):
 
         lower = body.lower().strip()
 
-        # Comandos especiales — sin cambios
+        # Comandos especiales
         if lower in ("ayuda", "help", "menu", "menú"):
             await send_text_message(whatsapp, _help_text(rol))
             return
@@ -294,7 +318,7 @@ async def _handle_message(msg: dict):
             await send_text_message(whatsapp, "Sesión cerrada. ¡Hasta pronto! 🌿")
             return
 
-        # ── NUEVO: Verificar si hay acción pendiente de confirmación ──────────
+        # ── Verificar si hay acción pendiente de confirmación ─────────────────
         accion_pendiente = session.get("accion_pendiente")
         if accion_pendiente and lower in CONFIRMACIONES and rol in ("viverista", "admin"):
             await _ejecutar_accion_confirmada(
@@ -303,7 +327,7 @@ async def _handle_message(msg: dict):
             )
             return
 
-        # Si hay acción pendiente pero el usuario no confirma → limpiarla y seguir
+        # Si hay acción pendiente pero el usuario no confirma → limpiarla
         if accion_pendiente and rol in ("viverista", "admin"):
             _set_accion_pendiente(sesion_id, None)
 
@@ -336,7 +360,7 @@ async def _handle_message(msg: dict):
             except Exception:
                 pass
 
-        # ── NUEVO: Copilot Layer (solo para viveristas) ───────────────────────
+        # ── Copilot Layer (solo para viveristas) ──────────────────────────────
         respuesta_final = respuesta_agente
         if rol in ("viverista", "admin") and vivero_id:
             try:
@@ -352,19 +376,11 @@ async def _handle_message(msg: dict):
                 acciones = copilot_result.get("acciones", [])
 
                 # Si hay acciones propuestas → guardar la primera como pendiente
+                # confirmed es siempre false aquí (forzado en copilot.py)
                 if acciones:
                     primera_accion = acciones[0]
-                    if primera_accion.get("confirmed"):
-                        # El usuario ya confirmó en el mismo mensaje → ejecutar
-                        await _ejecutar_accion_confirmada(
-                            primera_accion, vivero_id, user.get("id"),
-                            sesion_id, whatsapp
-                        )
-                        return
-                    elif not primera_accion.get("needs_clarification"):
-                        # Acción propuesta → guardar para confirmar
+                    if not primera_accion.get("needs_clarification"):
                         _set_accion_pendiente(sesion_id, primera_accion)
-                    # Si needs_clarification → no guardar, el bot ya preguntó
 
             except Exception as e:
                 logger.warning(f"Copilot Layer error (usando respuesta original): {e}")
@@ -395,7 +411,7 @@ async def _ejecutar_accion_confirmada(
     whatsapp: str,
 ):
     """Ejecuta una acción ya confirmada por el viverista y limpia la sesión."""
-    _set_accion_pendiente(sesion_id, None)  # Limpiar acción pendiente
+    _set_accion_pendiente(sesion_id, None)
 
     resultado = ejecutar_accion(accion, vivero_id, user_id)
 
@@ -428,7 +444,7 @@ async def _handle_image(
         yolo = get_yolo()
         image_bytes, _ = await yolo.crop_plant(image_bytes)
     except Exception:
-        pass
+        pass  # Si YOLO falla, seguimos con imagen original
 
     try:
         agent = PlantIdentifierAgent()
@@ -457,7 +473,7 @@ async def _handle_image(
         altura = analisis.altura_cm_estimada or 30
 
         if rol in ("viverista", "admin") and vivero_id:
-            # ── NUEVO: Para viveristas → proponer agregar al inventario ───────
+            # Para viveristas → proponer agregar al inventario
             msg = (
                 f"🌿 *{analisis.nombre_comun}*\n"
                 f"_{analisis.nombre_cientifico or ''}_\n\n"
@@ -465,10 +481,9 @@ async def _handle_image(
                 f"💰 Tu precio sugerido: {precio_str}\n"
                 f"🛒 Comprador pagaría: ${precio_comprador:,} COP\n"
                 f"✅ Confianza: {int(analisis.confianza * 100)}%\n\n"
-                f"¿La agrego a tu catálogo con {precio_str}?\n"
+                f"¿La agrego a tu catálogo?\n"
                 f"Respondé *SÍ* para confirmar."
             )
-            # Guardar acción pendiente con todos los datos para ejecutar
             accion_pendiente = {
                 "type": "agregar_producto",
                 "confirmed": False,
@@ -478,13 +493,13 @@ async def _handle_image(
                     "precio_mayorista": precio,
                     "stock": 1,
                     "altura_cm": altura,
-                    "foto_url": None,  # No tenemos URL pública aún desde WhatsApp
+                    "foto_url": None,
                     "confianza_yolo": analisis.confianza,
                 }
             }
             _set_accion_pendiente(sesion_id, accion_pendiente)
         else:
-            # ── Comprador → solo informar ──────────────────────────────────────
+            # Comprador → solo informar
             msg = (
                 f"🌿 *{analisis.nombre_comun}*\n"
                 f"_{analisis.nombre_cientifico or ''}_\n\n"
