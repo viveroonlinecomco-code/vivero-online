@@ -6,6 +6,7 @@
 from __future__ import annotations
 import base64
 import json
+import logging
 from typing import Optional
 
 from google import genai
@@ -14,6 +15,7 @@ from google.genai import types
 from app.config import get_settings
 from app.schemas.catalog import PlantaIdentificada
 
+logger = logging.getLogger(__name__)
 
 IDENTIFY_PROMPT = """Eres un experto botánico especializado en plantas ornamentales de la Sabana de Bogotá, Colombia (2.600 msnm, clima frío templado).
 
@@ -46,22 +48,51 @@ class GeminiService:
     # ─────────────────── VISION ───────────────────
     def identify_plant(self, image_bytes: bytes, mime_type: str = "image/jpeg") -> PlantaIdentificada:
         """Identifica la planta usando Gemini Vision. Retorna PlantaIdentificada."""
-        response = self._client.models.generate_content(
-            model=self._model,
-            contents=[
-                types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-                IDENTIFY_PROMPT,
-            ],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                temperature=0.2,
-            ),
-        )
+        # Validar que los bytes no estén vacíos
+        if not image_bytes or len(image_bytes) < 100:
+            logger.warning("identify_plant: imagen vacía o muy pequeña")
+            return PlantaIdentificada(
+                nombre_comun="No identificada",
+                confianza=0.0,
+                advertencias="Imagen vacía o inválida",
+            )
+
+        try:
+            response = self._client.models.generate_content(
+                model=self._model,
+                contents=[
+                    types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+                    IDENTIFY_PROMPT,
+                ],
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                    temperature=0.2,
+                ),
+            )
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Gemini Vision error: {error_msg[:200]}")
+
+            # Cuota agotada
+            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+                raise RuntimeError("cuota_agotada")
+
+            # Imagen inválida para Gemini
+            if "400" in error_msg or "INVALID_ARGUMENT" in error_msg:
+                return PlantaIdentificada(
+                    nombre_comun="No identificada",
+                    confianza=0.0,
+                    advertencias="Formato de imagen no compatible",
+                )
+
+            # Cualquier otro error
+            raise RuntimeError(f"gemini_error:{error_msg[:100]}")
+
         try:
             data = json.loads(response.text)
             return PlantaIdentificada(**data)
         except (json.JSONDecodeError, ValueError) as e:
-            # Fallback: retorna baja confianza si el parseo falla
+            logger.warning(f"identify_plant parse error: {e}")
             return PlantaIdentificada(
                 nombre_comun="No identificada",
                 confianza=0.0,
