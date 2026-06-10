@@ -143,7 +143,6 @@
 <script>
 if (!VO.requireAuth()) throw new Error('auth');
 
-// ─── Constante de markup (debe coincidir con el backend) ───
 const MARKUP = 0.18;
 
 const TIPO_CLIENTE_LABEL = {
@@ -156,7 +155,8 @@ const BADGE_STYLES = {
     aceptada:   'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
     rechazada:  'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     vencida:    'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
-    convertida: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    convertida: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    pagada:     'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
 };
 const BADGE_LABELS = {
     borrador:   '✏️ Borrador',
@@ -164,14 +164,8 @@ const BADGE_LABELS = {
     aceptada:   '✅ Aprobado',
     rechazada:  '❌ Rechazado',
     vencida:    'Vencido',
-    convertida: '💳 Pago iniciado',
-};
-const ESTADO_DESCR = {
-    enviada:    'Esperando confirmación del vivero',
-    aceptada:   'El vivero confirmó disponibilidad',
-    rechazada:  'El vivero no pudo surtir este pedido',
-    vencida:    'Esta cotización venció sin acción',
-    convertida: 'Esta cotización se convirtió en orden de compra',
+    convertida: '⏳ Pago pendiente',
+    pagada:     '✅ Pagado',
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -210,12 +204,14 @@ async function cargarProyectos() {
 
         listEl.classList.remove('hidden');
         metaEl.classList.remove('hidden');
-        const numAprobados = proyectos.filter(p => p.estado === 'aceptada').length;
-        const numEnviados  = proyectos.filter(p => p.estado === 'enviada').length;
-        const numBorradores= proyectos.filter(p => p.estado === 'borrador').length;
+        const numAprobados  = proyectos.filter(p => p.estado === 'aceptada').length;
+        const numPendientes = proyectos.filter(p => p.estado === 'convertida').length;
+        const numEnviados   = proyectos.filter(p => p.estado === 'enviada').length;
+        const numBorradores = proyectos.filter(p => p.estado === 'borrador').length;
         let metaTexto = `${proyectos.length} proyecto${proyectos.length !== 1 ? 's' : ''}`;
-        if (numAprobados > 0) metaTexto += ` · ${numAprobados} listo${numAprobados !== 1 ? 's' : ''} para pagar`;
-        else if (numEnviados > 0) metaTexto += ` · ${numEnviados} en revisión`;
+        if (numAprobados > 0)  metaTexto += ` · ${numAprobados} listo${numAprobados !== 1 ? 's' : ''} para pagar`;
+        else if (numPendientes > 0) metaTexto += ` · ${numPendientes} pago pendiente`;
+        else if (numEnviados > 0)   metaTexto += ` · ${numEnviados} en revisión`;
         else if (numBorradores > 0) metaTexto += ` · ${numBorradores} borrador${numBorradores !== 1 ? 'es' : ''}`;
         metaEl.textContent = metaTexto;
 
@@ -238,13 +234,12 @@ function renderProyectoCard(p) {
     const badgeStyle = BADGE_STYLES[p.estado] || BADGE_STYLES.borrador;
     const badgeLabel = BADGE_LABELS[p.estado] || p.estado;
     const urgente = p.estado === 'aceptada';
+    const pagoPendiente = p.estado === 'convertida';
     const showVencimiento = p.estado === 'borrador' && p.fecha_vencimiento;
-
-    // ✅ FIX: el comprador siempre ve el precio CON markup
     const totalMostrar = formatCOPConMarkup(p.total_estimado);
 
     return `
-        <article class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border ${urgente ? 'border-emerald-200 dark:border-emerald-800' : 'border-slate-100 dark:border-slate-700'} overflow-hidden" data-proyecto-card="${p.cotizacion_id}">
+        <article class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border ${urgente ? 'border-emerald-200 dark:border-emerald-800' : pagoPendiente ? 'border-amber-200 dark:border-amber-800' : 'border-slate-100 dark:border-slate-700'} overflow-hidden" data-proyecto-card="${p.cotizacion_id}">
             <button data-toggle class="w-full text-left p-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition flex items-center gap-3">
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 mb-1 flex-wrap">
@@ -257,6 +252,7 @@ function renderProyectoCard(p) {
                     </p>
                 </div>
                 ${urgente ? '<span class="material-symbols-outlined text-emerald-500 text-xl">payments</span>' : ''}
+                ${pagoPendiente ? '<span class="material-symbols-outlined text-amber-500 text-xl">credit_card</span>' : ''}
                 <span class="material-symbols-outlined text-slate-400 transition-transform" data-chevron>expand_more</span>
             </button>
 
@@ -317,7 +313,7 @@ async function cargarItemsProyecto(cotizacion_id) {
         const editable = c.estado === 'borrador';
         itemsEl.innerHTML = c.items.map(it => renderItem(it, editable)).join('');
 
-        // ── Footer según estado ──
+        // ── Footer según estado ──────────────────────────────────────
         if (c.estado === 'borrador') {
             footerEl.innerHTML = `
                 <div class="space-y-2">
@@ -354,6 +350,19 @@ async function cargarItemsProyecto(cotizacion_id) {
                 </div>`;
             footerEl.querySelector('[data-pagar]')?.addEventListener('click', () => irACheckout(cotizacion_id));
 
+        } else if (c.estado === 'convertida') {
+            // ✅ NUEVO: pago iniciado pero no confirmado → permitir reintentar
+            footerEl.innerHTML = `
+                <div class="space-y-2">
+                    <button data-reintentar class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-amber-500/30 transition">
+                        <span class="material-symbols-outlined">replay</span>
+                        Reintentar pago · ${formatCOPConMarkup(c.total_estimado)}
+                    </button>
+                    <p class="text-[11px] text-center text-amber-600 font-semibold">⚠️ El pago anterior no se completó</p>
+                    <p class="text-[10px] text-center text-slate-400">Tu pedido sigue reservado. Completá el pago para confirmarlo.</p>
+                </div>`;
+            footerEl.querySelector('[data-reintentar]')?.addEventListener('click', () => irACheckout(cotizacion_id));
+
         } else if (c.estado === 'rechazada') {
             footerEl.innerHTML = `
                 <div class="text-center py-2">
@@ -366,11 +375,20 @@ async function cargarItemsProyecto(cotizacion_id) {
                     </a>
                 </div>`;
 
+        } else if (c.estado === 'pagada') {
+            footerEl.innerHTML = `
+                <div class="text-center py-2">
+                    <span class="material-symbols-outlined text-green-500 text-3xl">check_circle</span>
+                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200 mt-1">¡Pago confirmado!</p>
+                    <p class="text-xs text-slate-500 mt-1">El vivero está preparando tu pedido.</p>
+                    <p class="text-xs font-bold text-primary mt-2">${formatCOPConMarkup(c.total_estimado)}</p>
+                </div>`;
+
         } else {
             footerEl.innerHTML = `
-                <div class="text-center">
+                <div class="text-center py-2">
                     <p class="text-sm font-bold text-slate-700 dark:text-slate-200">${formatCOPConMarkup(c.total_estimado)}</p>
-                    <p class="text-xs text-slate-500 mt-1">${escapeHTML(ESTADO_DESCR[c.estado] || '')}</p>
+                    <p class="text-xs text-slate-500 mt-1">Estado: ${escapeHTML(c.estado || '')}</p>
                 </div>`;
         }
 
@@ -437,7 +455,6 @@ async function solicitarAprobacion(cotizacion_id, total) {
     }
 }
 
-// ✅ FIX: va a /checkout/ no a /pedido/
 function irACheckout(cotizacion_id) {
     window.location.href = `/checkout/${cotizacion_id}`;
 }
