@@ -180,7 +180,19 @@ class CopilotLayer:
         plantas = _buscar_plantas(nombre_query, inventario)
 
         if not plantas:
-            return None  # No encontró nada → fallback a Gemini
+            if tipo == "actualizar_precio" and valor:
+                return {
+                    "respuesta": f"No encontré *{nombre_query}* en tu inventario. ¿Querés agregarla con precio ${valor:,} COP? Respondé *SÍ* o revisá el nombre.",
+                    "acciones": []
+                }
+            return None
+        if not plantas:
+            if tipo == "actualizar_precio" and valor:
+                return {
+                    "respuesta": f"No encontré *{nombre_query}* en tu inventario. ¿Querés agregarla con precio ${valor:,} COP? Respondé *SÍ* o revisá el nombre.",
+                    "acciones": []
+                }
+            return None
 
         if len(plantas) == 1:
             # Una sola planta → proponer directo
