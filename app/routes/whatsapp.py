@@ -667,10 +667,13 @@ async def _handle_aprobar(vivero_id: int, whatsapp: str, sesion_id: int, session
 
     db = admin()
 
-    # Actualizar estado en BD
-    db.table("cotizaciones").update({"estado": "aceptada"}).eq(
-        "cotizacion_id", cotizacion_id
-    ).execute()
+    # Actualizar estado en BD con vencimiento 48h
+    from datetime import datetime, timezone, timedelta
+    fecha_vencimiento = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
+    db.table("cotizaciones").update({
+        "estado": "aceptada",
+        "fecha_vencimiento": fecha_vencimiento,
+    }).eq("cotizacion_id", cotizacion_id).execute()
 
     # Limpiar acción pendiente
     _limpiar_pendientes(sesion_id)
