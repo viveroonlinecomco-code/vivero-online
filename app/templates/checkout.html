@@ -80,7 +80,6 @@ tailwind.config = {
                     <span>Subtotal plantas</span>
                     <span id="subtotal-plantas">—</span>
                 </div>
-                <!-- Flete — aparece al seleccionar ciudad -->
                 <div id="flete-row" class="hidden justify-between text-sm text-slate-500">
                     <span class="flex items-center gap-1">
                         Flete estimado
@@ -111,6 +110,14 @@ tailwind.config = {
                 Datos de entrega en obra
             </h2>
             <p class="text-xs text-slate-500 -mt-2">Campos con * son obligatorios. El flete se calcula automáticamente al seleccionar la ciudad.</p>
+
+            <!-- Aviso tiempo de entrega -->
+            <div id="aviso-entrega" class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3">
+                <p class="text-xs text-amber-800 dark:text-amber-200 font-semibold flex items-start gap-2">
+                    <span class="material-symbols-outlined text-sm mt-0.5">schedule</span>
+                    <span id="aviso-entrega-texto">Las plantas tienen un tiempo mínimo de entrega de 5 días hábiles desde el pago.</span>
+                </p>
+            </div>
 
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Ciudad de entrega *</label>
@@ -148,7 +155,10 @@ tailwind.config = {
             </div>
 
             <div>
-                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Fecha de entrega deseada</label>
+                <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                    Fecha de entrega deseada
+                    <span id="label-dias-minimos" class="text-xs font-normal text-slate-400 ml-1"></span>
+                </label>
                 <input type="date" id="fecha-entrega"
                     class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
             </div>
@@ -235,6 +245,54 @@ tailwind.config = {
         document.getElementById('total').textContent = fmt(totalFinal);
     }
 
+    // ── Calcular días hábiles (lunes a viernes) ───────────────
+    function agregarDiasHabiles(fecha, dias) {
+        let contador = 0;
+        let d = new Date(fecha);
+        while (contador < dias) {
+            d.setDate(d.getDate() + 1);
+            const dia = d.getDay();
+            if (dia !== 0 && dia !== 6) contador++; // 0=domingo, 6=sábado
+        }
+        return d;
+    }
+
+    // ── Detectar si hay materas/kokedamas en los items ────────
+    function tieneMateras(items) {
+        const palabrasMatera = ['matera', 'maceta', 'kokedama', 'kit kokedama'];
+        return items.some(it => {
+            const nombre = (it.nombre_comun || '').toLowerCase();
+            return palabrasMatera.some(p => nombre.includes(p));
+        });
+    }
+
+    // ── Configurar fecha mínima según tipo de items ───────────
+    function configurarFechaMinima(items) {
+        const conMateras = tieneMateras(items);
+        const diasMinimos = conMateras ? 10 : 5;
+        const fechaMin = agregarDiasHabiles(new Date(), diasMinimos);
+        const fechaMinStr = fechaMin.toISOString().split('T')[0];
+
+        const inputFecha = document.getElementById('fecha-entrega');
+        inputFecha.min = fechaMinStr;
+        inputFecha.value = fechaMinStr; // Pre-seleccionar la fecha mínima
+
+        // Actualizar etiqueta y aviso
+        document.getElementById('label-dias-minimos').textContent =
+            '(mínimo ' + diasMinimos + ' días hábiles)';
+
+        const avisoTexto = document.getElementById('aviso-entrega-texto');
+        if (conMateras) {
+            avisoTexto.textContent =
+                'Este pedido incluye materas o kokedamas que requieren fabricación. ' +
+                'El tiempo mínimo de entrega es de 10 días hábiles desde el pago. ' +
+                'Todo se entrega en una sola visita.';
+        } else {
+            avisoTexto.textContent =
+                'Las plantas tienen un tiempo mínimo de entrega de 5 días hábiles desde el pago.';
+        }
+    }
+
     let cotizacion;
     try {
         const data = await VO.api(`/api/marketplace/cotizacion/${cotizacionId}`);
@@ -265,9 +323,8 @@ tailwind.config = {
         </div>
     `).join('');
 
-    const manana = new Date();
-    manana.setDate(manana.getDate() + 1);
-    document.getElementById('fecha-entrega').min = manana.toISOString().split('T')[0];
+    // Configurar fecha mínima según si hay materas
+    configurarFechaMinima(items);
 
     actualizarTotales();
     setState('state-content');
@@ -320,15 +377,25 @@ tailwind.config = {
         const direccion = document.getElementById('direccion-entrega').value.trim();
         const nombre    = document.getElementById('contacto-nombre').value.trim();
         const telefono  = document.getElementById('contacto-telefono').value.trim();
+        const fecha     = document.getElementById('fecha-entrega').value;
         const errBox    = document.getElementById('checkout-error');
         const btn       = document.getElementById('btn-pagar');
         const btnText   = document.getElementById('btn-pagar-text');
 
+        // Validar fecha mínima
+        const conMateras = tieneMateras(items);
+        const diasMinimos = conMateras ? 10 : 5;
+        const fechaMin = agregarDiasHabiles(new Date(), diasMinimos);
+        const fechaMinStr = fechaMin.toISOString().split('T')[0];
+
         const errores = [
-            [!ciudad,    'Seleccioná la ciudad de entrega.',              'ciudad-entrega'],
-            [!direccion, 'La dirección exacta de entrega es obligatoria.','direccion-entrega'],
-            [!nombre,    'El nombre del encargado es obligatorio.',        'contacto-nombre'],
-            [!telefono,  'El celular del encargado es obligatorio.',       'contacto-telefono'],
+            [!ciudad,    'Seleccioná la ciudad de entrega.',               'ciudad-entrega'],
+            [!direccion, 'La dirección exacta de entrega es obligatoria.', 'direccion-entrega'],
+            [!nombre,    'El nombre del encargado es obligatorio.',         'contacto-nombre'],
+            [!telefono,  'El celular del encargado es obligatorio.',        'contacto-telefono'],
+            [fecha && fecha < fechaMinStr,
+                `La fecha de entrega debe ser mínimo ${diasMinimos} días hábiles después del pago (desde ${fechaMinStr}).`,
+                'fecha-entrega'],
         ];
         for (const [cond, msg, id] of errores) {
             if (cond) {
@@ -343,7 +410,6 @@ tailwind.config = {
         btn.disabled = true;
         btnText.textContent = 'Preparando pago...';
 
-        const fecha   = document.getElementById('fecha-entrega').value;
         const horaIni = document.getElementById('ventana-inicio').value;
         const horaFin = document.getElementById('ventana-fin').value;
 
