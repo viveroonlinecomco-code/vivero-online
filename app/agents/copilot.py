@@ -186,13 +186,6 @@ class CopilotLayer:
                     "acciones": []
                 }
             return None
-        if not plantas:
-            if tipo == "actualizar_precio" and valor:
-                return {
-                    "respuesta": f"No encontré *{nombre_query}* en tu inventario. ¿Querés agregarla con precio ${valor:,} COP? Respondé *SÍ* o revisá el nombre.",
-                    "acciones": []
-                }
-            return None
 
         if len(plantas) == 1:
             # Una sola planta → proponer directo
