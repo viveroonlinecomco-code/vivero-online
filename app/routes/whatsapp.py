@@ -311,46 +311,52 @@ async def _handle_message(msg: dict):
             historial=history[-6:],
         )
 
-        try:
-            result = route_message(body, ctx)
-            respuesta_agente = result.get("respuesta", "")
-            agente = result.get("agente", "ai_ceo")
-        except Exception as e:
-            # Si LangGraph/Gemini falla, continuar con copilot local
-            respuesta_agente = ""
-            agente = "copilot_local"
-            logger.warning(f"route_message fallo, usando copilot local: {e}")
-
-        # ── Copilot Layer ─────────────────────────────────────────────────────
-        respuesta_final = respuesta_agente
+        # ── Para viveristas: Copilot PRIMERO (sin Gemini) ─────────────────────
         if rol in ("viverista", "admin") and vivero_id:
             try:
                 inventario = get_inventario_snapshot(vivero_id)
                 copilot = get_copilot()
                 copilot_result = copilot.procesar(
                     mensaje_usuario=body,
-                    respuesta_agente=respuesta_agente,
+                    respuesta_agente="",
                     ctx=ctx,
                     inventario_snapshot=inventario,
                 )
-                respuesta_final = copilot_result.get("respuesta", respuesta_agente)
+                respuesta_copilot = copilot_result.get("respuesta", "")
                 acciones = copilot_result.get("acciones", [])
                 seleccion = copilot_result.get("seleccion_pendiente")
 
-                if seleccion:
-                    _set_seleccion_pendiente(sesion_id, seleccion)
-                elif acciones and not acciones[0].get("needs_clarification"):
-                    _set_accion_pendiente(sesion_id, acciones[0])
+                # Si el copilot detectó un comando → responder directamente sin LangGraph
+                if acciones or seleccion or (respuesta_copilot and not copilot_result.get("_fallback")):
+                    if seleccion:
+                        _set_seleccion_pendiente(sesion_id, seleccion)
+                    elif acciones and not acciones[0].get("needs_clarification"):
+                        _set_accion_pendiente(sesion_id, acciones[0])
+
+                    if respuesta_copilot:
+                        _save_message(sesion_id, "model", respuesta_copilot, agente="copilot_local")
+                        await send_text_message(whatsapp, respuesta_copilot)
+                        return
 
             except Exception as e:
-                logger.warning(f"Copilot Layer error: {e}")
-                respuesta_final = respuesta_agente
+                logger.warning(f"Copilot local error: {e}")
+
+        # ── Fallback: LangGraph para consultas generales ──────────────────────
+        try:
+            result = route_message(body, ctx)
+            respuesta_final = result.get("respuesta", "Hubo un problema. Intentá de nuevo.")
+            agente = result.get("agente", "ai_ceo")
+        except Exception as e:
+            respuesta_final = "Disculpá, tuve un problema. Intentá de nuevo en un momento."
+            agente = "error"
+            logger.warning(f"route_message falló: {e}")
 
         _save_message(sesion_id, "model", respuesta_final, agente=agente)
         if len(respuesta_final) > 4000:
             respuesta_final = respuesta_final[:3997] + "..."
         await send_text_message(whatsapp, respuesta_final)
         return
+
 
     await send_text_message(
         whatsapp,
