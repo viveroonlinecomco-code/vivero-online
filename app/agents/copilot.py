@@ -1,27 +1,26 @@
 """Copilot Layer — Action Extractor para ViveroOnline.
 
-Se ejecuta DESPUÉS de los 8 agentes existentes (no los reemplaza).
-Lee la respuesta del agente + el mensaje del usuario y decide si hay
-una acción concreta que proponer al viverista.
+Flujo simplificado para viveristas con baja alfabetización digital:
 
-Si detecta una acción → propone al usuario con CTA claro esperando SÍ.
-Si no detecta acción → pule la respuesta y agrega deep link relevante.
+1. Viverista escribe comando simple: "precio monstera 60000"
+2. Bot busca plantas similares en el inventario (búsqueda fuzzy)
+3. Si hay 1 resultado → propone directo con SÍ
+4. Si hay varias → muestra lista numerada, viverista elige número
+5. Viverista dice SÍ → executor actualiza Supabase
 
-REGLA CRÍTICA: confirmed SIEMPRE es false en la primera propuesta.
-Solo se ejecuta cuando el usuario responde SÍ a una propuesta anterior.
-
-Acciones Sprint 1:
-- actualizar_precio
-- actualizar_stock
-- actualizar_estado
-- agregar_producto
-- aprobar_pedido
-- rechazar_pedido
+Comandos reconocidos:
+- "precio [planta] [valor]" → actualizar_precio
+- "stock [planta] [valor]" → actualizar_stock  
+- "agotado [planta]" → actualizar_estado agotado
+- "disponible [planta]" → actualizar_estado disponible
+- "aprobar" / "rechazar" → aprobar/rechazar pedido
 """
 from __future__ import annotations
 
 import json
 import logging
+import re
+from difflib import SequenceMatcher
 from typing import Optional
 
 from app.agents.base import AgentContext
@@ -32,8 +31,6 @@ from app.config import get_settings
 logger = logging.getLogger(__name__)
 
 
-# ─── URLs de la app ────────────────────────────────────────────────────────────
-
 def _base_url() -> str:
     try:
         return get_settings().app_base_url
@@ -41,94 +38,104 @@ def _base_url() -> str:
         return "https://app.viveroonline.com.co"
 
 
-# ─── Prompt maestro del Copilot ────────────────────────────────────────────────
+# ─── Similitud entre nombres ───────────────────────────────────────────────────
 
-COPILOT_SYSTEM = """Eres el "Action Wrapper" de ViveroOnline — marketplace B2B de plantas ornamentales en la Sabana de Bogotá, Colombia.
+def _similitud(a: str, b: str) -> float:
+    """Calcula similitud entre dos strings. 1.0 = idénticos."""
+    return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
 
-Tu trabajo NO es generar conocimiento nuevo. Tu trabajo es:
-1. Leer el mensaje del viverista y la respuesta de nuestro agente IA.
-2. Detectar si hay una acción concreta ejecutable.
-3. Reformatear la respuesta para WhatsApp: corta, clara, con CTA que pide confirmación.
 
-ACCIONES PERMITIDAS (Sprint 1):
-- actualizar_precio: viverista menciona cambiar precio de una planta
-- actualizar_stock: viverista menciona cambiar cantidad/stock
-- actualizar_estado: viverista quiere marcar como agotado/disponible/reservado/en_crecimiento
-- agregar_producto: viverista confirmó agregar una planta identificada por foto
-- aprobar_pedido: viverista quiere aprobar un pedido pendiente
-- rechazar_pedido: viverista quiere rechazar un pedido pendiente
+def _buscar_plantas(query: str, inventario: list[dict], top: int = 3) -> list[dict]:
+    """
+    Busca plantas en el inventario por similitud con el query.
+    Retorna lista ordenada por similitud descendente.
+    """
+    query_lower = query.lower().strip()
+    resultados = []
 
-REGLAS CRÍTICAS — LEER CON ATENCIÓN:
+    for item in inventario:
+        nombre = item.get("nombre", "")
+        nombre_lower = nombre.lower()
 
-1. "confirmed" es SIEMPRE false en tu respuesta. SIN EXCEPCIÓN.
-   - Un comando directo como "sube el precio a $15.000" es una PROPUESTA NUEVA, no una confirmación.
-   - Solo el backend marca confirmed=true cuando el usuario responde "Sí" a una propuesta anterior.
-   - NUNCA pongas "confirmed": true. Siempre false.
+        # Match exacto o contiene
+        if query_lower == nombre_lower:
+            score = 1.0
+        elif query_lower in nombre_lower or nombre_lower in query_lower:
+            score = 0.85
+        else:
+            score = _similitud(query_lower, nombre_lower)
 
-2. Si detectás una acción → proponela con un mensaje corto y terminá con:
-   "¿Lo actualizo? Respondé *SÍ* para confirmar."
+        if score >= 0.4:  # umbral mínimo
+            resultados.append({**item, "_score": score})
 
-3. Si te FALTAN DATOS para ejecutar (no sabés qué planta es) → pon "needs_clarification": true
-   y preguntá SOLO lo que falta. Ejemplo: "¿De cuál planta querés subir el precio?"
+    resultados.sort(key=lambda x: x["_score"], reverse=True)
+    return resultados[:top]
 
-4. Si es saludo o consulta general sin acción → deja "acciones": [] y respondé en máximo 4 líneas.
 
-5. Tono colombiano neutro. Sin markdown excesivo. Máximo 5 líneas de texto visible.
+# ─── Parser de comandos simples ────────────────────────────────────────────────
 
-6. El markup de ViveroOnline es 18% — el comprador paga precio_base × 1.18.
-   Siempre mostrá los dos precios cuando haya un precio involucrado.
+def _parsear_comando(mensaje: str) -> dict | None:
+    """
+    Intenta parsear comandos simples del viverista.
+    
+    Formatos reconocidos:
+    - "precio monstera 60000" / "precio monstera a 60000"
+    - "stock cinta 50" / "tengo 50 cintas"
+    - "agotado helecho" / "helecho agotado"
+    - "disponible monstera"
+    - "rebaja monstera 10000" / "baja precio monstera 10000"
+    
+    Retorna dict con {tipo, nombre_planta, valor} o None si no reconoce.
+    """
+    msg = mensaje.lower().strip()
+    
+    # Precio: "precio X a Y" / "sube precio X a Y" / "baja precio X Y"
+    m = re.search(r'(?:precio|sube|baja|rebaja|actualiza?|cambia?)\s+(?:precio\s+)?(?:de\s+|la\s+|el\s+)?(.+?)\s+(?:a\s+)?(\d[\d.,]*)', msg)
+    if m:
+        nombre = m.group(1).strip()
+        valor_str = m.group(2).replace('.', '').replace(',', '')
+        try:
+            return {"tipo": "actualizar_precio", "nombre_planta": nombre, "valor": int(valor_str)}
+        except ValueError:
+            pass
 
-7. Terminá SIEMPRE con una pregunta accionable o un link de la app.
+    # Stock: "stock X Y" / "tengo Y X"
+    m = re.search(r'(?:stock|cantidad|unidades?|tengo)\s+(?:de\s+|la\s+|el\s+)?(.+?)\s+(\d+)', msg)
+    if m:
+        nombre = m.group(1).strip()
+        try:
+            return {"tipo": "actualizar_stock", "nombre_planta": nombre, "valor": int(m.group(2))}
+        except ValueError:
+            pass
+    
+    m = re.search(r'tengo\s+(\d+)\s+(.+)', msg)
+    if m:
+        try:
+            return {"tipo": "actualizar_stock", "nombre_planta": m.group(2).strip(), "valor": int(m.group(1))}
+        except ValueError:
+            pass
 
-EJEMPLOS CORRECTOS:
+    # Agotado: "agotado X" / "X agotado" / "sin stock X"
+    m = re.search(r'(?:agotado|sin stock|se acabó|acabó)\s+(?:la\s+|el\s+)?(.+)', msg)
+    if m:
+        return {"tipo": "actualizar_estado", "nombre_planta": m.group(1).strip(), "valor": "agotado"}
+    m = re.search(r'(.+?)\s+(?:agotado|sin stock|se acabó)', msg)
+    if m:
+        nombre = m.group(1).replace('la ', '').replace('el ', '').strip()
+        if len(nombre) > 2:
+            return {"tipo": "actualizar_estado", "nombre_planta": nombre, "valor": "agotado"}
 
-Usuario: "Sube el helecho a $15.000"
-Respuesta correcta:
-{
-  "respuesta": "Helecho Boston 🌿\n• Tu precio: $15.000 COP\n• Comprador paga: $17.700 COP\n¿Lo actualizo? Respondé *SÍ* para confirmar.",
-  "acciones": [{"type": "actualizar_precio", "confirmed": false, "needs_clarification": false, "params": {"inventario_id": null, "nombre": "Helecho", "nuevo_precio": 15000}}]
-}
+    # Disponible: "disponible X" / "X disponible"
+    m = re.search(r'(?:disponible|reactiva?r?|activar?)\s+(?:la\s+|el\s+)?(.+)', msg)
+    if m:
+        return {"tipo": "actualizar_estado", "nombre_planta": m.group(1).strip(), "valor": "disponible"}
 
-Usuario: "Tengo 20 helechos"
-Respuesta correcta:
-{
-  "respuesta": "Helecho Boston — stock actual en tu catálogo.\n¿Querés actualizarlo a 20 unidades? Respondé *SÍ* para confirmar.",
-  "acciones": [{"type": "actualizar_stock", "confirmed": false, "needs_clarification": false, "params": {"inventario_id": null, "nombre": "Helecho", "nuevo_stock": 20}}]
-}
-
-Usuario: "Hola cómo estás"
-Respuesta correcta:
-{
-  "respuesta": "Hola 🌿 Todo bien por acá. ¿En qué te ayudo hoy?\nPodés subir precios, actualizar stock o consultar sobre tus plantas.",
-  "acciones": []
-}
-
-FORMATO DE SALIDA — JSON estricto, sin markdown adicional, sin bloques de código:
-{
-  "respuesta": "Texto para WhatsApp. Corto. Termina en pregunta o acción.",
-  "acciones": [
-    {
-      "type": "actualizar_precio",
-      "confirmed": false,
-      "needs_clarification": false,
-      "params": {
-        "inventario_id": null,
-        "nombre": "Helecho Boston",
-        "nuevo_precio": 15000
-      }
-    }
-  ]
-}
-
-Si no hay acciones detectadas: "acciones": []
-RECORDA: "confirmed" es SIEMPRE false. Nunca true.
-"""
+    return None
 
 
 # ─── Clase principal ───────────────────────────────────────────────────────────
 
 class CopilotLayer:
-    """Wrapper que se ejecuta después de cualquier agente."""
 
     def __init__(self):
         self.gemini = get_gemini()
@@ -141,131 +148,207 @@ class CopilotLayer:
         inventario_snapshot: list[dict] | None = None,
     ) -> dict:
         """
-        Procesa la respuesta del agente y extrae acciones si las hay.
-
-        Args:
-            mensaje_usuario: Lo que escribió el viverista
-            respuesta_agente: Lo que respondió el agente LangGraph
-            ctx: Contexto del usuario (vivero_id, rol, etc.)
-            inventario_snapshot: Lista de items del inventario para resolver nombres
-
-        Returns:
-            {
-                "respuesta": str,
-                "acciones": list[dict],
-                "raw_agente": str
-            }
+        Procesa el mensaje y retorna respuesta + acciones.
+        
+        Primero intenta parsear comandos simples localmente (sin Gemini).
+        Si no reconoce el comando, usa Gemini como fallback.
         """
-        # Solo aplica para viveristas
         if ctx.rol not in ("viverista", "admin"):
-            return {
-                "respuesta": respuesta_agente,
-                "acciones": [],
-                "raw_agente": respuesta_agente,
+            return {"respuesta": respuesta_agente, "acciones": [], "raw_agente": respuesta_agente}
+
+        inventario = inventario_snapshot or []
+
+        # ── Intentar parsear comando simple primero (sin Gemini) ──────────────
+        comando = _parsear_comando(mensaje_usuario)
+        if comando and inventario:
+            resultado = self._procesar_comando_local(comando, inventario)
+            if resultado:
+                return {**resultado, "raw_agente": respuesta_agente}
+
+        # ── Fallback: usar Gemini ─────────────────────────────────────────────
+        return self._procesar_con_gemini(mensaje_usuario, respuesta_agente, ctx, inventario)
+
+    def _procesar_comando_local(self, comando: dict, inventario: list[dict]) -> dict | None:
+        """
+        Procesa un comando parseado localmente.
+        Retorna dict con respuesta+acciones o None si no pudo resolverlo.
+        """
+        tipo = comando["tipo"]
+        nombre_query = comando["nombre_planta"]
+        valor = comando.get("valor")
+
+        plantas = _buscar_plantas(nombre_query, inventario)
+
+        if not plantas:
+            return None  # No encontró nada → fallback a Gemini
+
+        if len(plantas) == 1:
+            # Una sola planta → proponer directo
+            planta = plantas[0]
+            return self._proponer_accion(tipo, planta, valor)
+
+        # Varias plantas → mostrar opciones
+        return self._proponer_seleccion(tipo, plantas, valor, nombre_query)
+
+    def _proponer_accion(self, tipo: str, planta: dict, valor) -> dict:
+        """Genera propuesta directa para una planta."""
+        nombre = planta["nombre"]
+        inv_id = planta["inventario_id"]
+        precio_actual = planta.get("precio", 0)
+
+        if tipo == "actualizar_precio":
+            precio_comprador = round(valor * 1.18)
+            respuesta = (
+                f"*{nombre}* 🌿\n"
+                f"• Tu precio: ${valor:,} COP\n"
+                f"• Comprador paga: ${precio_comprador:,} COP\n"
+                f"¿Lo actualizo? Respondé *SÍ* para confirmar."
+            )
+            accion = {
+                "type": "actualizar_precio",
+                "confirmed": False,
+                "params": {"inventario_id": inv_id, "nombre": nombre, "nuevo_precio": valor}
             }
 
-        # Construir contexto de inventario si está disponible
-        inventario_ctx = ""
-        if inventario_snapshot:
-            lines = []
-            for item in inventario_snapshot[:20]:
-                lines.append(
-                    f"  - ID:{item['inventario_id']} | {item['nombre']} | "
-                    f"Stock:{item['stock']} | Precio:${item['precio']:,} COP | "
-                    f"Estado:{item['estado']}"
-                )
-            inventario_ctx = "\n\nINVENTARIO ACTUAL DEL VIVERISTA:\n" + "\n".join(lines)
+        elif tipo == "actualizar_stock":
+            respuesta = (
+                f"*{nombre}* 🌿\n"
+                f"• Stock actual: {planta.get('stock', 0)} uds\n"
+                f"• Nuevo stock: {valor} uds\n"
+                f"¿Lo actualizo? Respondé *SÍ* para confirmar."
+            )
+            accion = {
+                "type": "actualizar_stock",
+                "confirmed": False,
+                "params": {"inventario_id": inv_id, "nombre": nombre, "nuevo_stock": valor}
+            }
 
-        # Construir el payload para el copilot
-        user_payload = (
-            f"MENSAJE DEL VIVERISTA: \"{mensaje_usuario}\"\n\n"
-            f"RESPUESTA DE NUESTRO AGENTE: \"{respuesta_agente}\""
-            f"{inventario_ctx}\n\n"
-            f"BASE URL APP: {_base_url()}\n\n"
-            f"RECORDATORIO: confirmed es SIEMPRE false en tu respuesta."
-        )
+        elif tipo == "actualizar_estado":
+            estados_emoji = {"agotado": "🔴", "disponible": "🟢", "reservado": "🟡", "en_crecimiento": "🌱"}
+            emoji = estados_emoji.get(valor, "")
+            respuesta = (
+                f"*{nombre}* → {emoji} *{valor}*\n"
+                f"¿Lo marco así? Respondé *SÍ* para confirmar."
+            )
+            accion = {
+                "type": "actualizar_estado",
+                "confirmed": False,
+                "params": {"inventario_id": inv_id, "nombre": nombre, "nuevo_estado": valor}
+            }
+        else:
+            return None
+
+        return {"respuesta": respuesta, "acciones": [accion]}
+
+    def _proponer_seleccion(self, tipo: str, plantas: list[dict], valor, query: str) -> dict:
+        """Genera mensaje con opciones numeradas."""
+        tipo_label = {
+            "actualizar_precio": f"subir precio a ${valor:,}",
+            "actualizar_stock": f"actualizar stock a {valor}",
+            "actualizar_estado": f"marcar como {valor}",
+        }.get(tipo, tipo)
+
+        lineas = [f"Encontré varias plantas similares a *{query}*:\n"]
+        opciones = []
+        for i, p in enumerate(plantas, 1):
+            precio = p.get("precio", 0)
+            stock = p.get("stock", 0)
+            lineas.append(f"{i}️⃣ *{p['nombre']}* — ${precio:,} COP · {stock} uds")
+            opciones.append({
+                "num": i,
+                "inventario_id": p["inventario_id"],
+                "nombre": p["nombre"],
+                "precio": precio,
+                "stock": stock,
+            })
+
+        lineas.append(f"\n¿Cuál querés {tipo_label}? Respondé *1*, *2* o *3*")
+        respuesta = "\n".join(lineas)
+
+        seleccion = {
+            "tipo": tipo,
+            "valor": valor,
+            "opciones": opciones,
+        }
+
+        return {"respuesta": respuesta, "acciones": [], "seleccion_pendiente": seleccion}
+
+    def _procesar_con_gemini(
+        self,
+        mensaje_usuario: str,
+        respuesta_agente: str,
+        ctx: AgentContext,
+        inventario: list[dict],
+    ) -> dict:
+        """Fallback: usa Gemini para casos complejos."""
+        inventario_ctx = ""
+        if inventario:
+            lines = [f"  - ID:{item['inventario_id']} | {item['nombre']} | Stock:{item['stock']} | Precio:${item['precio']:,} COP"
+                     for item in inventario[:50]]
+            inventario_ctx = "\n\nINVENTARIO:\n" + "\n".join(lines)
+
+        SYSTEM = """Eres el asistente de ViveroOnline para viveristas colombianos.
+Respondé en máximo 4 líneas. Tono simple y directo.
+Si el mensaje es una consulta general (no una acción), respondé con la info del agente resumida.
+Si detectás una acción de inventario, extraela en JSON.
+
+FORMATO DE SALIDA — solo JSON válido:
+{"respuesta": "texto corto", "acciones": []}
+
+Si no hay acción: {"respuesta": "...", "acciones": []}
+"""
+        user_msg = f'Mensaje: "{mensaje_usuario}"\nRespuesta agente: "{respuesta_agente[:200]}"{inventario_ctx}'
 
         try:
-            raw = self.gemini.chat(
-                system_prompt=COPILOT_SYSTEM,
-                user_message=user_payload,
-                temperature=0.0,
-            )
-            # Limpiar markdown si viene
+            raw = self.gemini.chat(system_prompt=SYSTEM, user_message=user_msg, temperature=0.0)
             clean = raw.strip()
             if "```" in clean:
-                lines = clean.split("\n")
-                clean = "\n".join(
-                    l for l in lines
-                    if not l.strip().startswith("```")
-                ).strip()
-
+                clean = "\n".join(l for l in clean.split("\n") if not l.strip().startswith("```")).strip()
             result = json.loads(clean)
-
-            # Forzar confirmed=false en todas las acciones — seguridad adicional
             for accion in result.get("acciones", []):
                 accion["confirmed"] = False
-
-            # Resolver inventario_id si no vino y tenemos snapshot
-            if inventario_snapshot and result.get("acciones"):
-                result["acciones"] = self._resolver_inventario_ids(
-                    result["acciones"], inventario_snapshot
-                )
-
             return {
                 "respuesta": result.get("respuesta", respuesta_agente),
                 "acciones": result.get("acciones", []),
                 "raw_agente": respuesta_agente,
             }
-
         except Exception as e:
-            logger.warning(f"Copilot Layer falló, usando respuesta original: {e}")
-            # Fallback seguro — devolver respuesta original del agente
+            logger.warning(f"Copilot Gemini fallback error: {e}")
+            return {"respuesta": respuesta_agente, "acciones": [], "raw_agente": respuesta_agente}
+
+    def resolver_seleccion(self, numero: int, seleccion: dict) -> dict | None:
+        """
+        Resuelve una selección numerada del viverista.
+        Retorna dict con respuesta+accion o None si número inválido.
+        """
+        opciones = seleccion.get("opciones", [])
+        tipo = seleccion.get("tipo")
+        valor = seleccion.get("valor")
+
+        opcion = next((o for o in opciones if o["num"] == numero), None)
+        if not opcion:
+            nums = [str(o["num"]) for o in opciones]
             return {
-                "respuesta": respuesta_agente,
-                "acciones": [],
-                "raw_agente": respuesta_agente,
+                "respuesta": f"Opción inválida. Respondé {', '.join(nums[:-1])} o {nums[-1]}.",
+                "acciones": []
             }
 
-    def _resolver_inventario_ids(
-        self, acciones: list[dict], inventario: list[dict]
-    ) -> list[dict]:
-        """
-        Si una acción tiene nombre de planta pero no inventario_id,
-        intenta resolverlo buscando en el snapshot del inventario.
-        """
-        for accion in acciones:
-            params = accion.get("params", {})
-            if params.get("inventario_id"):
-                continue  # Ya tiene ID, no hace falta resolver
-
-            nombre_buscado = (params.get("nombre") or "").lower().strip()
-            if not nombre_buscado:
-                continue
-
-            # Búsqueda fuzzy simple por nombre
-            for item in inventario:
-                nombre_item = item.get("nombre", "").lower()
-                if nombre_buscado in nombre_item or nombre_item in nombre_buscado:
-                    params["inventario_id"] = item["inventario_id"]
-                    params["nombre"] = item["nombre"]  # Normalizar nombre
-                    break
-
-        return acciones
+        planta = {
+            "inventario_id": opcion["inventario_id"],
+            "nombre": opcion["nombre"],
+            "precio": opcion["precio"],
+            "stock": opcion["stock"],
+        }
+        return self._proponer_accion(tipo, planta, valor)
 
 
-# ─── Helper para obtener inventario del viverista ──────────────────────────────
+# ─── Helper inventario ─────────────────────────────────────────────────────────
 
 def get_inventario_snapshot(vivero_id: int) -> list[dict]:
-    """
-    Obtiene el inventario del viverista en formato simplificado
-    para que el copilot pueda resolver nombres → IDs.
-    """
     try:
         db = admin()
         resp = db.table("inventario").select(
-            "inventario_id, stock, precio_mayorista, estado_planta, "
-            "plantas(nombre_comun)"
+            "inventario_id, stock, precio_mayorista, estado_planta, plantas(nombre_comun)"
         ).eq("vivero_id", vivero_id).limit(150).execute()
 
         items = []
@@ -284,10 +367,9 @@ def get_inventario_snapshot(vivero_id: int) -> list[dict]:
         return []
 
 
-# ─── Instancia global ──────────────────────────────────────────────────────────
+# ─── Singleton ─────────────────────────────────────────────────────────────────
 
 _copilot: CopilotLayer | None = None
-
 
 def get_copilot() -> CopilotLayer:
     global _copilot
