@@ -354,6 +354,12 @@ Si no hay acción: {"respuesta": "...", "acciones": []}
 def get_inventario_snapshot(vivero_id: int) -> list[dict]:
     try:
         db = admin()
+        # Usar RPC para evitar problemas con joins implícitos
+        resp = db.rpc("get_inventario_snapshot", {"p_vivero_id": vivero_id}).execute()
+        if resp.data:
+            return resp.data
+
+        # Fallback: query directa con join
         resp = db.table("inventario").select(
             "inventario_id, stock, precio_mayorista, estado_planta, plantas(nombre_comun)"
         ).eq("vivero_id", vivero_id).limit(150).execute()
@@ -361,16 +367,18 @@ def get_inventario_snapshot(vivero_id: int) -> list[dict]:
         items = []
         for r in resp.data or []:
             planta = r.get("plantas") or {}
+            nombre = planta.get("nombre_comun") if isinstance(planta, dict) else "Sin nombre"
             items.append({
                 "inventario_id": r["inventario_id"],
-                "nombre": planta.get("nombre_comun", "Sin nombre"),
+                "nombre": nombre or "Sin nombre",
                 "stock": r.get("stock", 0),
                 "precio": float(r.get("precio_mayorista") or 0),
                 "estado": r.get("estado_planta", "disponible"),
             })
+        logger.info(f"Inventario snapshot: {len(items)} plantas para vivero {vivero_id}")
         return items
     except Exception as e:
-        logger.warning(f"No se pudo obtener inventario snapshot: {e}")
+        logger.error(f"Error en get_inventario_snapshot: {type(e).__name__}: {e}")
         return []
 
 
