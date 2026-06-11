@@ -270,6 +270,16 @@ async def _handle_message(msg: dict):
             await send_text_message(whatsapp, "Sesión cerrada. ¡Hasta pronto! 🌿")
             return
 
+        # ── LOGÍSTICA: ENVIADO (viverista despacha) ───────────────────────────
+        if rol in ("viverista", "admin") and re.match(r'^enviado', lower):
+            await _handle_enviado(body, vivero_id, whatsapp, sesion_id)
+            return
+
+        # ── LOGÍSTICA: RECIBIDO (comprador confirma entrega) ──────────────────
+        if rol in ("comprador", "admin") and lower in ("recibido", "recibí", "llegó", "llegaron", "recibido ok"):
+            await _handle_recibido(user.get("cliente_id"), whatsapp, sesion_id)
+            return
+
         # ── NUEVO: Verificar selección numerada pendiente ─────────────────────
         seleccion_pendiente = session.get("seleccion_pendiente")
         if seleccion_pendiente and rol in ("viverista", "admin"):
@@ -479,3 +489,145 @@ async def _handle_image(image_id, user, sesion_id, whatsapp):
     _save_message(sesion_id, "user", "[Imagen enviada]", is_photo=True)
     _save_message(sesion_id, "model", msg, agente="plant_identifier")
     await send_text_message(whatsapp, msg)
+
+
+
+# ─── Logística: viverista despacha ────────────────────────────────────────────
+
+async def _handle_enviado(body: str, vivero_id: int, whatsapp: str, sesion_id: int):
+    """Viverista escribe ENVIADO -> actualiza entrega a despachado -> notifica comprador."""
+    from datetime import datetime, timezone
+    db = admin()
+
+    entrega_resp = db.table("entregas").select(
+        "entrega_id, cotizacion_id, contacto_nombre, contacto_telefono, direccion_entrega"
+    ).eq("vivero_id", vivero_id).eq("estado_entrega", "pendiente").order(
+        "fecha_creacion", desc=True
+    ).limit(1).execute()
+
+    if not entrega_resp.data:
+        await send_text_message(
+            whatsapp,
+            "No encontre entregas pendientes para tu vivero.\n"
+            "Revisa el panel: https://app.viveroonline.com.co/viverista"
+        )
+        return
+
+    entrega = entrega_resp.data[0]
+    entrega_id = entrega["entrega_id"]
+    cotizacion_id = entrega["cotizacion_id"]
+
+    db.table("entregas").update({
+        "estado_entrega": "despachado",
+        "fecha_despacho": datetime.now(timezone.utc).isoformat(),
+    }).eq("entrega_id", entrega_id).execute()
+
+    msg_viverista = (
+        "Despacho registrado\n"
+        "Pedido #" + str(cotizacion_id) + " marcado como despachado.\n\n"
+        "Entrega en: " + str(entrega.get("direccion_entrega", "")) + "\n"
+        "Contacto: " + str(entrega.get("contacto_nombre", "")) + " - " + str(entrega.get("contacto_telefono", "")) + "\n\n"
+        "El comprador fue notificado."
+    )
+    await send_text_message(whatsapp, msg_viverista)
+
+    try:
+        cot = db.table("cotizaciones").select(
+            "cliente_id, prompt_original"
+        ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+
+        if cot.data:
+            cliente_id = cot.data[0]["cliente_id"]
+            nombre_proyecto = cot.data[0].get("prompt_original") or "Pedido #" + str(cotizacion_id)
+            cliente = db.table("clientes").select("whatsapp_numero").eq(
+                "cliente_id", cliente_id
+            ).limit(1).execute()
+
+            if cliente.data and cliente.data[0].get("whatsapp_numero"):
+                wa_comprador = cliente.data[0]["whatsapp_numero"]
+                msg_comprador = (
+                    "Tu pedido esta en camino - ViveroOnline\n\n"
+                    "Proyecto: " + nombre_proyecto + "\n\n"
+                    "Direccion: " + str(entrega.get("direccion_entrega", "")) + "\n"
+                    "Contacto en obra: " + str(entrega.get("contacto_nombre", "")) + "\n\n"
+                    "Cuando recibas las plantas escribi RECIBIDO para confirmar."
+                )
+                await send_text_message(wa_comprador, msg_comprador)
+    except Exception as e:
+        logger.warning("No se pudo notificar al comprador: " + str(e))
+
+
+# ─── Logística: comprador confirma recibo ─────────────────────────────────────
+
+async def _handle_recibido(cliente_id: int, whatsapp: str, sesion_id: int):
+    """Comprador escribe RECIBIDO -> actualiza entrega a entregado -> notifica viverista."""
+    from datetime import datetime, timezone
+
+    if not cliente_id:
+        await send_text_message(whatsapp, "No pude identificar tu perfil. Intenta de nuevo.")
+        return
+
+    db = admin()
+
+    entrega_resp = db.table("entregas").select(
+        "entrega_id, cotizacion_id, vivero_id"
+    ).eq("estado_entrega", "despachado").limit(10).execute()
+
+    entrega = None
+    for e in entrega_resp.data or []:
+        cot = db.table("cotizaciones").select("cliente_id").eq(
+            "cotizacion_id", e["cotizacion_id"]
+        ).limit(1).execute()
+        if cot.data and cot.data[0]["cliente_id"] == cliente_id:
+            entrega = e
+            break
+
+    if not entrega:
+        await send_text_message(
+            whatsapp,
+            "No encontre entregas en camino para confirmar.\n"
+            "Revisa tu panel: https://app.viveroonline.com.co/comprador"
+        )
+        return
+
+    entrega_id = entrega["entrega_id"]
+    cotizacion_id = entrega["cotizacion_id"]
+    vivero_id = entrega["vivero_id"]
+
+    db.table("entregas").update({
+        "estado_entrega": "entregado",
+        "fecha_entrega": datetime.now(timezone.utc).isoformat(),
+    }).eq("entrega_id", entrega_id).execute()
+
+    await send_text_message(
+        whatsapp,
+        "Entrega confirmada!\n"
+        "Gracias por confirmar. Esperamos que todo haya llegado perfecto.\n\n"
+        "Explora el marketplace:\nhttps://app.viveroonline.com.co/marketplace"
+    )
+
+    try:
+        vivero = db.table("viveros").select(
+            "nombre_vivero, whatsapp_numero"
+        ).eq("vivero_id", vivero_id).limit(1).execute()
+
+        if vivero.data and vivero.data[0].get("whatsapp_numero"):
+            cot = db.table("cotizaciones").select(
+                "total_estimado, prompt_original"
+            ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+
+            total = 0
+            nombre_proyecto = "Pedido #" + str(cotizacion_id)
+            if cot.data:
+                total = int(float(cot.data[0].get("total_estimado") or 0))
+                nombre_proyecto = cot.data[0].get("prompt_original") or nombre_proyecto
+
+            msg_viverista = (
+                "Entrega confirmada - ViveroOnline\n\n"
+                "Proyecto: " + nombre_proyecto + "\n"
+                "El comprador confirmo que recibio las plantas.\n\n"
+                "Tu pago de $" + "{:,}".format(total) + " COP se procesa en 48 horas."
+            )
+            await send_text_message(vivero.data[0]["whatsapp_numero"], msg_viverista)
+    except Exception as e:
+        logger.warning("No se pudo notificar al viverista: " + str(e))
