@@ -26,6 +26,7 @@ from app.routes import pages as pages_routes
 from app.routes.admin_ops import router as admin_ops_router
 from app.routes.pedidos import router as pedidos_router
 from app.routes.suscripcion import router as suscripciones_router
+from routes.cron import router as cron_router
 
 settings = get_settings()
 STATIC_DIR = Path(__file__).parent / "static"
@@ -54,7 +55,6 @@ app.add_middleware(
         "http://localhost:3000",
         "http://localhost:8000",
     ],
-    # Preview deployments de Vercel (cada rama/PR tiene URL distinta)
     allow_origin_regex=r"https://vivero-online(-ia)?.*-elenas-projects-0d05ec06\.vercel\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
@@ -63,26 +63,18 @@ app.add_middleware(
 )
 
 # ─────────────────── RATE LIMITING ───────────────────
-# Protege endpoints sensibles contra abuso (bots, brute-force, spam).
-# Storage in-memory: funciona dentro de una instancia warm de Vercel.
-# Cold start resetea contadores. Suficiente para validación temprana.
-# Para tráfico serio: migrar a Upstash Redis (storage compartido).
-
-# (max_requests, window_seconds) por path
 RATE_LIMITS: dict[str, tuple[int, int]] = {
-    "/api/auth/otp/send":             (5, 60),   # 5/min  - evita spam de emails
-    "/api/auth/otp/verify":           (10, 60),  # 10/min - evita brute-force del código
-    "/api/suscripcion/iniciar-pago":  (5, 60),   # 5/min  - evita crear pagos basura
-    "/api/pagos/webhook/epayco":      (30, 60),  # 30/min - tolerante a reintentos legítimos
+    "/api/auth/otp/send":             (5, 60),
+    "/api/auth/otp/verify":           (10, 60),
+    "/api/suscripcion/iniciar-pago":  (5, 60),
+    "/api/pagos/webhook/epayco":      (30, 60),
 }
 
-# Buckets en memoria: {ip:path -> [timestamps]}
 _rate_buckets: dict[str, list[float]] = defaultdict(list)
-_last_cleanup = [time()]  # mutable para mutar dentro del middleware
+_last_cleanup = [time()]
 
 
 def _client_ip(request: Request) -> str:
-    """Obtiene la IP del cliente respetando proxies de Vercel."""
     fwd = request.headers.get("x-forwarded-for")
     if fwd:
         return fwd.split(",")[0].strip()
@@ -100,10 +92,8 @@ async def rate_limit_middleware(request: Request, call_next):
     key = f"{ip}:{request.url.path}"
     now = time()
 
-    # Limpieza de timestamps viejos del bucket actual
     _rate_buckets[key] = [t for t in _rate_buckets[key] if now - t < window]
 
-    # Limpieza global cada 5 min para no acumular IPs muertas
     if now - _last_cleanup[0] > 300:
         for k in list(_rate_buckets.keys()):
             if not _rate_buckets[k] or now - _rate_buckets[k][-1] > 600:
@@ -111,7 +101,6 @@ async def rate_limit_middleware(request: Request, call_next):
         _last_cleanup[0] = now
 
     if len(_rate_buckets[key]) >= max_req:
-        # Cuánto falta para que se libere el slot más viejo
         retry_after = max(1, int(window - (now - _rate_buckets[key][0])))
         return JSONResponse(
             status_code=429,
@@ -146,7 +135,6 @@ async def health():
 
 
 # ─────────────────── ROUTERS ───────────────────
-# API endpoints
 app.include_router(auth_routes.router)
 app.include_router(catalogo_routes.router)
 app.include_router(viveros_routes.router)
@@ -162,15 +150,14 @@ app.include_router(public_routes.router)
 app.include_router(ingesta_routes.router)
 app.include_router(admin_ops_router)
 app.include_router(pedidos_router)
+app.include_router(cron_router)
 # HTML pages (deben ir al final para no capturar /api/*)
 app.include_router(pages_routes.router)
-
 
 
 # ─────────────────── ERROR HANDLER ───────────────────
 @app.exception_handler(Exception)
 async def unhandled_error(request, exc: Exception):
-    """Fallback para que nunca devolvamos un 500 sin contexto."""
     return JSONResponse(
         status_code=500,
         content={"ok": False, "detail": str(exc)[:200]},
