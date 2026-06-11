@@ -138,7 +138,13 @@ def _parsear_comando(mensaje: str) -> dict | None:
 class CopilotLayer:
 
     def __init__(self):
-        self.gemini = get_gemini()
+        self._gemini = None  # Lazy init — solo se carga cuando se necesita
+
+    @property
+    def gemini(self):
+        if self._gemini is None:
+            self._gemini = get_gemini()
+        return self._gemini
 
     def procesar(
         self,
