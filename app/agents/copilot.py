@@ -165,8 +165,10 @@ class CopilotLayer:
             if resultado:
                 return {**resultado, "raw_agente": respuesta_agente}
 
-        # ── Fallback: usar Gemini ─────────────────────────────────────────────
-        return self._procesar_con_gemini(mensaje_usuario, respuesta_agente, ctx, inventario)
+        # ── Fallback: usar Gemini o indicar que no hubo comando ───────────────
+        result = self._procesar_con_gemini(mensaje_usuario, respuesta_agente, ctx, inventario)
+        result["_fallback"] = True  # indica que no detectó comando local
+        return result
 
     def _procesar_comando_local(self, comando: dict, inventario: list[dict]) -> dict | None:
         """
