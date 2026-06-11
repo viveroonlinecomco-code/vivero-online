@@ -24,3 +24,9 @@
     }
   ]
 }
+"crons": [
+  {
+    "path": "/api/cron/vencer-cotizaciones",
+    "schedule": "0 * * * *"
+  }
+]
