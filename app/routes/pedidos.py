@@ -258,7 +258,12 @@ async def aprobar_cotizacion(cotizacion_id: int, user: UserContext = Depends(req
         if not any(r.get("vivero_id") == user.vivero_id for r in (inv_resp.data or [])):
             raise HTTPException(403, "Esta cotización no contiene items de tu vivero")
 
-    db.table("cotizaciones").update({"estado": "aceptada"}).eq("cotizacion_id", cotizacion_id).execute()
+    from datetime import datetime, timezone, timedelta
+    fecha_vencimiento = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
+    db.table("cotizaciones").update({
+        "estado": "aceptada",
+        "fecha_vencimiento": fecha_vencimiento,
+    }).eq("cotizacion_id", cotizacion_id).execute()
 
     # ── Notificar al comprador por WhatsApp ──────────────────────────────────
     try:
