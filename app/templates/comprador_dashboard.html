@@ -376,11 +376,34 @@ async function cargarItemsProyecto(cotizacion_id) {
                 </div>`;
 
         } else if (c.estado === 'pagada') {
+            // Mostrar estado logístico según estado_entrega
+            const estadoEntrega = c.estado_entrega || 'pendiente';
+            const fechaDespacho = c.fecha_despacho ? new Date(c.fecha_despacho).toLocaleDateString('es-CO', {day:'2-digit', month:'short'}) : null;
+            const fechaEntregaReal = c.fecha_entrega_real ? new Date(c.fecha_entrega_real).toLocaleDateString('es-CO', {day:'2-digit', month:'short'}) : null;
+
+            let iconoEntrega, tituloEntrega, descripcionEntrega, colorEntrega;
+            if (estadoEntrega === 'entregado') {
+                iconoEntrega = 'task_alt';
+                tituloEntrega = '¡Entrega confirmada!';
+                descripcionEntrega = fechaEntregaReal ? 'Recibido el ' + fechaEntregaReal : 'Pedido entregado exitosamente.';
+                colorEntrega = 'text-green-500';
+            } else if (estadoEntrega === 'despachado' || estadoEntrega === 'en_ruta') {
+                iconoEntrega = 'local_shipping';
+                tituloEntrega = 'Tu pedido está en camino 🚐';
+                descripcionEntrega = fechaDespacho ? 'Despachado el ' + fechaDespacho + '. Escribí RECIBIDO por WhatsApp cuando llegue.' : 'El vivero ya despachó tu pedido.';
+                colorEntrega = 'text-blue-500';
+            } else {
+                iconoEntrega = 'check_circle';
+                tituloEntrega = '¡Pago confirmado!';
+                descripcionEntrega = 'El vivero está preparando tu pedido.';
+                colorEntrega = 'text-green-500';
+            }
+
             footerEl.innerHTML = `
                 <div class="text-center py-2">
-                    <span class="material-symbols-outlined text-green-500 text-3xl">check_circle</span>
-                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200 mt-1">¡Pago confirmado!</p>
-                    <p class="text-xs text-slate-500 mt-1">El vivero está preparando tu pedido.</p>
+                    <span class="material-symbols-outlined ${colorEntrega} text-3xl">${iconoEntrega}</span>
+                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200 mt-1">${tituloEntrega}</p>
+                    <p class="text-xs text-slate-500 mt-1">${descripcionEntrega}</p>
                     <p class="text-xs font-bold text-primary mt-2">${formatCOPConMarkup(c.total_estimado)}</p>
                 </div>`;
 
