@@ -1,378 +1,475 @@
-"""Copilot Layer — Action Extractor para ViveroOnline.
-
-Flujo simplificado para viveristas con baja alfabetización digital:
-
-1. Viverista escribe comando simple: "precio monstera 60000"
-2. Bot busca plantas similares en el inventario (búsqueda fuzzy)
-3. Si hay 1 resultado → propone directo con SÍ
-4. Si hay varias → muestra lista numerada, viverista elige número
-5. Viverista dice SÍ → executor actualiza Supabase
-
-Comandos reconocidos:
-- "precio [planta] [valor]" → actualizar_precio
-- "stock [planta] [valor]" → actualizar_stock  
-- "agotado [planta]" → actualizar_estado agotado
-- "disponible [planta]" → actualizar_estado disponible
-- "aprobar" / "rechazar" → aprobar/rechazar pedido
-"""
+"""Webhook bidireccional WhatsApp via Meta WhatsApp Cloud API."""
 from __future__ import annotations
 
-import json
 import logging
+import os
 import re
-from difflib import SequenceMatcher
-from typing import Optional
+import time
 
-from app.agents.base import AgentContext
-from app.services.gemini import get_gemini
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
+
+from app.agents import route_message, AgentContext
+from app.agents.plant_identifier import PlantIdentifierAgent
+from app.agents.copilot import get_copilot, get_inventario_snapshot
+from app.agents.executor import ejecutar_accion
 from app.services.supabase import admin
-from app.config import get_settings
+from app.services.whatsapp_meta import (
+    download_media_bytes,
+    send_text_message,
+    verify_signature,
+)
 
 logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
+
+CONFIRMACIONES = {
+    "sí", "si", "sí!", "si!", "dale", "ok", "okey", "listo",
+    "confirmo", "confirmado", "apruebo", "aprueba", "actualiza",
+    "actualizar", "guardar", "guarda", "agregar", "agrega", "yes",
+}
 
 
-def _base_url() -> str:
+# ─── Helpers de sesión ────────────────────────────────────────────────────────
+
+def _find_user_by_whatsapp(whatsapp: str) -> dict | None:
+    db = admin()
+    resp = db.table("perfiles").select(
+        "id, rol, vivero_id, cliente_id, whatsapp_numero, nombre_display"
+    ).eq("whatsapp_numero", whatsapp).execute()
+
+    if not resp.data:
+        return None
+    perfiles = resp.data
+    if len(perfiles) == 1:
+        return perfiles[0]
+    for p in perfiles:
+        if p.get("rol") == "viverista" and p.get("vivero_id"):
+            return p
+    for p in perfiles:
+        if p.get("rol") == "comprador" and p.get("cliente_id"):
+            return p
+    return perfiles[0]
+
+
+def _get_or_create_session(whatsapp, user_id, rol=None, vivero_id=None, cliente_id=None):
+    db = admin()
+    existing = db.table("sesiones_agente").select(
+        "sesion_id, contexto_json, mensajes_count, accion_pendiente, seleccion_pendiente"
+    ).eq("whatsapp_numero", whatsapp).eq("estado", "activa").limit(1).execute()
+
+    if existing.data:
+        return existing.data[0]
+
+    new = db.table("sesiones_agente").insert({
+        "whatsapp_numero": whatsapp,
+        "tipo_usuario": rol or "anonimo",
+        "vivero_id": vivero_id,
+        "cliente_id": cliente_id,
+        "estado": "activa",
+        "flujo_actual": "chat",
+        "contexto_json": {"historial": []},
+        "mensajes_count": 0,
+        "fotos_procesadas": 0,
+        "accion_pendiente": None,
+        "seleccion_pendiente": None,
+    }).execute()
+    return new.data[0] if new.data else {
+        "sesion_id": None, "contexto_json": {"historial": []},
+        "mensajes_count": 0, "accion_pendiente": None, "seleccion_pendiente": None,
+    }
+
+
+def _save_message(sesion_id, role, content, agente=None, is_photo=False):
+    if not sesion_id:
+        return
+    db = admin()
+    resp = db.table("sesiones_agente").select(
+        "contexto_json, mensajes_count, fotos_procesadas"
+    ).eq("sesion_id", sesion_id).limit(1).execute()
+    if not resp.data:
+        return
+    ctx = resp.data[0].get("contexto_json") or {"historial": []}
+    history = ctx.get("historial", [])
+    history.append({"role": role, "content": content[:1000], "ts": int(time.time())})
+    ctx["historial"] = history[-20:]
+    update = {
+        "contexto_json": ctx,
+        "mensajes_count": (resp.data[0].get("mensajes_count") or 0) + 1,
+        "ultimo_mensaje": "now()",
+    }
+    if is_photo:
+        update["fotos_procesadas"] = (resp.data[0].get("fotos_procesadas") or 0) + 1
+    db.table("sesiones_agente").update(update).eq("sesion_id", sesion_id).execute()
+
+
+def _set_accion_pendiente(sesion_id, accion):
+    if not sesion_id:
+        return
     try:
-        return get_settings().app_base_url
-    except Exception:
-        return "https://app.viveroonline.com.co"
-
-
-# ─── Similitud entre nombres ───────────────────────────────────────────────────
-
-def _similitud(a: str, b: str) -> float:
-    """Calcula similitud entre dos strings. 1.0 = idénticos."""
-    return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
-
-
-def _buscar_plantas(query: str, inventario: list[dict], top: int = 3) -> list[dict]:
-    """
-    Busca plantas en el inventario por similitud con el query.
-    Retorna lista ordenada por similitud descendente.
-    """
-    query_lower = query.lower().strip()
-    resultados = []
-
-    for item in inventario:
-        nombre = item.get("nombre", "")
-        nombre_lower = nombre.lower()
-
-        # Match exacto o contiene
-        if query_lower == nombre_lower:
-            score = 1.0
-        elif query_lower in nombre_lower or nombre_lower in query_lower:
-            score = 0.85
-        else:
-            score = _similitud(query_lower, nombre_lower)
-
-        if score >= 0.4:  # umbral mínimo
-            resultados.append({**item, "_score": score})
-
-    resultados.sort(key=lambda x: x["_score"], reverse=True)
-    return resultados[:top]
-
-
-# ─── Parser de comandos simples ────────────────────────────────────────────────
-
-def _parsear_comando(mensaje: str) -> dict | None:
-    """
-    Intenta parsear comandos simples del viverista.
-    
-    Formatos reconocidos:
-    - "precio monstera 60000" / "precio monstera a 60000"
-    - "stock cinta 50" / "tengo 50 cintas"
-    - "agotado helecho" / "helecho agotado"
-    - "disponible monstera"
-    - "rebaja monstera 10000" / "baja precio monstera 10000"
-    
-    Retorna dict con {tipo, nombre_planta, valor} o None si no reconoce.
-    """
-    msg = mensaje.lower().strip()
-    
-    # Precio: "precio X a Y" / "sube precio X a Y" / "baja precio X Y"
-    m = re.search(r'(?:precio|sube|baja|rebaja|actualiza?|cambia?)\s+(?:precio\s+)?(?:de\s+|la\s+|el\s+)?(.+?)\s+(?:a\s+)?(\d[\d.,]*)', msg)
-    if m:
-        nombre = m.group(1).strip()
-        valor_str = m.group(2).replace('.', '').replace(',', '')
-        try:
-            return {"tipo": "actualizar_precio", "nombre_planta": nombre, "valor": int(valor_str)}
-        except ValueError:
-            pass
-
-    # Stock: "stock X Y" / "tengo Y X"
-    m = re.search(r'(?:stock|cantidad|unidades?|tengo)\s+(?:de\s+|la\s+|el\s+)?(.+?)\s+(\d+)', msg)
-    if m:
-        nombre = m.group(1).strip()
-        try:
-            return {"tipo": "actualizar_stock", "nombre_planta": nombre, "valor": int(m.group(2))}
-        except ValueError:
-            pass
-    
-    m = re.search(r'tengo\s+(\d+)\s+(.+)', msg)
-    if m:
-        try:
-            return {"tipo": "actualizar_stock", "nombre_planta": m.group(2).strip(), "valor": int(m.group(1))}
-        except ValueError:
-            pass
-
-    # Agotado: "agotado X" / "X agotado" / "sin stock X"
-    m = re.search(r'(?:agotado|sin stock|se acabó|acabó)\s+(?:la\s+|el\s+)?(.+)', msg)
-    if m:
-        return {"tipo": "actualizar_estado", "nombre_planta": m.group(1).strip(), "valor": "agotado"}
-    m = re.search(r'(.+?)\s+(?:agotado|sin stock|se acabó)', msg)
-    if m:
-        nombre = m.group(1).replace('la ', '').replace('el ', '').strip()
-        if len(nombre) > 2:
-            return {"tipo": "actualizar_estado", "nombre_planta": nombre, "valor": "agotado"}
-
-    # Disponible: "disponible X" / "X disponible"
-    m = re.search(r'(?:disponible|reactiva?r?|activar?)\s+(?:la\s+|el\s+)?(.+)', msg)
-    if m:
-        return {"tipo": "actualizar_estado", "nombre_planta": m.group(1).strip(), "valor": "disponible"}
-
-    return None
-
-
-# ─── Clase principal ───────────────────────────────────────────────────────────
-
-class CopilotLayer:
-
-    def __init__(self):
-        self.gemini = get_gemini()
-
-    def procesar(
-        self,
-        mensaje_usuario: str,
-        respuesta_agente: str,
-        ctx: AgentContext,
-        inventario_snapshot: list[dict] | None = None,
-    ) -> dict:
-        """
-        Procesa el mensaje y retorna respuesta + acciones.
-        
-        Primero intenta parsear comandos simples localmente (sin Gemini).
-        Si no reconoce el comando, usa Gemini como fallback.
-        """
-        if ctx.rol not in ("viverista", "admin"):
-            return {"respuesta": respuesta_agente, "acciones": [], "raw_agente": respuesta_agente}
-
-        inventario = inventario_snapshot or []
-
-        # ── Intentar parsear comando simple primero (sin Gemini) ──────────────
-        comando = _parsear_comando(mensaje_usuario)
-        if comando and inventario:
-            resultado = self._procesar_comando_local(comando, inventario)
-            if resultado:
-                return {**resultado, "raw_agente": respuesta_agente}
-
-        # ── Fallback: usar Gemini ─────────────────────────────────────────────
-        return self._procesar_con_gemini(mensaje_usuario, respuesta_agente, ctx, inventario)
-
-    def _procesar_comando_local(self, comando: dict, inventario: list[dict]) -> dict | None:
-        """
-        Procesa un comando parseado localmente.
-        Retorna dict con respuesta+acciones o None si no pudo resolverlo.
-        """
-        tipo = comando["tipo"]
-        nombre_query = comando["nombre_planta"]
-        valor = comando.get("valor")
-
-        plantas = _buscar_plantas(nombre_query, inventario)
-
-        if not plantas:
-            return None  # No encontró nada → fallback a Gemini
-
-        if len(plantas) == 1:
-            # Una sola planta → proponer directo
-            planta = plantas[0]
-            return self._proponer_accion(tipo, planta, valor)
-
-        # Varias plantas → mostrar opciones
-        return self._proponer_seleccion(tipo, plantas, valor, nombre_query)
-
-    def _proponer_accion(self, tipo: str, planta: dict, valor) -> dict:
-        """Genera propuesta directa para una planta."""
-        nombre = planta["nombre"]
-        inv_id = planta["inventario_id"]
-        precio_actual = planta.get("precio", 0)
-
-        if tipo == "actualizar_precio":
-            precio_comprador = round(valor * 1.18)
-            respuesta = (
-                f"*{nombre}* 🌿\n"
-                f"• Tu precio: ${valor:,} COP\n"
-                f"• Comprador paga: ${precio_comprador:,} COP\n"
-                f"¿Lo actualizo? Respondé *SÍ* para confirmar."
-            )
-            accion = {
-                "type": "actualizar_precio",
-                "confirmed": False,
-                "params": {"inventario_id": inv_id, "nombre": nombre, "nuevo_precio": valor}
-            }
-
-        elif tipo == "actualizar_stock":
-            respuesta = (
-                f"*{nombre}* 🌿\n"
-                f"• Stock actual: {planta.get('stock', 0)} uds\n"
-                f"• Nuevo stock: {valor} uds\n"
-                f"¿Lo actualizo? Respondé *SÍ* para confirmar."
-            )
-            accion = {
-                "type": "actualizar_stock",
-                "confirmed": False,
-                "params": {"inventario_id": inv_id, "nombre": nombre, "nuevo_stock": valor}
-            }
-
-        elif tipo == "actualizar_estado":
-            estados_emoji = {"agotado": "🔴", "disponible": "🟢", "reservado": "🟡", "en_crecimiento": "🌱"}
-            emoji = estados_emoji.get(valor, "")
-            respuesta = (
-                f"*{nombre}* → {emoji} *{valor}*\n"
-                f"¿Lo marco así? Respondé *SÍ* para confirmar."
-            )
-            accion = {
-                "type": "actualizar_estado",
-                "confirmed": False,
-                "params": {"inventario_id": inv_id, "nombre": nombre, "nuevo_estado": valor}
-            }
-        else:
-            return None
-
-        return {"respuesta": respuesta, "acciones": [accion]}
-
-    def _proponer_seleccion(self, tipo: str, plantas: list[dict], valor, query: str) -> dict:
-        """Genera mensaje con opciones numeradas."""
-        tipo_label = {
-            "actualizar_precio": f"subir precio a ${valor:,}",
-            "actualizar_stock": f"actualizar stock a {valor}",
-            "actualizar_estado": f"marcar como {valor}",
-        }.get(tipo, tipo)
-
-        lineas = [f"Encontré varias plantas similares a *{query}*:\n"]
-        opciones = []
-        for i, p in enumerate(plantas, 1):
-            precio = p.get("precio", 0)
-            stock = p.get("stock", 0)
-            lineas.append(f"{i}️⃣ *{p['nombre']}* — ${precio:,} COP · {stock} uds")
-            opciones.append({
-                "num": i,
-                "inventario_id": p["inventario_id"],
-                "nombre": p["nombre"],
-                "precio": precio,
-                "stock": stock,
-            })
-
-        lineas.append(f"\n¿Cuál querés {tipo_label}? Respondé *1*, *2* o *3*")
-        respuesta = "\n".join(lineas)
-
-        seleccion = {
-            "tipo": tipo,
-            "valor": valor,
-            "opciones": opciones,
-        }
-
-        return {"respuesta": respuesta, "acciones": [], "seleccion_pendiente": seleccion}
-
-    def _procesar_con_gemini(
-        self,
-        mensaje_usuario: str,
-        respuesta_agente: str,
-        ctx: AgentContext,
-        inventario: list[dict],
-    ) -> dict:
-        """Fallback: usa Gemini para casos complejos."""
-        inventario_ctx = ""
-        if inventario:
-            lines = [f"  - ID:{item['inventario_id']} | {item['nombre']} | Stock:{item['stock']} | Precio:${item['precio']:,} COP"
-                     for item in inventario[:50]]
-            inventario_ctx = "\n\nINVENTARIO:\n" + "\n".join(lines)
-
-        SYSTEM = """Eres el asistente de ViveroOnline para viveristas colombianos.
-Respondé en máximo 4 líneas. Tono simple y directo.
-Si el mensaje es una consulta general (no una acción), respondé con la info del agente resumida.
-Si detectás una acción de inventario, extraela en JSON.
-
-FORMATO DE SALIDA — solo JSON válido:
-{"respuesta": "texto corto", "acciones": []}
-
-Si no hay acción: {"respuesta": "...", "acciones": []}
-"""
-        user_msg = f'Mensaje: "{mensaje_usuario}"\nRespuesta agente: "{respuesta_agente[:200]}"{inventario_ctx}'
-
-        try:
-            raw = self.gemini.chat(system_prompt=SYSTEM, user_message=user_msg, temperature=0.0)
-            clean = raw.strip()
-            if "```" in clean:
-                clean = "\n".join(l for l in clean.split("\n") if not l.strip().startswith("```")).strip()
-            result = json.loads(clean)
-            for accion in result.get("acciones", []):
-                accion["confirmed"] = False
-            return {
-                "respuesta": result.get("respuesta", respuesta_agente),
-                "acciones": result.get("acciones", []),
-                "raw_agente": respuesta_agente,
-            }
-        except Exception as e:
-            logger.warning(f"Copilot Gemini fallback error: {e}")
-            return {"respuesta": respuesta_agente, "acciones": [], "raw_agente": respuesta_agente}
-
-    def resolver_seleccion(self, numero: int, seleccion: dict) -> dict | None:
-        """
-        Resuelve una selección numerada del viverista.
-        Retorna dict con respuesta+accion o None si número inválido.
-        """
-        opciones = seleccion.get("opciones", [])
-        tipo = seleccion.get("tipo")
-        valor = seleccion.get("valor")
-
-        opcion = next((o for o in opciones if o["num"] == numero), None)
-        if not opcion:
-            nums = [str(o["num"]) for o in opciones]
-            return {
-                "respuesta": f"Opción inválida. Respondé {', '.join(nums[:-1])} o {nums[-1]}.",
-                "acciones": []
-            }
-
-        planta = {
-            "inventario_id": opcion["inventario_id"],
-            "nombre": opcion["nombre"],
-            "precio": opcion["precio"],
-            "stock": opcion["stock"],
-        }
-        return self._proponer_accion(tipo, planta, valor)
-
-
-# ─── Helper inventario ─────────────────────────────────────────────────────────
-
-def get_inventario_snapshot(vivero_id: int) -> list[dict]:
-    try:
-        db = admin()
-        resp = db.table("inventario").select(
-            "inventario_id, stock, precio_mayorista, estado_planta, plantas(nombre_comun)"
-        ).eq("vivero_id", vivero_id).limit(150).execute()
-
-        items = []
-        for r in resp.data or []:
-            planta = r.get("plantas") or {}
-            items.append({
-                "inventario_id": r["inventario_id"],
-                "nombre": planta.get("nombre_comun", "Sin nombre"),
-                "stock": r.get("stock", 0),
-                "precio": float(r.get("precio_mayorista") or 0),
-                "estado": r.get("estado_planta", "disponible"),
-            })
-        return items
+        admin().table("sesiones_agente").update({
+            "accion_pendiente": accion,
+            "seleccion_pendiente": None,
+        }).eq("sesion_id", sesion_id).execute()
     except Exception as e:
-        logger.warning(f"No se pudo obtener inventario snapshot: {e}")
-        return []
+        logger.warning(f"No se pudo guardar accion_pendiente: {e}")
 
 
-# ─── Singleton ─────────────────────────────────────────────────────────────────
+def _set_seleccion_pendiente(sesion_id, seleccion):
+    if not sesion_id:
+        return
+    try:
+        admin().table("sesiones_agente").update({
+            "seleccion_pendiente": seleccion,
+            "accion_pendiente": None,
+        }).eq("sesion_id", sesion_id).execute()
+    except Exception as e:
+        logger.warning(f"No se pudo guardar seleccion_pendiente: {e}")
 
-_copilot: CopilotLayer | None = None
 
-def get_copilot() -> CopilotLayer:
-    global _copilot
-    if _copilot is None:
-        _copilot = CopilotLayer()
-    return _copilot
+def _limpiar_pendientes(sesion_id):
+    if not sesion_id:
+        return
+    try:
+        admin().table("sesiones_agente").update({
+            "accion_pendiente": None,
+            "seleccion_pendiente": None,
+        }).eq("sesion_id", sesion_id).execute()
+    except Exception:
+        pass
+
+
+def _close_session(sesion_id):
+    if not sesion_id:
+        return
+    try:
+        admin().table("sesiones_agente").update({
+            "estado": "cerrada",
+            "fecha_cierre": "now()",
+            "accion_pendiente": None,
+            "seleccion_pendiente": None,
+        }).eq("sesion_id", sesion_id).execute()
+    except Exception:
+        pass
+
+
+def _help_text(rol):
+    if rol == "viverista":
+        return (
+            "🌿 *ViveroOnline · Comandos*\n\n"
+            "📷 *Foto* → identifico la planta y la agrego\n\n"
+            "✏️ *Modificar:*\n"
+            "• precio [planta] [valor]\n"
+            "• stock [planta] [cantidad]\n"
+            "• agotado [planta]\n"
+            "• disponible [planta]\n\n"
+            "📦 *Pedidos:*\n"
+            "• APROBAR o RECHAZAR\n"
+            "• ENVIADO (cuando despachás)\n\n"
+            "Respondé *SÍ* para confirmar cambios.\n"
+            "Escribí *salir* para cerrar."
+        )
+    if rol == "comprador":
+        return (
+            "🌿 *ViveroOnline · Comandos*\n\n"
+            "💬 Describí tu proyecto → te recomiendo plantas\n"
+            "📷 Enviá foto → identifico la planta\n\n"
+            "Escribí *salir* para cerrar."
+        )
+    return "🌿 *ViveroOnline*\nEnviame fotos o preguntas sobre plantas.\nEscribí *salir* para cerrar."
+
+
+# ─── Webhook ──────────────────────────────────────────────────────────────────
+
+@router.get("/webhook")
+async def whatsapp_webhook_verify(request: Request):
+    params = request.query_params
+    mode = params.get("hub.mode")
+    token = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge")
+    verify_token = os.getenv("META_WA_VERIFY_TOKEN", "")
+    if mode == "subscribe" and token == verify_token:
+        return Response(content=challenge or "", media_type="text/plain")
+    raise HTTPException(status_code=403, detail="Verify token inválido")
+
+
+@router.post("/webhook")
+async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
+    body_bytes = await request.body()
+    signature = request.headers.get("x-hub-signature-256", "")
+    if os.getenv("ENV") == "production":
+        if not verify_signature(body_bytes, signature):
+            raise HTTPException(status_code=403, detail="Firma inválida")
+    try:
+        payload = await request.json()
+    except Exception:
+        return {"ok": True}
+    background_tasks.add_task(_process_payload, payload)
+    return {"ok": True}
+
+
+async def _process_payload(payload: dict):
+    try:
+        for entry in payload.get("entry", []):
+            for change in entry.get("changes", []):
+                if change.get("field") != "messages":
+                    continue
+                value = change.get("value", {})
+                if "statuses" in value and "messages" not in value:
+                    continue
+                for msg in value.get("messages", []) or []:
+                    await _handle_message(msg)
+    except Exception as e:
+        logger.exception(f"Error procesando payload Meta: {e}")
+
+
+# ─── Handler principal ────────────────────────────────────────────────────────
+
+async def _handle_message(msg: dict):
+    msg_type = msg.get("type")
+    from_raw = msg.get("from", "")
+    whatsapp = f"+{from_raw}" if from_raw and not from_raw.startswith("+") else from_raw
+    if not whatsapp:
+        return
+
+    user = _find_user_by_whatsapp(whatsapp)
+    if not user:
+        await send_text_message(
+            whatsapp,
+            "👋 ¡Hola! Aún no estás registrado en ViveroOnline.\n\n"
+            "Registrate gratis aquí:\nhttps://app.viveroonline.com.co/auth/ingresar",
+        )
+        return
+
+    session = _get_or_create_session(
+        whatsapp, user.get("id"),
+        rol=user.get("rol"),
+        vivero_id=user.get("vivero_id"),
+        cliente_id=user.get("cliente_id"),
+    )
+    sesion_id = session.get("sesion_id")
+    rol = user.get("rol")
+    vivero_id = user.get("vivero_id")
+
+    if msg_type == "image":
+        await _handle_image(msg.get("image", {}).get("id"), user, sesion_id, whatsapp)
+        return
+
+    if msg_type == "text":
+        body = (msg.get("text") or {}).get("body", "").strip()
+        if not body:
+            return
+
+        lower = body.lower().strip()
+
+        # Comandos especiales
+        if lower in ("ayuda", "help", "menu", "menú"):
+            await send_text_message(whatsapp, _help_text(rol))
+            return
+        if lower in ("salir", "exit", "fin"):
+            _close_session(sesion_id)
+            await send_text_message(whatsapp, "Sesión cerrada. ¡Hasta pronto! 🌿")
+            return
+
+        # ── NUEVO: Verificar selección numerada pendiente ─────────────────────
+        seleccion_pendiente = session.get("seleccion_pendiente")
+        if seleccion_pendiente and rol in ("viverista", "admin"):
+            m = re.match(r'^(\d+)$', lower)
+            if m:
+                numero = int(m.group(1))
+                copilot = get_copilot()
+                resultado = copilot.resolver_seleccion(numero, seleccion_pendiente)
+                if resultado:
+                    respuesta = resultado.get("respuesta", "")
+                    acciones = resultado.get("acciones", [])
+                    if acciones:
+                        _set_accion_pendiente(sesion_id, acciones[0])
+                    else:
+                        _limpiar_pendientes(sesion_id)
+                    _save_message(sesion_id, "model", respuesta, agente="copilot")
+                    await send_text_message(whatsapp, respuesta)
+                    return
+
+        # ── Verificar acción pendiente de confirmación ────────────────────────
+        accion_pendiente = session.get("accion_pendiente")
+        if accion_pendiente and lower in CONFIRMACIONES and rol in ("viverista", "admin"):
+            await _ejecutar_accion_confirmada(accion_pendiente, vivero_id, user.get("id"), sesion_id, whatsapp)
+            return
+
+        # Limpiar pendientes si no confirma
+        if (accion_pendiente or seleccion_pendiente) and rol in ("viverista", "admin"):
+            _limpiar_pendientes(sesion_id)
+
+        # ── Flujo normal ──────────────────────────────────────────────────────
+        _save_message(sesion_id, "user", body)
+        history = session.get("contexto_json", {}).get("historial", [])
+        ctx = AgentContext(
+            user_id=user.get("id"),
+            whatsapp=whatsapp,
+            rol=rol,
+            vivero_id=vivero_id,
+            cliente_id=user.get("cliente_id"),
+            historial=history[-6:],
+        )
+
+        try:
+            result = route_message(body, ctx)
+            respuesta_agente = result.get("respuesta", "")
+            agente = result.get("agente", "ai_ceo")
+        except Exception as e:
+            # Si LangGraph/Gemini falla, continuar con copilot local
+            respuesta_agente = ""
+            agente = "copilot_local"
+            logger.warning(f"route_message fallo, usando copilot local: {e}")
+
+        # ── Copilot Layer ─────────────────────────────────────────────────────
+        respuesta_final = respuesta_agente
+        if rol in ("viverista", "admin") and vivero_id:
+            try:
+                inventario = get_inventario_snapshot(vivero_id)
+                copilot = get_copilot()
+                copilot_result = copilot.procesar(
+                    mensaje_usuario=body,
+                    respuesta_agente=respuesta_agente,
+                    ctx=ctx,
+                    inventario_snapshot=inventario,
+                )
+                respuesta_final = copilot_result.get("respuesta", respuesta_agente)
+                acciones = copilot_result.get("acciones", [])
+                seleccion = copilot_result.get("seleccion_pendiente")
+
+                if seleccion:
+                    _set_seleccion_pendiente(sesion_id, seleccion)
+                elif acciones and not acciones[0].get("needs_clarification"):
+                    _set_accion_pendiente(sesion_id, acciones[0])
+
+            except Exception as e:
+                logger.warning(f"Copilot Layer error: {e}")
+                respuesta_final = respuesta_agente
+
+        _save_message(sesion_id, "model", respuesta_final, agente=agente)
+        if len(respuesta_final) > 4000:
+            respuesta_final = respuesta_final[:3997] + "..."
+        await send_text_message(whatsapp, respuesta_final)
+        return
+
+    await send_text_message(
+        whatsapp,
+        "Por ahora solo proceso texto e imágenes 🌿\n"
+        "Escribí *ayuda* para ver los comandos disponibles.",
+    )
+
+
+# ─── Ejecutar acción confirmada ───────────────────────────────────────────────
+
+async def _ejecutar_accion_confirmada(accion, vivero_id, user_id, sesion_id, whatsapp):
+    _limpiar_pendientes(sesion_id)
+    resultado = ejecutar_accion(accion, vivero_id, user_id)
+    _save_message(sesion_id, "model", resultado.mensaje, agente="executor")
+    await send_text_message(whatsapp, resultado.mensaje)
+
+
+# ─── Pipeline imagen ──────────────────────────────────────────────────────────
+
+async def _handle_image(image_id, user, sesion_id, whatsapp):
+    if not image_id:
+        await send_text_message(whatsapp, "No pude acceder a la imagen. Intentá enviarla de nuevo.")
+        return
+
+    try:
+        image_bytes = await download_media_bytes(image_id)
+    except Exception as e:
+        await send_text_message(whatsapp, "No pude descargar tu imagen. Intentá de nuevo.")
+        logger.error(f"Error descargando media {image_id}: {e}")
+        return
+
+    try:
+        from app.services.yolo import get_yolo
+        image_bytes, _ = await get_yolo().crop_plant(image_bytes)
+    except Exception:
+        pass
+
+    try:
+        analisis = PlantIdentifierAgent().identify_from_bytes(image_bytes, "image/jpeg")
+    except RuntimeError as e:
+        error_msg = str(e)
+        if "cuota_agotada" in error_msg:
+            await send_text_message(whatsapp, "⏳ Servicio de IA ocupado. Intentá en unos minutos. 🌿")
+        else:
+            await send_text_message(whatsapp, "🤔 No pude procesar esta imagen.\n• Más luz\n• Planta centrada\n• Foto directa (no documento)")
+        return
+    except Exception as e:
+        logger.error(f"Error identificando planta: {e}")
+        await send_text_message(whatsapp, "🤔 No pude procesar esta imagen. Intentá enviándola directamente desde la cámara.")
+        return
+
+    rol = user.get("rol")
+    vivero_id = user.get("vivero_id")
+
+    if analisis.confianza < 0.3 or analisis.nombre_comun == "No identificada":
+        msg = (
+            "🤔 No pude identificar esta planta con confianza.\n\n"
+            "Intentá:\n• Más luz natural\n• Planta centrada\n• Sin objetos delante"
+        )
+        _limpiar_pendientes(sesion_id)
+    else:
+        precio = analisis.precio_estimado_cop or 0
+        precio_str = f"${precio:,} COP" if precio else "a definir"
+        precio_comprador = round(precio * 1.18) if precio else 0
+        altura = analisis.altura_cm_estimada or 30
+
+        if rol in ("viverista", "admin") and vivero_id:
+            # Subir foto a Storage
+            foto_url = None
+            try:
+                import uuid as _uuid
+                db = admin()
+                filename = f"{vivero_id}/wa_{_uuid.uuid4()}.jpg"
+                db.storage.from_("plantas-fotos").upload(
+                    path=filename,
+                    file=image_bytes,
+                    file_options={"content-type": "image/jpeg"},
+                )
+                foto_url = db.storage.from_("plantas-fotos").get_public_url(filename)
+            except Exception as e:
+                logger.error(f"Error subiendo foto a Storage: {type(e).__name__}: {e}")
+
+            msg = (
+                f"🌿 *{analisis.nombre_comun}*\n"
+                f"_{analisis.nombre_cientifico or ''}_\n\n"
+                f"📏 Altura: {altura} cm\n"
+                f"💰 Tu precio sugerido: {precio_str}\n"
+                f"🛒 Comprador pagaría: ${precio_comprador:,} COP\n"
+                f"✅ Confianza: {int(analisis.confianza * 100)}%\n\n"
+                f"¿La agrego a tu catálogo?\n"
+                f"Respondé *SÍ* para confirmar."
+            )
+            accion_pendiente = {
+                "type": "agregar_producto",
+                "confirmed": False,
+                "params": {
+                    "nombre_comun": analisis.nombre_comun,
+                    "nombre_cientifico": analisis.nombre_cientifico,
+                    "precio_mayorista": precio,
+                    "stock": 1,
+                    "altura_cm": altura,
+                    "foto_url": foto_url,
+                    "confianza_yolo": analisis.confianza,
+                }
+            }
+            _set_accion_pendiente(sesion_id, accion_pendiente)
+        else:
+            msg = (
+                f"🌿 *{analisis.nombre_comun}*\n"
+                f"_{analisis.nombre_cientifico or ''}_\n\n"
+                f"💰 Precio referencia: {precio_str}\n"
+                f"☀️ Luz: {analisis.luz or 'N/D'}\n"
+                f"💧 Riego: {analisis.riego or 'N/D'}\n"
+                f"📏 Altura aprox: {altura} cm\n\n"
+                f"✅ Confianza: {int(analisis.confianza * 100)}%\n\n"
+                f"¿Querés cotizar esta planta?\n"
+                f"Describime cuántas necesitás y dónde."
+            )
+
+    _save_message(sesion_id, "user", "[Imagen enviada]", is_photo=True)
+    _save_message(sesion_id, "model", msg, agente="plant_identifier")
+    await send_text_message(whatsapp, msg)
