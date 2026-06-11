@@ -26,7 +26,6 @@ from app.routes import pages as pages_routes
 from app.routes.admin_ops import router as admin_ops_router
 from app.routes.pedidos import router as pedidos_router
 from app.routes.suscripcion import router as suscripciones_router
-from app.routes.cron import router as cron_router
 
 settings = get_settings()
 STATIC_DIR = Path(__file__).parent / "static"
@@ -60,7 +59,6 @@ app.add_middleware(
     max_age=600,
 )
 
-# ─────────────────── RATE LIMITING ───────────────────
 RATE_LIMITS: dict[str, tuple[int, int]] = {
     "/api/auth/otp/send":             (5, 60),
     "/api/auth/otp/verify":           (10, 60),
@@ -102,10 +100,7 @@ async def rate_limit_middleware(request: Request, call_next):
         retry_after = max(1, int(window - (now - _rate_buckets[key][0])))
         return JSONResponse(
             status_code=429,
-            content={
-                "ok": False,
-                "detail": "Demasiadas solicitudes. Esperá un momento e intentá de nuevo.",
-            },
+            content={"ok": False, "detail": "Demasiadas solicitudes. Esperá un momento e intentá de nuevo."},
             headers={
                 "Retry-After": str(retry_after),
                 "X-RateLimit-Limit": str(max_req),
@@ -121,15 +116,9 @@ async def rate_limit_middleware(request: Request, call_next):
     return response
 
 
-# ─────────────────── HEALTH ───────────────────
 @app.get("/api/health", tags=["system"])
 async def health():
-    return {
-        "ok": True,
-        "service": "vivero-online",
-        "version": "0.1.0",
-        "env": settings.env,
-    }
+    return {"ok": True, "service": "vivero-online", "version": "0.1.0", "env": settings.env}
 
 
 # ─────────────────── ROUTERS ───────────────────
@@ -148,15 +137,10 @@ app.include_router(public_routes.router)
 app.include_router(ingesta_routes.router)
 app.include_router(admin_ops_router)
 app.include_router(pedidos_router)
-app.include_router(cron_router)
 # HTML pages (deben ir al final para no capturar /api/*)
 app.include_router(pages_routes.router)
 
 
-# ─────────────────── ERROR HANDLER ───────────────────
 @app.exception_handler(Exception)
 async def unhandled_error(request, exc: Exception):
-    return JSONResponse(
-        status_code=500,
-        content={"ok": False, "detail": str(exc)[:200]},
-    )
+    return JSONResponse(status_code=500, content={"ok": False, "detail": str(exc)[:200]})
