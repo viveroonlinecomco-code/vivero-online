@@ -26,7 +26,7 @@ from app.routes import pages as pages_routes
 from app.routes.admin_ops import router as admin_ops_router
 from app.routes.pedidos import router as pedidos_router
 from app.routes.suscripcion import router as suscripciones_router
-from routes.cron import router as cron_router
+from app.routes.cron import router as cron_router
 
 settings = get_settings()
 STATIC_DIR = Path(__file__).parent / "static"
@@ -40,11 +40,9 @@ app = FastAPI(
     openapi_url="/api/openapi.json" if not settings.is_production else None,
 )
 
-# Archivos estáticos (JS, CSS, imágenes del proyecto)
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
-# CORS - dominios permitidos
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
