@@ -1,14 +1,20 @@
 {
   "version": 2,
-  "functions": {
-    "api/index.py": {
-      "runtime": "vercel-python@4.1.4",
-      "maxDuration": 60
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python",
+      "config": { "maxLambdaSize": "50mb", "runtime": "python3.12" }
     }
-  },
+  ],
   "routes": [
     { "src": "/(.*)", "dest": "api/index.py" }
   ],
+  "functions": {
+    "api/index.py": {
+      "maxDuration": 60
+    }
+  },
   "headers": [
     {
       "source": "/(.*)",
