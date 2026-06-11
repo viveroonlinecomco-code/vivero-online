@@ -150,22 +150,26 @@ const TIPO_CLIENTE_LABEL = {
     conjunto: 'Conjunto residencial', empresa: 'Empresa', otro: 'Comprador',
 };
 const BADGE_STYLES = {
-    borrador:   'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    enviada:    'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    aceptada:   'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-    rechazada:  'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-    vencida:    'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
-    convertida: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    pagada:     'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    borrador:     'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    enviada:      'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    aceptada:     'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+    rechazada:    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    vencida:      'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
+    convertida:   'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+    pagada:       'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+    despachado:   'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+    entregado:    'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
 };
 const BADGE_LABELS = {
-    borrador:   '✏️ Borrador',
-    enviada:    '⏳ Enviado al vivero',
-    aceptada:   '✅ Aprobado',
-    rechazada:  '❌ Rechazado',
-    vencida:    'Vencido',
-    convertida: '⏳ Pago pendiente',
-    pagada:     '✅ Pagado',
+    borrador:     '✏️ Borrador',
+    enviada:      '⏳ Enviado al vivero',
+    aceptada:     '✅ Aprobado — listo para pagar',
+    rechazada:    '❌ Rechazado',
+    vencida:      'Vencido',
+    convertida:   '⚠️ Pago pendiente',
+    pagada:       '✅ Pagado — preparando pedido',
+    despachado:   '🚐 En camino',
+    entregado:    '✅ Entregado',
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -231,8 +235,12 @@ function renderProyectoCard(p) {
     const nombre = p.nombre_proyecto
         ? escapeHTML(p.nombre_proyecto)
         : '<span class="italic text-slate-400">Sin nombre</span>';
-    const badgeStyle = BADGE_STYLES[p.estado] || BADGE_STYLES.borrador;
-    const badgeLabel = BADGE_LABELS[p.estado] || p.estado;
+    // Si está pagada y tiene estado_entrega, mostrar ese estado
+    const estadoMostrar = (p.estado === 'pagada' && p.estado_entrega && p.estado_entrega !== 'pendiente')
+        ? p.estado_entrega
+        : p.estado;
+    const badgeStyle = BADGE_STYLES[estadoMostrar] || BADGE_STYLES.borrador;
+    const badgeLabel = BADGE_LABELS[estadoMostrar] || estadoMostrar;
     const urgente = p.estado === 'aceptada';
     const pagoPendiente = p.estado === 'convertida';
     const showVencimiento = p.estado === 'borrador' && p.fecha_vencimiento;
