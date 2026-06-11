@@ -266,7 +266,7 @@ def get_inventario_snapshot(vivero_id: int) -> list[dict]:
         resp = db.table("inventario").select(
             "inventario_id, stock, precio_mayorista, estado_planta, "
             "plantas(nombre_comun)"
-        ).eq("vivero_id", vivero_id).limit(30).execute()
+        ).eq("vivero_id", vivero_id).limit(150).execute()
 
         items = []
         for r in resp.data or []:
