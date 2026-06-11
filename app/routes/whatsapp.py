@@ -496,6 +496,21 @@ async def _handle_image(
         altura = analisis.altura_cm_estimada or 30
 
         if rol in ("viverista", "admin") and vivero_id:
+            # ── Subir foto a Supabase Storage antes de proponer ──────
+            foto_url = None
+            try:
+                import uuid as _uuid
+                db = admin()
+                filename = f"{vivero_id}/wa_{_uuid.uuid4()}.jpg"
+                db.storage.from_("plantas-fotos").upload(
+                    path=filename,
+                    file=image_bytes,
+                    file_options={"content-type": "image/jpeg"},
+                )
+                foto_url = db.storage.from_("plantas-fotos").get_public_url(filename)
+            except Exception as e:
+                logger.warning(f"No se pudo subir foto a Storage: {e}")
+
             # Para viveristas → proponer agregar al inventario
             msg = (
                 f"🌿 *{analisis.nombre_comun}*\n"
@@ -516,7 +531,7 @@ async def _handle_image(
                     "precio_mayorista": precio,
                     "stock": 1,
                     "altura_cm": altura,
-                    "foto_url": None,
+                    "foto_url": foto_url,
                     "confianza_yolo": analisis.confianza,
                 }
             }
