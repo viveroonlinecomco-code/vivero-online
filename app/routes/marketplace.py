@@ -335,13 +335,27 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
         "fecha_creacion, fecha_vencimiento, fecha_conversion, notas_cliente"
     ).eq("cliente_id", user.cliente_id).order("fecha_creacion", desc=True).execute()
 
+    # Obtener estados de entrega para proyectos pagados
+    cot_ids_pagados = [r["cotizacion_id"] for r in (resp.data or []) if r.get("estado") == "pagada"]
+    entrega_map = {}
+    if cot_ids_pagados:
+        try:
+            entregas = db.table("entregas").select(
+                "cotizacion_id, estado_entrega"
+            ).in_("cotizacion_id", cot_ids_pagados).execute()
+            entrega_map = {e["cotizacion_id"]: e["estado_entrega"] for e in (entregas.data or [])}
+        except Exception:
+            pass
+
     proyectos = []
     for r in resp.data or []:
         items = r.get("items") or []
+        cot_id = r["cotizacion_id"]
         proyectos.append({
-            "cotizacion_id": r["cotizacion_id"],
+            "cotizacion_id": cot_id,
             "nombre_proyecto": r.get("prompt_original"),
             "estado": r["estado"],
+            "estado_entrega": entrega_map.get(cot_id),
             "total_estimado": float(r.get("total_estimado") or 0),
             "num_items": sum(it.get("cantidad", 0) for it in items),
             "num_items_distintos": len(items),
