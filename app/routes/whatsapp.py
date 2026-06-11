@@ -270,6 +270,16 @@ async def _handle_message(msg: dict):
             await send_text_message(whatsapp, "Sesión cerrada. ¡Hasta pronto! 🌿")
             return
 
+        # ── APROBAR / RECHAZAR cotización desde WhatsApp ─────────────────────
+        if rol in ("viverista", "admin"):
+            if lower in ("aprobar", "apruebo", "aprobado", "si apruebo"):
+                await _handle_aprobar(vivero_id, whatsapp, sesion_id, session)
+                return
+            if re.match(r'^rechazar|^rechazo', lower):
+                motivo = re.sub(r'^rechazar?\s*', '', lower).strip()
+                await _handle_rechazar(vivero_id, whatsapp, sesion_id, session, motivo)
+                return
+
         # ── LOGÍSTICA: ENVIADO (viverista despacha) ───────────────────────────
         if rol in ("viverista", "admin") and re.match(r'^enviado', lower):
             await _handle_enviado(body, vivero_id, whatsapp, sesion_id)
@@ -631,3 +641,129 @@ async def _handle_recibido(cliente_id: int, whatsapp: str, sesion_id: int):
             await send_text_message(vivero.data[0]["whatsapp_numero"], msg_viverista)
     except Exception as e:
         logger.warning("No se pudo notificar al viverista: " + str(e))
+
+
+# ─── Aprobar cotización desde WhatsApp ────────────────────────────────────────
+
+async def _handle_aprobar(vivero_id: int, whatsapp: str, sesion_id: int, session: dict):
+    """Viverista escribe APROBAR → aprueba la cotización pendiente."""
+    accion = session.get("accion_pendiente") or {}
+
+    if accion.get("type") != "aprobar_rechazar_cotizacion":
+        await send_text_message(
+            whatsapp,
+            "No tengo ninguna cotización pendiente de aprobar.\n"
+            "Revisa tu panel: https://app.viveroonline.com.co/viverista"
+        )
+        return
+
+    cotizacion_id = accion.get("params", {}).get("cotizacion_id")
+    nombre_proyecto = accion.get("params", {}).get("nombre_proyecto", f"Cotización #{cotizacion_id}")
+    total_base = accion.get("params", {}).get("total_base", 0)
+
+    if not cotizacion_id:
+        await send_text_message(whatsapp, "Error: no encontré el ID de la cotización.")
+        return
+
+    db = admin()
+
+    # Actualizar estado en BD
+    db.table("cotizaciones").update({"estado": "aceptada"}).eq(
+        "cotizacion_id", cotizacion_id
+    ).execute()
+
+    # Limpiar acción pendiente
+    _limpiar_pendientes(sesion_id)
+
+    await send_text_message(
+        whatsapp,
+        "Cotizacion aprobada\n\n"
+        "Proyecto: " + nombre_proyecto + "\n"
+        "El comprador recibira la notificacion para pagar.\n\n"
+        "Te avisamos cuando el pago sea confirmado."
+    )
+
+    # Notificar al comprador
+    try:
+        from app.config import get_settings
+        base = get_settings().app_base_url
+        cot = db.table("cotizaciones").select("cliente_id, total_estimado").eq(
+            "cotizacion_id", cotizacion_id
+        ).limit(1).execute()
+        if cot.data:
+            cliente = db.table("clientes").select("whatsapp_numero").eq(
+                "cliente_id", cot.data[0]["cliente_id"]
+            ).limit(1).execute()
+            if cliente.data and cliente.data[0].get("whatsapp_numero"):
+                total_comprador = round(float(cot.data[0]["total_estimado"]) * 1.18)
+                msg = (
+                    "Tu solicitud fue aprobada - ViveroOnline\n\n"
+                    "Proyecto: " + nombre_proyecto + "\n"
+                    "Total a pagar: $" + "{:,}".format(total_comprador) + " COP\n\n"
+                    "El vivero confirmo disponibilidad.\n"
+                    "Ingresa a tu panel para completar el pago:\n" + base + "/comprador"
+                )
+                await send_text_message(cliente.data[0]["whatsapp_numero"], msg)
+    except Exception as e:
+        logger.warning("No se pudo notificar al comprador tras aprobar: " + str(e))
+
+
+# ─── Rechazar cotización desde WhatsApp ──────────────────────────────────────
+
+async def _handle_rechazar(vivero_id: int, whatsapp: str, sesion_id: int, session: dict, motivo: str = ""):
+    """Viverista escribe RECHAZAR → rechaza la cotización pendiente."""
+    accion = session.get("accion_pendiente") or {}
+
+    if accion.get("type") != "aprobar_rechazar_cotizacion":
+        await send_text_message(
+            whatsapp,
+            "No tengo ninguna cotizacion pendiente de rechazar.\n"
+            "Revisa tu panel: https://app.viveroonline.com.co/viverista"
+        )
+        return
+
+    cotizacion_id = accion.get("params", {}).get("cotizacion_id")
+    nombre_proyecto = accion.get("params", {}).get("nombre_proyecto", f"Cotizacion #{cotizacion_id}")
+
+    if not cotizacion_id:
+        await send_text_message(whatsapp, "Error: no encontre el ID de la cotizacion.")
+        return
+
+    db = admin()
+
+    db.table("cotizaciones").update({
+        "estado": "rechazada",
+        "notas_agente": motivo or "Rechazada por el viverista via WhatsApp",
+    }).eq("cotizacion_id", cotizacion_id).execute()
+
+    _limpiar_pendientes(sesion_id)
+
+    await send_text_message(
+        whatsapp,
+        "Cotizacion rechazada\n\n"
+        "Proyecto: " + nombre_proyecto + "\n"
+        "El comprador fue notificado."
+    )
+
+    # Notificar al comprador
+    try:
+        from app.config import get_settings
+        base = get_settings().app_base_url
+        cot = db.table("cotizaciones").select("cliente_id").eq(
+            "cotizacion_id", cotizacion_id
+        ).limit(1).execute()
+        if cot.data:
+            cliente = db.table("clientes").select("whatsapp_numero").eq(
+                "cliente_id", cot.data[0]["cliente_id"]
+            ).limit(1).execute()
+            if cliente.data and cliente.data[0].get("whatsapp_numero"):
+                motivo_txt = "\nMotivo: " + motivo if motivo else ""
+                msg = (
+                    "Solicitud no disponible - ViveroOnline\n\n"
+                    "Proyecto: " + nombre_proyecto + motivo_txt + "\n\n"
+                    "El vivero no tiene disponibilidad en este momento.\n"
+                    "Busca alternativas en el marketplace:\n" + base + "/marketplace"
+                )
+                await send_text_message(cliente.data[0]["whatsapp_numero"], msg)
+    except Exception as e:
+        logger.warning("No se pudo notificar al comprador tras rechazar: " + str(e))
