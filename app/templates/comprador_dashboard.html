@@ -44,8 +44,8 @@
         <h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold leading-tight tracking-tight">Arq. David Silva</h2>
     </div>
     <div class="flex w-12 items-center justify-end">
-        <button class="flex size-10 cursor-pointer items-center justify-center rounded-full bg-white dark:bg-slate-800 shadow-sm text-slate-700 dark:text-slate-200">
-            <span class="material-symbols-outlined">notifications</span>
+        <button onclick="cerrarSesion()" class="flex size-10 cursor-pointer items-center justify-center rounded-full bg-white dark:bg-slate-800 shadow-sm text-slate-700 dark:text-slate-200" title="Cerrar sesión">
+            <span class="material-symbols-outlined">logout</span>
         </button>
     </div>
 </div>
@@ -534,6 +534,13 @@ function formatFecha(s) {
         return d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
     } catch { return '—'; }
 }
+function cerrarSesion() {
+    if (!confirm('¿Cerrar sesión?')) return;
+    localStorage.removeItem('vivero_access_token');
+    localStorage.removeItem('vivero_refresh_token');
+    window.location.href = '/auth/ingresar';
+}
+
 function escapeHTML(s) {
     if (s === null || s === undefined) return '';
     return String(s).replace(/[&<>"']/g, c => ({
