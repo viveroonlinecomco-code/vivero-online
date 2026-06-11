@@ -502,14 +502,17 @@ async def _handle_image(
                 import uuid as _uuid
                 db = admin()
                 filename = f"{vivero_id}/wa_{_uuid.uuid4()}.jpg"
-                db.storage.from_("plantas-fotos").upload(
+                logger.info(f"Subiendo foto a Storage: {filename} ({len(image_bytes)} bytes)")
+                upload_resp = db.storage.from_("plantas-fotos").upload(
                     path=filename,
                     file=image_bytes,
                     file_options={"content-type": "image/jpeg"},
                 )
+                logger.info(f"Upload response: {upload_resp}")
                 foto_url = db.storage.from_("plantas-fotos").get_public_url(filename)
+                logger.info(f"Foto subida OK: {foto_url}")
             except Exception as e:
-                logger.warning(f"No se pudo subir foto a Storage: {e}")
+                logger.error(f"Error subiendo foto a Storage: {type(e).__name__}: {e}")
 
             # Para viveristas → proponer agregar al inventario
             msg = (
