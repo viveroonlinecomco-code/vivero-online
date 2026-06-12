@@ -203,7 +203,7 @@ async function cargarProyectos() {
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         loadingEl.classList.add('hidden');
-        const proyectos = data.proyectos || [];
+        const proyectos = (data.proyectos || []).filter(p => p.estado !== 'vencida');
         if (proyectos.length === 0) { emptyEl.classList.remove('hidden'); return; }
 
         listEl.classList.remove('hidden');
@@ -367,7 +367,7 @@ async function cargarItemsProyecto(cotizacion_id) {
                         <span class="material-symbols-outlined">credit_card</span>
                         Pagar ahora · ${formatCOPConMarkup(c.total_estimado)}
                     </button>
-                    <p class="text-[11px] text-center text-emerald-600 font-semibold">✓ El vivero confirmó disponibilidad</p>
+                    <p class="text-[11px] text-center text-emerald-600 font-semibold mt-1">✓ El vivero confirmó disponibilidad</p>
                     ${countdownHtml}
                 </div>`;
             footerEl.querySelector('[data-pagar]')?.addEventListener('click', () => irACheckout(cotizacion_id));
