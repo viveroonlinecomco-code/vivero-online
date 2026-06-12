@@ -13,7 +13,7 @@ Modelo de precios:
 from __future__ import annotations
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from app.auth.deps import UserContext, require_comprador, require_viverista
 from app.config import get_settings
