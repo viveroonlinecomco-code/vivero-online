@@ -80,87 +80,105 @@ async def solicitar_aprobacion(
 
     db.table("cotizaciones").update({"estado": "enviada"}).eq("cotizacion_id", cotizacion_id).execute()
 
-    # ── Notificar al viverista por WhatsApp ──────────────────────────────────
+    # ── Crear sub-cotizaciones por vivero y notificar ─────────────────────────
     try:
         base = get_settings().app_base_url
         items = cot.get("items") or []
+        nombre_proyecto = cot.get("prompt_original") or f"Cotización #{cotizacion_id}"
+        notas = cot.get("notas_cliente", "")
+
+        # Agrupar items por vivero
         inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
-
         if inv_ids:
-            inv_resp = db.table("inventario").select("vivero_id").in_(
-                "inventario_id", inv_ids
-            ).execute()
-            vivero_ids = list({r["vivero_id"] for r in (inv_resp.data or []) if r.get("vivero_id")})
+            inv_resp = db.table("inventario").select(
+                "inventario_id, vivero_id"
+            ).in_("inventario_id", inv_ids).execute()
+            inv_vivero_map = {r["inventario_id"]: r["vivero_id"] for r in (inv_resp.data or [])}
 
-            if len(vivero_ids) == 1:
+            # Agrupar items por vivero_id
+            items_por_vivero: dict[int, list] = {}
+            for it in items:
+                vid = inv_vivero_map.get(it.get("inventario_id"))
+                if vid:
+                    items_por_vivero.setdefault(vid, []).append(it)
+
+            # Crear sub-cotización y notificar a cada vivero
+            for vivero_id, vitems in items_por_vivero.items():
+                total_vivero = sum(float(it.get("subtotal") or 0) for it in vitems)
+
+                # Crear sub-cotización
+                db.table("sub_cotizaciones").insert({
+                    "cotizacion_id": cotizacion_id,
+                    "vivero_id": vivero_id,
+                    "items": vitems,
+                    "total_estimado": total_vivero,
+                    "estado": "pendiente",
+                }).execute()
+
+                # Notificar al viverista
                 v = db.table("viveros").select(
                     "whatsapp_numero, nombre_vivero"
-                ).eq("vivero_id", vivero_ids[0]).limit(1).execute()
+                ).eq("vivero_id", vivero_id).limit(1).execute()
 
-                if v.data and v.data[0].get("whatsapp_numero"):
-                    total_base = int(float(cot.get("total_estimado") or 0))
-                    total_comprador = round(total_base * (1 + MARKUP_PLATAFORMA))
-                    nombre_proyecto = cot.get("prompt_original") or f"Cotización #{cotizacion_id}"
-                    resumen = _resumir_items(db, items)
-                    notas = cot.get("notas_cliente", "")
+                if not v.data or not v.data[0].get("whatsapp_numero"):
+                    continue
 
-                    msg = (
-                        f"🌿 *Nueva solicitud — ViveroOnline*\n\n"
-                        f"Proyecto: *{nombre_proyecto}*\n\n"
-                        f"📦 *Plantas solicitadas:*\n{resumen}\n\n"
-                        f"💰 Tu precio: ${total_base:,} COP\n"
-                        f"🛒 Comprador paga: ${total_comprador:,} COP\n"
-                    )
-                    if notas:
-                        msg += f"\n📝 Notas: {notas}\n"
-                    msg += (
-                        f"\n¿Confirmás disponibilidad?\n"
-                        f"Respondé *APROBAR* o *RECHAZAR*"
-                    )
-                    await send_text_message(v.data[0]["whatsapp_numero"], msg)
+                resumen = _resumir_items(db, vitems)
+                total_comprador = round(total_vivero * (1 + MARKUP_PLATAFORMA))
 
-                    # Guardar vivero_id en sesión para que el bot sepa qué cotización aprobar
-                    sesion = db.table("sesiones_agente").select(
-                        "sesion_id, accion_pendiente"
-                    ).eq("whatsapp_numero", v.data[0]["whatsapp_numero"]).eq(
-                        "estado", "activa"
-                    ).limit(1).execute()
+                msg = (
+                    f"🌿 *Nueva solicitud — ViveroOnline*\n\n"
+                    f"Proyecto: *{nombre_proyecto}*\n\n"
+                    f"📦 *Tus plantas solicitadas:*\n{resumen}\n\n"
+                    f"💰 Tu precio: ${int(total_vivero):,} COP\n"
+                    f"🛒 Comprador paga: ${total_comprador:,} COP\n"
+                )
+                if notas:
+                    msg += f"\n📝 Notas: {notas}\n"
+                msg += f"\n¿Confirmás disponibilidad?\nRespondé *APROBAR* o *RECHAZAR*"
 
-                    accion = {
-                        "type": "aprobar_rechazar_cotizacion",
-                        "confirmed": False,
-                        "params": {
-                            "cotizacion_id": cotizacion_id,
-                            "nombre_proyecto": nombre_proyecto,
-                            "total_base": total_base,
-                        }
+                await send_text_message(v.data[0]["whatsapp_numero"], msg)
+
+                # Guardar acción pendiente en sesión del viverista
+                accion = {
+                    "type": "aprobar_rechazar_cotizacion",
+                    "confirmed": False,
+                    "params": {
+                        "cotizacion_id": cotizacion_id,
+                        "nombre_proyecto": nombre_proyecto,
+                        "total_base": int(total_vivero),
                     }
-                    if sesion.data:
-                        db.table("sesiones_agente").update({
-                            "accion_pendiente": accion
-                        }).eq("sesion_id", sesion.data[0]["sesion_id"]).execute()
-                    else:
-                        # Crear sesión para el viverista si no existe
-                        perfil = db.table("perfiles").select(
-                            "id, vivero_id"
-                        ).eq("whatsapp_numero", v.data[0]["whatsapp_numero"]).eq(
-                            "rol", "viverista"
-                        ).limit(1).execute()
-                        if perfil.data:
-                            db.table("sesiones_agente").insert({
-                                "whatsapp_numero": v.data[0]["whatsapp_numero"],
-                                "tipo_usuario": "viverista",
-                                "vivero_id": vivero_ids[0],
-                                "estado": "activa",
-                                "flujo_actual": "chat",
-                                "contexto_json": {"historial": []},
-                                "mensajes_count": 0,
-                                "fotos_procesadas": 0,
-                                "accion_pendiente": accion,
-                            }).execute()
+                }
+                sesion = db.table("sesiones_agente").select(
+                    "sesion_id"
+                ).eq("whatsapp_numero", v.data[0]["whatsapp_numero"]).eq(
+                    "estado", "activa"
+                ).limit(1).execute()
+
+                if sesion.data:
+                    db.table("sesiones_agente").update({
+                        "accion_pendiente": accion
+                    }).eq("sesion_id", sesion.data[0]["sesion_id"]).execute()
+                else:
+                    perfil = db.table("perfiles").select("id").eq(
+                        "whatsapp_numero", v.data[0]["whatsapp_numero"]
+                    ).eq("rol", "viverista").limit(1).execute()
+                    if perfil.data:
+                        db.table("sesiones_agente").insert({
+                            "whatsapp_numero": v.data[0]["whatsapp_numero"],
+                            "tipo_usuario": "viverista",
+                            "vivero_id": vivero_id,
+                            "estado": "activa",
+                            "flujo_actual": "chat",
+                            "contexto_json": {"historial": []},
+                            "mensajes_count": 0,
+                            "fotos_procesadas": 0,
+                            "accion_pendiente": accion,
+                        }).execute()
+
     except Exception as e:
         import logging
-        logging.getLogger(__name__).warning(f"No se pudo notificar al viverista: {e}")
+        logging.getLogger(__name__).warning(f"No se pudo notificar a los viveristas: {e}")
 
     return {"ok": True, "estado": "enviada", "cotizacion_id": cotizacion_id}
 
@@ -259,37 +277,74 @@ async def aprobar_cotizacion(cotizacion_id: int, user: UserContext = Depends(req
             raise HTTPException(403, "Esta cotización no contiene items de tu vivero")
 
     from datetime import datetime, timezone, timedelta
-    fecha_vencimiento = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
-    db.table("cotizaciones").update({
-        "estado": "aceptada",
-        "fecha_vencimiento": fecha_vencimiento,
-    }).eq("cotizacion_id", cotizacion_id).execute()
 
-    # ── Notificar al comprador por WhatsApp ──────────────────────────────────
-    try:
-        base = get_settings().app_base_url
-        cliente = db.table("clientes").select("whatsapp_numero").eq(
-            "cliente_id", cot["cliente_id"]
-        ).limit(1).execute()
+    # ── Actualizar sub-cotización de este vivero ──────────────────────────────
+    sub = db.table("sub_cotizaciones").select("sub_cotizacion_id").eq(
+        "cotizacion_id", cotizacion_id
+    ).eq("vivero_id", user.vivero_id).eq("estado", "pendiente").limit(1).execute()
 
-        if cliente.data and cliente.data[0].get("whatsapp_numero"):
-            total_base = int(float(cot.get("total_estimado") or 0))
-            total_comprador = round(total_base * (1 + MARKUP_PLATAFORMA))
-            nombre_proyecto = cot.get("prompt_original") or f"Cotización #{cotizacion_id}"
-            msg = (
-                f"✅ *¡Tu solicitud fue aprobada! — ViveroOnline*\n\n"
-                f"Proyecto: *{nombre_proyecto}*\n"
-                f"Total a pagar: *${total_comprador:,} COP*\n\n"
-                f"El vivero confirmó disponibilidad.\n"
-                f"Ingresá a tu panel para completar el pago:\n"
-                f"{base}/comprador"
-            )
-            await send_text_message(cliente.data[0]["whatsapp_numero"], msg)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"No se pudo notificar al comprador: {e}")
+    if sub.data:
+        db.table("sub_cotizaciones").update({
+            "estado": "aprobada",
+            "fecha_respuesta": datetime.now(timezone.utc).isoformat(),
+        }).eq("sub_cotizacion_id", sub.data[0]["sub_cotizacion_id"]).execute()
 
-    return {"ok": True, "estado": "aceptada", "cotizacion_id": cotizacion_id}
+    # ── Verificar si TODAS las sub-cotizaciones están aprobadas ──────────────
+    pendientes = db.table("sub_cotizaciones").select("sub_cotizacion_id").eq(
+        "cotizacion_id", cotizacion_id
+    ).in_("estado", ["pendiente", "rechazada"]).execute()
+
+    todas_aprobadas = len(pendientes.data or []) == 0
+
+    if todas_aprobadas:
+        fecha_vencimiento = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
+        db.table("cotizaciones").update({
+            "estado": "aceptada",
+            "fecha_vencimiento": fecha_vencimiento,
+        }).eq("cotizacion_id", cotizacion_id).execute()
+
+        # Notificar al comprador solo cuando TODOS aprobaron
+        try:
+            base = get_settings().app_base_url
+            cliente = db.table("clientes").select("whatsapp_numero").eq(
+                "cliente_id", cot["cliente_id"]
+            ).limit(1).execute()
+
+            if cliente.data and cliente.data[0].get("whatsapp_numero"):
+                total_base = int(float(cot.get("total_estimado") or 0))
+                total_comprador = round(total_base * (1 + MARKUP_PLATAFORMA))
+                nombre_proyecto = cot.get("prompt_original") or f"Cotización #{cotizacion_id}"
+                msg = (
+                    f"✅ *¡Tu solicitud fue aprobada! — ViveroOnline*\n\n"
+                    f"Proyecto: *{nombre_proyecto}*\n"
+                    f"Total a pagar: *${total_comprador:,} COP*\n\n"
+                    f"Todos los viveros confirmaron disponibilidad.\n"
+                    f"Ingresá a tu panel para completar el pago:\n"
+                    f"{base}/comprador"
+                )
+                await send_text_message(cliente.data[0]["whatsapp_numero"], msg)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"No se pudo notificar al comprador: {e}")
+
+        return {"ok": True, "estado": "aceptada", "cotizacion_id": cotizacion_id}
+    else:
+        # Hay sub-cotizaciones aún pendientes
+        aprobadas = db.table("sub_cotizaciones").select("sub_cotizacion_id").eq(
+            "cotizacion_id", cotizacion_id
+        ).eq("estado", "aprobada").execute()
+        total_aprobadas = len(aprobadas.data or [])
+        total_subs = db.table("sub_cotizaciones").select("sub_cotizacion_id").eq(
+            "cotizacion_id", cotizacion_id
+        ).execute()
+        total = len(total_subs.data or [])
+        return {
+            "ok": True,
+            "estado": "parcialmente_aprobada",
+            "aprobadas": total_aprobadas,
+            "total_viveros": total,
+            "cotizacion_id": cotizacion_id,
+        }
 
 
 # ═══════════ 4. VIVERISTA: Rechazar cotización ═══════════
@@ -313,32 +368,107 @@ async def rechazar_cotizacion(
         if not any(r.get("vivero_id") == user.vivero_id for r in (inv_resp.data or [])):
             raise HTTPException(403, "Esta cotización no contiene items de tu vivero")
 
+    from datetime import datetime, timezone
+
+    # ── Marcar sub-cotización de este vivero como rechazada ───────────────────
+    sub = db.table("sub_cotizaciones").select(
+        "sub_cotizacion_id, items"
+    ).eq("cotizacion_id", cotizacion_id).eq(
+        "vivero_id", user.vivero_id
+    ).eq("estado", "pendiente").limit(1).execute()
+
+    if sub.data:
+        db.table("sub_cotizaciones").update({
+            "estado": "rechazada",
+            "notas_rechazo": req.motivo or "Rechazada por el viverista",
+            "fecha_respuesta": datetime.now(timezone.utc).isoformat(),
+        }).eq("sub_cotizacion_id", sub.data[0]["sub_cotizacion_id"]).execute()
+
+        # ── Buscar vivero alternativo para cada item rechazado ────────────────
+        items_rechazados = sub.data[0].get("items") or []
+        alternativas = []
+
+        for it in items_rechazados:
+            inv_id = it.get("inventario_id")
+            cantidad = it.get("cantidad", 1)
+            if not inv_id:
+                continue
+
+            alt = db.rpc("buscar_vivero_alternativo", {
+                "p_inventario_id": inv_id,
+                "p_cantidad": cantidad,
+                "p_vivero_excluir": user.vivero_id,
+            }).execute()
+
+            if alt.data:
+                alternativas.append({
+                    "inventario_original": inv_id,
+                    "inventario_alternativo": alt.data[0]["inventario_id"],
+                    "vivero_alternativo_id": alt.data[0]["vivero_id"],
+                    "nombre_vivero": alt.data[0]["nombre_vivero"],
+                    "precio_mayorista": float(alt.data[0]["precio_mayorista"]),
+                })
+
+        # ── Notificar al comprador con alternativa si existe ──────────────────
+        try:
+            base = get_settings().app_base_url
+            cliente = db.table("clientes").select("whatsapp_numero").eq(
+                "cliente_id", cot["cliente_id"]
+            ).limit(1).execute()
+            nombre_proyecto = cot.get("prompt_original") or f"Cotización #{cotizacion_id}"
+
+            if cliente.data and cliente.data[0].get("whatsapp_numero"):
+                if alternativas:
+                    nombres_alt = list({a["nombre_vivero"] for a in alternativas})
+                    msg = (
+                        f"⚠️ *Un vivero no tiene disponibilidad — ViveroOnline*\n\n"
+                        f"Proyecto: *{nombre_proyecto}*\n\n"
+                        f"Encontramos las mismas plantas en: *{', '.join(nombres_alt)}*\n\n"
+                        f"Ingresá a tu panel para confirmar el cambio:\n"
+                        f"{base}/comprador"
+                    )
+                else:
+                    motivo_txt = f"\nMotivo: {req.motivo}" if req.motivo else ""
+                    msg = (
+                        f"❌ *Solicitud no disponible — ViveroOnline*\n\n"
+                        f"Proyecto: {nombre_proyecto}{motivo_txt}\n\n"
+                        f"No encontramos stock disponible en otro vivero.\n"
+                        f"Podés buscar alternativas en el marketplace:\n"
+                        f"{base}/marketplace"
+                    )
+                await send_text_message(cliente.data[0]["whatsapp_numero"], msg)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"No se pudo notificar al comprador: {e}")
+
+        # Si no hay más sub-cotizaciones pendientes y todas las demás están rechazadas
+        # → marcar cotización principal como rechazada
+        otras_pendientes = db.table("sub_cotizaciones").select("sub_cotizacion_id").eq(
+            "cotizacion_id", cotizacion_id
+        ).eq("estado", "pendiente").execute()
+
+        if not otras_pendientes.data:
+            aprobadas = db.table("sub_cotizaciones").select("sub_cotizacion_id").eq(
+                "cotizacion_id", cotizacion_id
+            ).eq("estado", "aprobada").execute()
+            if not aprobadas.data:
+                db.table("cotizaciones").update({
+                    "estado": "rechazada",
+                    "notas_agente": req.motivo or "Rechazada por todos los viveristas",
+                }).eq("cotizacion_id", cotizacion_id).execute()
+
+        return {
+            "ok": True,
+            "estado": "rechazada",
+            "alternativas": alternativas,
+            "cotizacion_id": cotizacion_id,
+        }
+
+    # Sin sub-cotización — flujo legacy (un solo vivero)
     db.table("cotizaciones").update({
         "estado": "rechazada",
         "notas_agente": req.motivo or "Rechazada por el viverista",
     }).eq("cotizacion_id", cotizacion_id).execute()
-
-    # ── Notificar al comprador ────────────────────────────────────────────────
-    try:
-        base = get_settings().app_base_url
-        cliente = db.table("clientes").select("whatsapp_numero").eq(
-            "cliente_id", cot["cliente_id"]
-        ).limit(1).execute()
-
-        if cliente.data and cliente.data[0].get("whatsapp_numero"):
-            nombre_proyecto = cot.get("prompt_original") or f"Cotización #{cotizacion_id}"
-            motivo_txt = f"\nMotivo: {req.motivo}" if req.motivo else ""
-            msg = (
-                f"❌ *Solicitud no disponible — ViveroOnline*\n\n"
-                f"Proyecto: {nombre_proyecto}{motivo_txt}\n\n"
-                f"El vivero no tiene disponibilidad en este momento.\n"
-                f"Podés buscar alternativas en el marketplace:\n"
-                f"{base}/marketplace"
-            )
-            await send_text_message(cliente.data[0]["whatsapp_numero"], msg)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"No se pudo notificar al comprador: {e}")
 
     return {"ok": True, "estado": "rechazada", "cotizacion_id": cotizacion_id}
 
