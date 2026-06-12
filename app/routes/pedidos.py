@@ -503,22 +503,30 @@ async def calcular_flete_cotizacion(
             "p_ciudad_destino": ciudad,
         }).execute()
 
+        import logging
+        log = logging.getLogger(__name__)
+        log.warning(f"calcular_flete result.data: {result.data}")
+
         if not result.data:
+            log.warning(f"calcular_flete sin datos para ciudad={ciudad} cot={cotizacion_id}")
             return FALLBACK
 
         r = result.data[0]
+        log.warning(f"calcular_flete r keys: {list(r.keys())} valores: {r}")
+
+        total = r.get("total_flete_cop") or r.get("total_flete") or 0
         return {
             "ok":             True,
-            "tier":           r.get("tier_calculado", "M"),
-            "zona":           r.get("zona_calculada", ""),
-            "precio_base":    r.get("precio_base_cop", 0),
-            "fee_carga_viva": r.get("fee_carga_viva_cop", 0),
-            "total_flete":    r.get("total_flete_cop", 0),
+            "tier":           r.get("tier_calculado") or r.get("tier", "M"),
+            "zona":           r.get("zona_calculada") or r.get("zona", ""),
+            "precio_base":    r.get("precio_base_cop") or r.get("precio_base", 0),
+            "fee_carga_viva": r.get("fee_carga_viva_cop") or r.get("fee_carga_viva", 0),
+            "total_flete":    total,
             "detalle":        r.get("detalle", []),
         }
     except Exception as e:
         import logging
-        logging.getLogger(__name__).exception(f"Error calculando flete: {e}")
+        logging.getLogger(__name__).exception(f"Error calculando flete ciudad={ciudad}: {e}")
         return FALLBACK
 
 
