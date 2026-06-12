@@ -494,7 +494,7 @@ async def calcular_flete_cotizacion(
 
     FALLBACK = {
         "ok": True, "tier": "M", "zona": "sabana_entre_municipios",
-        "precio_base": 65000, "fee_carga_viva": 6500, "total_flete": 71500, "detalle": [],
+        "precio_base": 180000, "fee_carga_viva": 18000, "total_flete": 198000, "detalle": [],
     }
 
     try:
