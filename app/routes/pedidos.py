@@ -498,31 +498,46 @@ async def calcular_flete_cotizacion(
     }
 
     try:
-        result = db_admin().rpc("calcular_flete", {
-            "p_cotizacion_id": cotizacion_id,
-            "p_ciudad_destino": ciudad,
-        }).execute()
+        db = db_admin()
 
-        import logging
-        log = logging.getLogger(__name__)
-        log.warning(f"calcular_flete result.data: {result.data}")
+        # 1. Obtener zona de la ciudad
+        zona_resp = db.table("ciudades_zonas").select("zona").eq("ciudad", ciudad).limit(1).execute()
+        zona = zona_resp.data[0]["zona"] if zona_resp.data else "sabana_entre_municipios"
 
-        if not result.data:
-            log.warning(f"calcular_flete sin datos para ciudad={ciudad} cot={cotizacion_id}")
-            return FALLBACK
+        # 2. Obtener tier máximo de los items de la cotización
+        cot_items = db.table("cotizaciones").select("items").eq("cotizacion_id", cotizacion_id).limit(1).execute()
+        items = cot_items.data[0].get("items", []) if cot_items.data else []
+        inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
 
-        r = result.data[0]
-        log.warning(f"calcular_flete r keys: {list(r.keys())} valores: {r}")
+        tier = "M"
+        num_viveros = 1
+        if inv_ids:
+            inv_resp = db.table("inventario").select("logistics_tier, vivero_id").in_("inventario_id", inv_ids).execute()
+            tier_orden = {"XL": 4, "L": 3, "M": 2, "S": 1}
+            tiers = [r.get("logistics_tier", "M") for r in (inv_resp.data or [])]
+            if tiers:
+                tier = max(tiers, key=lambda t: tier_orden.get(t, 2))
+            viveros = {r.get("vivero_id") for r in (inv_resp.data or []) if r.get("vivero_id")}
+            num_viveros = len(viveros) if viveros else 1
 
-        total = r.get("total_flete_cop") or r.get("total_flete") or 0
+        # 3. Obtener precio base
+        tarifa_resp = db.table("tarifas_logistica").select("precio_cop").eq("zona", zona).eq("tier_base", tier).limit(1).execute()
+        precio_base = tarifa_resp.data[0]["precio_cop"] if tarifa_resp.data else 180000
+
+        # 4. Calcular fee y recargo
+        fee = round(precio_base * 0.10)
+        recargos = {"S": 40000, "M": 60000, "L": 90000, "XL": 120000}
+        recargo = (num_viveros - 1) * recargos.get(tier, 60000) if num_viveros > 1 else 0
+        total = precio_base + fee + recargo
+
         return {
             "ok":             True,
-            "tier":           r.get("tier_calculado") or r.get("tier", "M"),
-            "zona":           r.get("zona_calculada") or r.get("zona", ""),
-            "precio_base":    r.get("precio_base_cop") or r.get("precio_base", 0),
-            "fee_carga_viva": r.get("fee_carga_viva_cop") or r.get("fee_carga_viva", 0),
+            "tier":           tier,
+            "zona":           zona,
+            "precio_base":    precio_base,
+            "fee_carga_viva": fee,
             "total_flete":    total,
-            "detalle":        r.get("detalle", []),
+            "detalle":        [],
         }
     except Exception as e:
         import logging
