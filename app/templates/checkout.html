@@ -124,13 +124,18 @@ tailwind.config = {
                 <select id="ciudad-entrega"
                     class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
                     <option value="">Seleccioná la ciudad</option>
-                    <option>Cajicá</option><option>Chía</option><option>Zipaquirá</option>
-                    <option>Sopó</option><option>La Calera</option><option>Tabio</option>
-                    <option>Tenjo</option><option>Facatativá</option><option>Madrid</option>
-                    <option>Mosquera</option><option>Funza</option><option>Cota</option>
-                    <option>Tocancipá</option><option>Bogotá D.C.</option>
-                    <option>Bogotá Norte</option><option>Bogotá Sur</option>
-                    <option>Bogotá Centro</option><option>Otro</option>
+                    <optgroup label="Sabana de Bogotá">
+                        <option>Cajicá</option><option>Chía</option><option>Zipaquirá</option>
+                        <option>Sopó</option><option>La Calera</option><option>Tabio</option>
+                        <option>Tenjo</option><option>Facatativá</option><option>Madrid</option>
+                        <option>Mosquera</option><option>Funza</option><option>Cota</option>
+                        <option>Tocancipá</option><option>Otro</option>
+                    </optgroup>
+                    <optgroup label="Bogotá D.C.">
+                        <option value="Bogotá Norte">Bogotá Norte (Chapinero, Usaquén, Suba)</option>
+                        <option value="Bogotá Centro">Bogotá Centro (Candelaria, Mártires, Barrios Unidos)</option>
+                        <option value="Bogotá Sur">Bogotá Sur (Kennedy, Bosa, Ciudad Bolívar)</option>
+                    </optgroup>
                 </select>
             </div>
 
@@ -224,6 +229,7 @@ tailwind.config = {
     }
 
     const MARKUP = 0.18;
+    const fmtMarkup = v => '$' + Math.round((parseFloat(v)||0) * (1 + MARKUP)).toLocaleString('es-CO');
     let totalViverista = 0;
     let fleteCop = 0;
 
@@ -324,10 +330,10 @@ tailwind.config = {
                  onerror="this.src='https://placehold.co/64x64/e2e8f0/64748b?text=%F0%9F%8C%B1'">
             <div class="flex-1 min-w-0">
                 <p class="font-semibold text-sm truncate">${esc(it.nombre_comun || 'Planta')}</p>
-                <p class="text-xs text-slate-500">${it.cantidad} × ${fmt(it.precio_unitario)}</p>
+                <p class="text-xs text-slate-500">${it.cantidad} × ${fmtMarkup(it.precio_unitario)}</p>
                 <p class="text-xs text-slate-400 truncate">${esc(it.nombre_vivero || '')}${it.ciudad_vivero ? ' · '+esc(it.ciudad_vivero) : ''}</p>
             </div>
-            <span class="font-bold text-primary text-sm whitespace-nowrap">${fmt(it.subtotal)}</span>
+            <span class="font-bold text-primary text-sm whitespace-nowrap">${fmtMarkup(it.subtotal)}</span>
         </div>
     `).join('');
 
