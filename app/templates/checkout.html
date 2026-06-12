@@ -80,12 +80,12 @@ tailwind.config = {
                     <span>Subtotal plantas</span>
                     <span id="subtotal-plantas">—</span>
                 </div>
-                <div id="flete-row" class="hidden justify-between text-sm text-slate-500">
+                <div id="flete-row" class="flex justify-between text-sm text-slate-500">
                     <span class="flex items-center gap-1">
                         Flete estimado
                         <span id="flete-tier-badge" class="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold"></span>
                     </span>
-                    <span id="flete-valor" class="font-semibold text-slate-700">—</span>
+                    <span id="flete-valor" class="font-semibold text-amber-600">Seleccioná la ciudad</span>
                 </div>
                 <div id="flete-loading" class="hidden justify-between text-xs text-slate-400 items-center gap-1">
                     <span class="flex items-center gap-1">
@@ -242,7 +242,15 @@ tailwind.config = {
         const montoPlantas = Math.round(totalViverista * (1 + MARKUP));
         const totalFinal   = montoPlantas + fleteCop;
         document.getElementById('subtotal-plantas').textContent = fmt(montoPlantas);
-        document.getElementById('total').textContent = fmt(totalFinal);
+        if (fleteCop > 0) {
+            document.getElementById('flete-valor').textContent = fmt(fleteCop);
+            document.getElementById('flete-valor').className = 'font-semibold text-slate-700';
+            document.getElementById('total').textContent = fmt(totalFinal);
+        } else {
+            document.getElementById('flete-valor').textContent = 'Seleccioná la ciudad';
+            document.getElementById('flete-valor').className = 'font-semibold text-amber-600';
+            document.getElementById('total').textContent = fmt(montoPlantas) + ' + flete';
+        }
     }
 
     // ── Calcular días hábiles (lunes a viernes) ───────────────
@@ -299,7 +307,7 @@ tailwind.config = {
         cotizacion = data.cotizacion;
     } catch (e) { showError('No se pudo cargar el pedido: ' + e.message); return; }
 
-    if (cotizacion.estado !== 'aceptada') {
+    if (cotizacion.estado !== 'aceptada' && cotizacion.estado !== 'convertida') {
         showError(`Estado "${cotizacion.estado}". Solo los pedidos aprobados se pueden pagar.`);
         return;
     }
