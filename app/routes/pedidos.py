@@ -526,3 +526,27 @@ async def iniciar_checkout(
         "monto_viverista":  round(total_viverista),
         "monto_plataforma": monto_plataforma,
     }
+
+
+# ═══════════════════════════════════════════════════════════
+# CRON — Vencer cotizaciones expiradas
+# ═══════════════════════════════════════════════════════════
+
+@router.post("/cron/vencer-cotizaciones")
+async def vencer_cotizaciones_cron(request: Request):
+    """Vence cotizaciones expiradas. Llamado por cron-job.org cada hora."""
+    import os
+    from fastapi import Request
+    cron_secret = os.getenv("CRON_SECRET", "")
+    if cron_secret:
+        auth = request.headers.get("authorization", "")
+        if auth != f"Bearer {cron_secret}":
+            raise HTTPException(status_code=401, detail="No autorizado")
+
+    db = db_admin()
+    try:
+        result = db.rpc("vencer_cotizaciones_expiradas").execute()
+        total = result.data[0] if result.data else 0
+        return {"ok": True, "vencidas": total}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
