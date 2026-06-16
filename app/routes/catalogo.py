@@ -3,7 +3,7 @@
 - GET    /api/catalogo                       → lista inventario propio
 - POST   /api/catalogo/identificar           → sube foto, IA la identifica
 - POST   /api/catalogo/guardar               → confirma y guarda en inventario
-- PATCH  /api/catalogo/inventario/{id}       → actualiza stock / precio / estado
+- PATCH  /api/catalogo/inventario/{id}       → actualiza stock / precio / estado / nombre
 - DELETE /api/catalogo/inventario/{id}       → elimina item del inventario
 """
 from __future__ import annotations
@@ -76,22 +76,19 @@ async def identificar_planta(
     if not user.vivero_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un vivero")
 
-    # Validar tipo
     if not imagen.content_type or not imagen.content_type.startswith("image/"):
         raise HTTPException(400, detail="Debe ser una imagen")
 
     raw = await imagen.read()
     if len(raw) == 0:
         raise HTTPException(400, detail="Imagen vacía")
-    if len(raw) > 10 * 1024 * 1024:  # 10MB
+    if len(raw) > 10 * 1024 * 1024:
         raise HTTPException(413, detail="Imagen muy grande (máx 10MB)")
 
-    # Normalizar a JPEG para YOLO/Gemini + ahorrar en storage
     try:
         img = Image.open(io.BytesIO(raw))
         if img.mode not in ("RGB", "L"):
             img = img.convert("RGB")
-        # Redimensionar si es muy grande
         max_side = 1600
         if max(img.size) > max_side:
             img.thumbnail((max_side, max_side))
@@ -101,23 +98,19 @@ async def identificar_planta(
     except Exception as e:
         raise HTTPException(400, detail=f"Imagen inválida: {e}")
 
-    # YOLO preprocessing: detectar y recortar la planta del fondo (si está habilitado)
     from app.services.yolo import get_yolo
     yolo = get_yolo()
     cropped_bytes, yolo_meta = await yolo.crop_plant(image_bytes)
 
-    # Identificar con IA (Gemini sobre la imagen recortada si hubo crop)
     agent = PlantIdentifierAgent()
     analisis = agent.identify_from_bytes(cropped_bytes, "image/jpeg")
 
-    # Si YOLO recortó, reflejarlo en confianza_yolo del análisis
     if yolo_meta.get("yolo_used"):
         analisis.confianza = max(
             analisis.confianza,
             float(yolo_meta.get("confidence") or 0) * 0.5 + analisis.confianza * 0.5,
         )
 
-    # Subir al bucket (path: vivero_id/uuid.jpg)
     db = admin()
     filename = f"{user.vivero_id}/{uuid.uuid4()}.jpg"
     try:
@@ -130,7 +123,6 @@ async def identificar_planta(
     except Exception as e:
         raise HTTPException(500, detail=f"Error al subir imagen: {e}")
 
-    # Buscar si ya existe la planta en el catálogo base (por nombre científico)
     planta_id: Optional[int] = None
     if analisis.nombre_cientifico:
         existing = db.table("plantas").select("planta_id").eq(
@@ -155,17 +147,12 @@ async def guardar_inventario(
     req: GuardarInventarioRequest,
     user: UserContext = Depends(require_viverista),
 ):
-    """Crea planta si no existe + crea item de inventario.
-
-    Si el viverista intenta subir la misma planta + altura que ya tiene en su
-    inventario, devuelve 409 con mensaje útil (en vez del error crudo de Postgres).
-    """
+    """Crea planta si no existe + crea item de inventario."""
     if not user.vivero_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un vivero")
 
     db = admin()
 
-    # 1. Obtener o crear planta en el catálogo base
     planta_id = req.planta_id
     if not planta_id:
         planta_resp = db.table("plantas").insert({
@@ -175,7 +162,6 @@ async def guardar_inventario(
         }).execute()
         planta_id = planta_resp.data[0]["planta_id"]
 
-    # 2. Crear item de inventario (con manejo amigable de duplicate key)
     try:
         inv_resp = db.table("inventario").insert({
             "vivero_id": user.vivero_id,
@@ -193,8 +179,6 @@ async def guardar_inventario(
         }).execute()
     except Exception as e:
         msg = str(e).lower()
-        # Postgres unique_violation = 23505
-        # Constraint relevante: inventario_vivero_planta_altura_unique (vivero_id, planta_id, altura_cm)
         if (
             "23505" in msg
             or "duplicate key" in msg
@@ -212,7 +196,6 @@ async def guardar_inventario(
                     f"con el botón ✏️ desde 'Mi Inventario'."
                 ),
             )
-        # Cualquier otro error → 500 con mensaje truncado para no leakear detalles
         raise HTTPException(500, detail=f"Error al guardar el inventario: {str(e)[:200]}")
 
     return {
@@ -229,6 +212,7 @@ ESTADOS_INVENTARIO = ("disponible", "agotado", "reservado", "en_crecimiento")
 
 class ActualizarInventarioRequest(BaseModel):
     """Campos editables de un item del inventario (todos opcionales)."""
+    nombre_comun: Optional[str] = Field(default=None, min_length=1, max_length=200)
     stock: Optional[int] = Field(default=None, ge=0)
     precio_mayorista: Optional[float] = Field(default=None, ge=0)
     precio_detal: Optional[float] = Field(default=None, ge=0)
@@ -244,23 +228,27 @@ async def actualizar_inventario(
 ):
     """Actualiza campos de un item del inventario.
 
-    Solo el viverista dueño puede modificarlo (chequeo explícito de ownership
-    + RLS de Postgres como defense-in-depth).
+    El nombre_comun vive en la tabla `plantas`, no en `inventario` — se
+    actualiza por separado. Cada item de inventario tiene su propio
+    planta_id (no se comparte entre viveros), así que renombrar es seguro
+    y no afecta el catálogo de otros viveros.
     """
     if not user.vivero_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un vivero")
 
-    # Validar estado_planta si fue enviado
     if req.estado_planta is not None and req.estado_planta not in ESTADOS_INVENTARIO:
         raise HTTPException(
             400,
             detail=f"Estado inválido. Válidos: {', '.join(ESTADOS_INVENTARIO)}",
         )
 
+    if req.nombre_comun is not None and not req.nombre_comun.strip():
+        raise HTTPException(400, detail="El nombre no puede estar vacío")
+
     db = admin()
 
     # Verificar que el item pertenece al vivero del usuario
-    existing = db.table("inventario").select("vivero_id").eq(
+    existing = db.table("inventario").select("vivero_id, planta_id").eq(
         "inventario_id", inventario_id
     ).limit(1).execute()
     if not existing.data:
@@ -268,7 +256,18 @@ async def actualizar_inventario(
     if existing.data[0]["vivero_id"] != user.vivero_id:
         raise HTTPException(403, detail="Este item no pertenece a tu vivero")
 
-    # Construir payload solo con campos no-None (evita pisar valores con null)
+    planta_id = existing.data[0]["planta_id"]
+
+    # Si viene nombre_comun, se actualiza en la tabla `plantas`
+    nombre_actualizado = None
+    if req.nombre_comun is not None:
+        nuevo_nombre = req.nombre_comun.strip()
+        db.table("plantas").update({
+            "nombre_comun": nuevo_nombre,
+        }).eq("planta_id", planta_id).execute()
+        nombre_actualizado = nuevo_nombre
+
+    # Resto de campos van en `inventario`
     payload: dict = {}
     if req.stock is not None:
         payload["stock"] = req.stock
@@ -281,20 +280,24 @@ async def actualizar_inventario(
     if req.notas is not None:
         payload["notas"] = req.notas.strip() or None
 
-    if not payload:
+    if not payload and nombre_actualizado is None:
         raise HTTPException(400, detail="No hay campos para actualizar")
 
-    resp = db.table("inventario").update(payload).eq(
-        "inventario_id", inventario_id
-    ).execute()
+    if payload:
+        resp = db.table("inventario").update(payload).eq(
+            "inventario_id", inventario_id
+        ).execute()
+        if not resp.data:
+            raise HTTPException(500, detail="No se pudo actualizar el inventario")
 
-    if not resp.data:
-        raise HTTPException(500, detail="No se pudo actualizar el inventario")
+    actualizado = dict(payload)
+    if nombre_actualizado is not None:
+        actualizado["nombre_comun"] = nombre_actualizado
 
     return {
         "ok": True,
         "inventario_id": inventario_id,
-        "actualizado": payload,
+        "actualizado": actualizado,
     }
 
 
@@ -305,18 +308,12 @@ async def eliminar_inventario(
     inventario_id: int,
     user: UserContext = Depends(require_viverista),
 ):
-    """Elimina un item del inventario.
-
-    Si el item tiene cotizaciones o transacciones asociadas, el DELETE
-    falla por FK constraint. En ese caso se sugiere cambiar el estado a
-    'agotado' en lugar de borrar (preserva integridad histórica).
-    """
+    """Elimina un item del inventario."""
     if not user.vivero_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un vivero")
 
     db = admin()
 
-    # Verificar ownership
     existing = db.table("inventario").select("vivero_id").eq(
         "inventario_id", inventario_id
     ).limit(1).execute()
