@@ -28,6 +28,62 @@ CONFIRMACIONES = {
     "actualizar", "guardar", "guarda", "agregar", "agrega", "yes",
 }
 
+# ── NUEVO: respuestas locales para comprador, sin tocar Gemini ───────────────
+# Cubren los casos más comunes (saludo, pedir ayuda, querer comprar, preguntar
+# qué hacer) para que el comprador nunca se quede sin respuesta útil aunque
+# Gemini/LangGraph esté caído. Si el mensaje no calza con ningún patrón,
+# seguimos al flujo normal (route_message) como hasta ahora.
+SALUDOS_COMPRADOR = {
+    "hola", "buenas", "buenos dias", "buenos días", "buenas tardes",
+    "buenas noches", "hey", "que tal", "qué tal",
+}
+
+PATRONES_COMPRADOR_LOCAL = [
+    (
+        re.compile(r"qu[eé]\s+plantas?\s+me\s+(sugieres|recomiendas|sugerir[ií]as)", re.IGNORECASE),
+        (
+            "🌿 Para sugerirte plantas necesito saber un poco más de tu proyecto: "
+            "¿es para jardín exterior, interior, cerca o un conjunto residencial? "
+            "Contame el espacio y la cantidad aproximada, o explorá directo el catálogo:\n"
+            "https://app.viveroonline.com.co/marketplace"
+        ),
+    ),
+    (
+        re.compile(r"quiero\s+comprar|necesito\s+comprar|comprar\s+(una|un)?\s*planta", re.IGNORECASE),
+        (
+            "🌿 ¡Buenísimo! Podés explorar el catálogo completo y armar tu cotización aquí:\n"
+            "https://app.viveroonline.com.co/marketplace\n\n"
+            "Si preferís, contame qué tipo de planta buscás y cuántas necesitás."
+        ),
+    ),
+    (
+        re.compile(r"^(que|qué)\s+(haces|hace esto|es esto)", re.IGNORECASE),
+        (
+            "🌿 Soy el asistente de ViveroOnline. Te ayudo a encontrar plantas, "
+            "armar cotizaciones y seguir tus pedidos. Escribí *ayuda* para ver todo "
+            "lo que puedo hacer, o entrá directo al marketplace:\n"
+            "https://app.viveroonline.com.co/marketplace"
+        ),
+    ),
+]
+
+
+def _respuesta_local_comprador(body_lower: str) -> str | None:
+    """Intenta responder localmente a mensajes comunes de comprador sin usar
+    Gemini/LangGraph. Devuelve None si no hay match, para que el caller
+    siga con el flujo normal."""
+    if body_lower.strip() in SALUDOS_COMPRADOR:
+        return (
+            "🌿 ¡Hola! Soy el asistente de ViveroOnline.\n\n"
+            "Puedo ayudarte a encontrar plantas para tu proyecto o a seguir tus "
+            "pedidos. Escribí *ayuda* para ver los comandos, o explorá el catálogo:\n"
+            "https://app.viveroonline.com.co/marketplace"
+        )
+    for patron, respuesta in PATRONES_COMPRADOR_LOCAL:
+        if patron.search(body_lower):
+            return respuesta
+    return None
+
 
 # ─── Helpers de sesión ────────────────────────────────────────────────────────
 
@@ -172,7 +228,8 @@ def _help_text(rol):
         return (
             "🌿 *ViveroOnline · Comandos*\n\n"
             "💬 Describí tu proyecto → te recomiendo plantas\n"
-            "📷 Enviá foto → identifico la planta\n\n"
+            "📷 Enviá foto → identifico la planta\n"
+            "🛍️ Catálogo completo: https://app.viveroonline.com.co/marketplace\n\n"
             "Escribí *salir* para cerrar."
         )
     return "🌿 *ViveroOnline*\nEnviame fotos o preguntas sobre plantas.\nEscribí *salir* para cerrar."
@@ -275,13 +332,13 @@ async def _handle_message(msg: dict):
             if lower in ("aprobar", "apruebo", "aprobado", "si apruebo"):
                 await _handle_aprobar(vivero_id, whatsapp, sesion_id, session)
                 return
-            if re.match(r'^rechazar|^rechazo', lower):
+            if re.match(r'^rechazar|^rechazo', lower):
                 motivo = re.sub(r'^rechazar?\s*', '', lower).strip()
                 await _handle_rechazar(vivero_id, whatsapp, sesion_id, session, motivo)
                 return
 
         # ── LOGÍSTICA: ENVIADO (viverista despacha) ───────────────────────────
-        if rol in ("viverista", "admin") and re.match(r'^enviado', lower):
+        if rol in ("viverista", "admin") and re.match(r'^enviado', lower):
             await _handle_enviado(body, vivero_id, whatsapp, sesion_id)
             return
 
@@ -361,13 +418,34 @@ async def _handle_message(msg: dict):
             except Exception as e:
                 logger.warning(f"Copilot local error: {e}")
 
+        # ── NUEVO: Para compradores: respuestas locales comunes ANTES de Gemini
+        # Cubre saludo / pedir ayuda / querer comprar / preguntar qué hacer,
+        # así el comprador no depende 100% de Gemini para esos casos típicos.
+        if rol in ("comprador", "admin"):
+            respuesta_local = _respuesta_local_comprador(lower)
+            if respuesta_local:
+                _save_message(sesion_id, "model", respuesta_local, agente="local_comprador")
+                await send_text_message(whatsapp, respuesta_local)
+                return
+
         # ── Fallback: LangGraph para consultas generales ──────────────────────
         try:
             result = route_message(body, ctx)
             respuesta_final = result.get("respuesta", "Hubo un problema. Intentá de nuevo.")
             agente = result.get("agente", "ai_ceo")
         except Exception as e:
-            respuesta_final = "Disculpá, tuve un problema. Intentá de nuevo en un momento."
+            # NUEVO: el mensaje de error ya no es un callejón sin salida —
+            # incluye un link directo al marketplace para que el comprador
+            # pueda seguir solo aunque Gemini siga caído.
+            if rol in ("comprador", "admin"):
+                respuesta_final = (
+                    "⏳ Tuve un problema procesando tu mensaje. Mientras lo resolvemos, "
+                    "podés explorar el catálogo directamente:\n"
+                    "https://app.viveroonline.com.co/marketplace\n\n"
+                    "O escribí *ayuda* para ver qué más puedo hacer."
+                )
+            else:
+                respuesta_final = "Disculpá, tuve un problema. Intentá de nuevo en un momento."
             agente = "error"
             logger.warning(f"route_message falló: {e}")
 
