@@ -224,11 +224,19 @@
         <div class="flex items-center gap-3">
             <div data-vo="modal-foto" class="w-16 h-16 rounded-lg bg-primary/10 bg-cover bg-center flex-shrink-0"></div>
             <div class="flex-1 min-w-0">
-                <p data-vo="modal-nombre" class="font-semibold truncate"></p>
                 <p data-vo="modal-altura" class="text-xs text-slate-500"></p>
             </div>
         </div>
         <div class="space-y-3">
+            <!-- Nombre -->
+            <div>
+                <label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">
+                    Nombre de la planta
+                    <span class="text-xs text-slate-400 font-normal ml-1">— corregilo si la IA no lo identificó bien</span>
+                </label>
+                <input type="text" maxlength="200" data-vo="modal-nombre"
+                    class="w-full rounded-lg border border-primary/20 p-3 text-sm bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"/>
+            </div>
             <!-- Stock -->
             <div>
                 <label class="text-sm font-medium block mb-1 text-slate-700 dark:text-slate-300">Stock disponible</label>
@@ -420,7 +428,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         function openModal(item) {
             currentItem = item;
-            if (modalNombre) modalNombre.textContent = item.nombre_comun || 'Planta';
+            if (modalNombre) modalNombre.value = item.nombre_comun || '';
             if (modalAltura) modalAltura.textContent = item.altura_cm ? `${item.altura_cm} cm` : (item.nombre_cientifico || '');
             if (modalFoto)   modalFoto.style.backgroundImage = item.foto_ia_url ? `url(${JSON.stringify(item.foto_ia_url)})` : '';
             if (modalStock)  modalStock.value  = item.stock || 0;
@@ -458,11 +466,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (btnGuardar) {
             btnGuardar.addEventListener('click', async () => {
                 if (!currentItem) return;
+                const nombre = modalNombre ? modalNombre.value.trim() : '';
                 const stock  = parseInt(modalStock.value);
                 const precio = parseFloat(modalPrecio.value);
                 const estado = modalEstado.value;
                 const tier   = modalTier ? (modalTier.value || null) : null;
 
+                if (!nombre) { VO.showToast('El nombre no puede estar vacío', 'error'); return; }
                 if (isNaN(stock) || stock < 0)  { VO.showToast('Stock inválido (mínimo 0)', 'error'); return; }
                 if (isNaN(precio) || precio < 0) { VO.showToast('Precio inválido (mínimo 0)', 'error'); return; }
 
@@ -474,6 +484,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         method: 'PATCH',
                         headers: { 'Authorization': `Bearer ${VO.getToken()}`, 'Content-Type': 'application/json' },
                         body: JSON.stringify({
+                            nombre_comun: nombre,
                             stock,
                             precio_mayorista: precio,
                             estado_planta: estado,
