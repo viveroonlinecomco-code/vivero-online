@@ -8,6 +8,7 @@ el `agent_name`. Si falla, cae en AI_CEO como fallback.
 """
 from __future__ import annotations
 import json
+import logging
 from typing import TypedDict
 
 from langgraph.graph import StateGraph, END
@@ -22,6 +23,8 @@ from app.agents.plant_identifier import PlantIdentifierAgent
 from app.agents.inventory_builder import InventoryBuilderAgent
 from app.agents.landscape_advisor import LandscapeAdvisorAgent
 from app.agents.demand_predictor import DemandPredictorAgent
+
+logger = logging.getLogger(__name__)
 
 
 # ─────────────────── REGISTRO DE AGENTES ───────────────────
@@ -39,17 +42,25 @@ _AGENTS: dict[str, type] = {
 
 
 # ─────────────────── CLASIFICADOR ───────────────────
+# AJUSTE (16 jun): se agregó una regla de desempate explícita porque en
+# producción mensajes de comprador como "para un jardín exterior en el
+# norte de Bogotá, me recomiendas?" estaban clasificando como ai_ceo en
+# vez de landscape_advisor. ai_ceo debe quedar reservado solo para
+# preguntas sobre el negocio/plataforma de ViveroOnline misma, nunca
+# para preguntas de un comprador sobre su propio proyecto.
 
 CLASSIFIER_SYSTEM = """Clasifica el mensaje del usuario y devuelve EXACTAMENTE uno de estos agent_name en JSON:
 
-- "plant_identifier": usuario quiere identificar una planta por foto / preguntas sobre identificación visual
+- "plant_identifier": usuario quiere identificar una planta por foto / preguntas sobre identificación visual de una planta puntual
 - "inventory_builder": viverista preguntando por su stock, precios, qué agregar a su catálogo
-- "landscape_advisor": comprador preguntando por un proyecto de paisajismo, qué plantas usar, cuántas
+- "landscape_advisor": comprador preguntando por un proyecto de paisajismo, jardín, espacio exterior/interior, qué plantas usar, cuántas necesita, recomendaciones para su terreno (incluso si menciona que va a enviar una foto del espacio)
 - "demand_predictor": preguntas sobre demanda futura, estacionalidad, cuándo sembrar
 - "ai_researcher": preguntas sobre mercado, competencia, tendencias, datos del marketplace
 - "startup_builder": viverista nuevo pidiendo plan de acción o cómo empezar
 - "ai_architect": preguntas técnicas de infraestructura (invernaderos, riego) o arquitectura del sistema
-- "ai_ceo": preguntas generales de negocio, estrategia, o cuando no encaja en otro
+- "ai_ceo": preguntas sobre el negocio/plataforma de ViveroOnline en sí (modelo de negocio, comisiones, cómo funciona la plataforma, estrategia de la empresa) — NUNCA uses esta categoría para preguntas de un comprador sobre su propio proyecto, jardín o espacio
+
+Regla de desempate: si el mensaje describe un espacio, terreno, jardín, proyecto propio del usuario, o pide qué plantas usar/comprar para algo suyo, clasifica como "landscape_advisor" aunque también mencione fotos o sea ambiguo. Solo usa "ai_ceo" cuando la pregunta es explícitamente sobre ViveroOnline como empresa/plataforma.
 
 Formato estricto (sin markdown):
 {"agent_name": "..."}
@@ -68,8 +79,16 @@ def _classify(mensaje: str, rol: str | None = None) -> str:
         )
         data = json.loads(raw.strip().replace("```json", "").replace("```", "").strip())
         name = data.get("agent_name", "ai_ceo")
-        return name if name in _AGENTS else "ai_ceo"
-    except Exception:
+        if name not in _AGENTS:
+            logger.warning(f"Clasificador devolvió agent_name desconocido: {name!r} — usando ai_ceo")
+            return "ai_ceo"
+        return name
+    except Exception as e:
+        # AJUSTE (16 jun): antes este fallo era completamente silencioso —
+        # caía en ai_ceo sin dejar rastro en logs. Ahora queda registrado
+        # para poder distinguir "el clasificador falló" de "el clasificador
+        # decidió genuinamente ai_ceo".
+        logger.warning(f"Clasificador de intención falló, usando ai_ceo como fallback: {e}")
         return "ai_ceo"
 
 
