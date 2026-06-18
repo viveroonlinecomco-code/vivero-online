@@ -35,7 +35,71 @@ Analiza la imagen y devuelve un JSON con esta estructura EXACTA (sin markdown, s
   "altura_cm_estimada": número entero - altura en cm estimada desde la foto
 }
 
-Si no es una planta o la imagen es ilegible, retorna confianza = 0.0 y nombre_comun = "No identificada"."""
+IMPORTANTE — FILTRO DE CATEGORÍA:
+ViveroOnline es un marketplace de plantas vivas ornamentales para paisajismo y decoración.
+Si la imagen muestra cualquiera de los siguientes casos, retorna confianza = 0.0 y nombre_comun = "No aplica":
+- Flores de corte (rosas, claveles, girasoles, lirios u otras flores cortadas sin raíz ni tierra)
+- Plantas de cosecha agrícola (tomate, lechuga, maíz, fríjol, papa, cebolla u otros cultivos de alimento)
+- Plantas artificiales, de tela, plástico o cualquier material sintético
+- Bouquets, arreglos florales, coronas o flores procesadas
+- Semillas o bulbos sin parte aérea visible
+- Imágenes sin planta (paisajes, objetos, personas, etc.)
+
+Solo identifica plantas vivas ornamentales: árboles, arbustos, palmas, helechos, suculentas, cactus, enredaderas, coberturas o plantas de interior/exterior con valor paisajístico.
+
+Si no es una planta ornamental viva o la imagen es ilegible, retorna confianza = 0.0 y nombre_comun = "No identificada"."""
+
+
+# Palabras clave en nombre_comun o nombre_cientifico que indican
+# que Gemini identificó algo fuera de categoría pese al filtro del prompt.
+# Segunda capa de defensa en Python por si el modelo ignora la instrucción.
+_CATEGORIAS_RECHAZADAS = {
+    # Flores de corte comunes
+    "rosa cortada", "clavel", "girasol cortado", "lirio cortado",
+    "crisantemo cortado", "gerbera cortada", "tulipán cortado",
+    "flor de corte", "bouquet", "arreglo floral",
+    # Cultivos agrícolas
+    "tomate", "lechuga", "maíz", "maiz", "fríjol", "frijol",
+    "papa", "cebolla", "zanahoria", "espinaca", "cilantro",
+    "perejil", "albahaca", "menta", "hierbabuena",
+    # Artificiales
+    "planta artificial", "planta de plástico", "planta de tela",
+    "flor artificial", "artificial",
+}
+
+_FAMILIAS_RECHAZADAS = {
+    "solanaceae",   # tomate, papa (como cultivo)
+    "asteraceae",   # girasol de corte (no todas — hay ornamentales)
+}
+
+# Géneros/especies agrícolas que nunca son ornamentales en este contexto
+_GENEROS_AGRICOLAS = {
+    "solanum lycopersicum",  # tomate
+    "zea mays",              # maíz
+    "phaseolus",             # fríjol
+    "allium cepa",           # cebolla
+    "lactuca sativa",        # lechuga
+    "daucus carota",         # zanahoria
+    "spinacia oleracea",     # espinaca
+}
+
+
+def _es_planta_rechazada(data: dict) -> tuple[bool, str]:
+    """Retorna (True, motivo) si la planta identificada debe ser rechazada.
+    Segunda capa de validación después del filtro en el prompt."""
+    nombre = (data.get("nombre_comun") or "").lower()
+    cientifico = (data.get("nombre_cientifico") or "").lower()
+    familia = (data.get("familia_botanica") or "").lower()
+
+    for keyword in _CATEGORIAS_RECHAZADAS:
+        if keyword in nombre:
+            return True, f"Categoría no aceptada: '{data.get('nombre_comun')}' es flor de corte, cultivo agrícola o planta artificial."
+
+    for genero in _GENEROS_AGRICOLAS:
+        if genero in cientifico:
+            return True, f"Especie agrícola no aceptada: {data.get('nombre_cientifico')}."
+
+    return False, ""
 
 
 class GeminiService:
@@ -47,8 +111,15 @@ class GeminiService:
 
     # ─────────────────── VISION ───────────────────
     def identify_plant(self, image_bytes: bytes, mime_type: str = "image/jpeg") -> PlantaIdentificada:
-        """Identifica la planta usando Gemini Vision. Retorna PlantaIdentificada."""
-        # Validar que los bytes no estén vacíos
+        """Identifica la planta usando Gemini Vision. Retorna PlantaIdentificada.
+
+        AJUSTE (18 jun): agrega filtro de doble capa para rechazar flores de
+        corte, cultivos agrícolas y plantas artificiales:
+        1. El IDENTIFY_PROMPT ya le indica a Gemini que retorne confianza=0.0
+           para esas categorías.
+        2. _es_planta_rechazada() valida el resultado en Python como respaldo
+           por si el modelo ignoró la instrucción del prompt.
+        """
         if not image_bytes or len(image_bytes) < 100:
             logger.warning("identify_plant: imagen vacía o muy pequeña")
             return PlantaIdentificada(
@@ -73,11 +144,9 @@ class GeminiService:
             error_msg = str(e)
             logger.error(f"Gemini Vision error: {error_msg[:200]}")
 
-            # Cuota agotada
             if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
                 raise RuntimeError("cuota_agotada")
 
-            # Imagen inválida para Gemini
             if "400" in error_msg or "INVALID_ARGUMENT" in error_msg:
                 return PlantaIdentificada(
                     nombre_comun="No identificada",
@@ -85,12 +154,26 @@ class GeminiService:
                     advertencias="Formato de imagen no compatible",
                 )
 
-            # Cualquier otro error
             raise RuntimeError(f"gemini_error:{error_msg[:100]}")
 
         try:
             data = json.loads(response.text)
+
+            # ── Filtro de categoría (capa 2 en Python) ────────────────────────
+            rechazada, motivo = _es_planta_rechazada(data)
+            if rechazada:
+                logger.info(f"identify_plant: planta rechazada por filtro de categoría — {motivo}")
+                return PlantaIdentificada(
+                    nombre_comun="No aplica",
+                    confianza=0.0,
+                    advertencias=(
+                        "ViveroOnline solo acepta plantas vivas ornamentales. "
+                        + motivo
+                    ),
+                )
+
             return PlantaIdentificada(**data)
+
         except (json.JSONDecodeError, ValueError) as e:
             logger.warning(f"identify_plant parse error: {e}")
             return PlantaIdentificada(
