@@ -22,7 +22,10 @@ from app.services.whatsapp_meta import send_text_message
 
 router = APIRouter(prefix="/api/pedidos", tags=["pedidos"])
 
-MARKUP_PLATAFORMA = 0.18
+# AJUSTE (18 jun): markup subido de 0.18 a 0.20 — decisión tomada en auditoría.
+# Composición del 20%: comisión plataforma 8% + coordinación logística 6% +
+# garantía de entrega 4% + margen operativo 2%.
+MARKUP_PLATAFORMA = 0.20
 
 
 def _get_cotizacion(db, cotizacion_id: int) -> dict:
