@@ -724,7 +724,19 @@ async def _handle_recibido(cliente_id: int, whatsapp: str, sesion_id: int):
 # ─── Aprobar cotización desde WhatsApp ────────────────────────────────────────
 
 async def _handle_aprobar(vivero_id: int, whatsapp: str, sesion_id: int, session: dict):
-    """Viverista escribe APROBAR → aprueba la cotización pendiente."""
+    """Viverista escribe APROBAR → aprueba la cotización pendiente.
+
+    AJUSTE (18 jun): antes este handler actualizaba cotizaciones.estado
+    directamente, sin tocar sub_cotizaciones — eso rompía el flujo
+    multi-vivero (una cotización con 2+ viveros podía pasar a "aceptada"
+    aunque el otro vivero no hubiera respondido nada todavía). Ahora delega
+    a la misma función que usa el endpoint HTTP /aprobar, que sí respeta
+    sub_cotizaciones y aplica el UPDATE condicional atómico contra
+    condiciones de carrera con el cron de vencimiento.
+    """
+    from app.routes.pedidos import aprobar_subcotizacion_vivero
+    from app.services.supabase import admin as db_admin
+
     accion = session.get("accion_pendiente") or {}
 
     if accion.get("type") != "aprobar_rechazar_cotizacion":
@@ -736,63 +748,74 @@ async def _handle_aprobar(vivero_id: int, whatsapp: str, sesion_id: int, session
         return
 
     cotizacion_id = accion.get("params", {}).get("cotizacion_id")
-    nombre_proyecto = accion.get("params", {}).get("nombre_proyecto", f"Cotización #{cotizacion_id}")
-    total_base = accion.get("params", {}).get("total_base", 0)
 
     if not cotizacion_id:
         await send_text_message(whatsapp, "Error: no encontré el ID de la cotización.")
         return
 
-    db = admin()
+    db = db_admin()
+    resultado = await aprobar_subcotizacion_vivero(db, cotizacion_id, vivero_id)
 
-    # Actualizar estado en BD con vencimiento 48h
-    from datetime import datetime, timezone, timedelta
-    fecha_vencimiento = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
-    db.table("cotizaciones").update({
-        "estado": "aceptada",
-        "fecha_vencimiento": fecha_vencimiento,
-    }).eq("cotizacion_id", cotizacion_id).execute()
-
-    # Limpiar acción pendiente
     _limpiar_pendientes(sesion_id)
 
-    await send_text_message(
-        whatsapp,
-        "Cotizacion aprobada\n\n"
-        "Proyecto: " + nombre_proyecto + "\n"
-        "El comprador recibira la notificacion para pagar.\n\n"
-        "Te avisamos cuando el pago sea confirmado."
-    )
+    if not resultado["ok"]:
+        motivo = resultado.get("motivo")
+        if motivo == "estado_cambio_antes_del_update":
+            await send_text_message(
+                whatsapp,
+                "⚠️ Esta cotización cambió de estado justo antes de tu aprobación "
+                "(por ejemplo, venció). Revisá el panel para ver el estado actual:\n"
+                "https://app.viveroonline.com.co/viverista"
+            )
+        elif motivo == "ya_procesada":
+            await send_text_message(
+                whatsapp,
+                f"Esta cotización ya fue procesada (estado: {resultado.get('estado_actual')})."
+            )
+        else:
+            await send_text_message(
+                whatsapp,
+                "No pude aprobar esta cotización. Revisá el panel para más detalle:\n"
+                "https://app.viveroonline.com.co/viverista"
+            )
+        return
 
-    # Notificar al comprador
-    try:
-        from app.config import get_settings
-        base = get_settings().app_base_url
-        cot = db.table("cotizaciones").select("cliente_id, total_estimado").eq(
-            "cotizacion_id", cotizacion_id
-        ).limit(1).execute()
-        if cot.data:
-            cliente = db.table("clientes").select("whatsapp_numero").eq(
-                "cliente_id", cot.data[0]["cliente_id"]
-            ).limit(1).execute()
-            if cliente.data and cliente.data[0].get("whatsapp_numero"):
-                total_comprador = round(float(cot.data[0]["total_estimado"]) * 1.18)
-                msg = (
-                    "Tu solicitud fue aprobada - ViveroOnline\n\n"
-                    "Proyecto: " + nombre_proyecto + "\n"
-                    "Total a pagar: $" + "{:,}".format(total_comprador) + " COP\n\n"
-                    "El vivero confirmo disponibilidad.\n"
-                    "Ingresa a tu panel para completar el pago:\n" + base + "/comprador"
-                )
-                await send_text_message(cliente.data[0]["whatsapp_numero"], msg)
-    except Exception as e:
-        logger.warning("No se pudo notificar al comprador tras aprobar: " + str(e))
+    nombre_proyecto = resultado.get("nombre_proyecto", f"Cotización #{cotizacion_id}")
+
+    if resultado["estado"] == "aceptada":
+        await send_text_message(
+            whatsapp,
+            "Cotizacion aprobada\n\n"
+            "Proyecto: " + nombre_proyecto + "\n"
+            "El comprador recibira la notificacion para pagar.\n\n"
+            "Te avisamos cuando el pago sea confirmado."
+        )
+        # La notificación al comprador ya la envía aprobar_subcotizacion_vivero
+        # cuando todos los viveros aprobaron — no se duplica aquí.
+    else:
+        # parcialmente_aprobada: este vivero aprobó, pero faltan otros
+        await send_text_message(
+            whatsapp,
+            "Tu aprobación quedó registrada\n\n"
+            "Proyecto: " + nombre_proyecto + "\n"
+            f"Aprobaron {resultado.get('aprobadas')} de {resultado.get('total_viveros')} viveros.\n"
+            "Avisaremos al comprador cuando todos confirmen."
+        )
 
 
 # ─── Rechazar cotización desde WhatsApp ──────────────────────────────────────
 
 async def _handle_rechazar(vivero_id: int, whatsapp: str, sesion_id: int, session: dict, motivo: str = ""):
-    """Viverista escribe RECHAZAR → rechaza la cotización pendiente."""
+    """Viverista escribe RECHAZAR → rechaza la cotización pendiente.
+
+    AJUSTE (18 jun): antes este handler actualizaba cotizaciones.estado
+    directamente sin tocar sub_cotizaciones ni buscar vivero alternativo —
+    rompía el flujo multi-vivero y omitía la búsqueda de reemplazo que sí
+    existe en el endpoint HTTP /rechazar. Ahora delega a la misma función.
+    """
+    from app.routes.pedidos import rechazar_subcotizacion_vivero
+    from app.services.supabase import admin as db_admin
+
     accion = session.get("accion_pendiente") or {}
 
     if accion.get("type") != "aprobar_rechazar_cotizacion":
@@ -804,47 +827,49 @@ async def _handle_rechazar(vivero_id: int, whatsapp: str, sesion_id: int, sessio
         return
 
     cotizacion_id = accion.get("params", {}).get("cotizacion_id")
-    nombre_proyecto = accion.get("params", {}).get("nombre_proyecto", f"Cotizacion #{cotizacion_id}")
 
     if not cotizacion_id:
         await send_text_message(whatsapp, "Error: no encontre el ID de la cotizacion.")
         return
 
-    db = admin()
-
-    db.table("cotizaciones").update({
-        "estado": "rechazada",
-        "notas_agente": motivo or "Rechazada por el viverista via WhatsApp",
-    }).eq("cotizacion_id", cotizacion_id).execute()
+    db = db_admin()
+    resultado = await rechazar_subcotizacion_vivero(db, cotizacion_id, vivero_id, motivo or None)
 
     _limpiar_pendientes(sesion_id)
+
+    if not resultado["ok"]:
+        motivo_error = resultado.get("motivo")
+        if motivo_error == "estado_cambio_antes_del_update":
+            await send_text_message(
+                whatsapp,
+                "⚠️ Esta cotización cambió de estado justo antes de tu rechazo "
+                "(por ejemplo, ya fue aprobada por otro proceso). Revisá el panel:\n"
+                "https://app.viveroonline.com.co/viverista"
+            )
+        elif motivo_error == "ya_procesada":
+            await send_text_message(
+                whatsapp,
+                f"Esta cotización ya fue procesada (estado: {resultado.get('estado_actual')})."
+            )
+        else:
+            await send_text_message(
+                whatsapp,
+                "No pude rechazar esta cotización. Revisá el panel para más detalle:\n"
+                "https://app.viveroonline.com.co/viverista"
+            )
+        return
+
+    nombre_proyecto = resultado.get("nombre_proyecto", f"Cotizacion #{cotizacion_id}")
 
     await send_text_message(
         whatsapp,
         "Cotizacion rechazada\n\n"
         "Proyecto: " + nombre_proyecto + "\n"
         "El comprador fue notificado."
+        + (
+            "\n\nEncontramos vivero(s) alternativo(s) para el comprador."
+            if resultado.get("alternativas") else ""
+        )
     )
-
-    # Notificar al comprador
-    try:
-        from app.config import get_settings
-        base = get_settings().app_base_url
-        cot = db.table("cotizaciones").select("cliente_id").eq(
-            "cotizacion_id", cotizacion_id
-        ).limit(1).execute()
-        if cot.data:
-            cliente = db.table("clientes").select("whatsapp_numero").eq(
-                "cliente_id", cot.data[0]["cliente_id"]
-            ).limit(1).execute()
-            if cliente.data and cliente.data[0].get("whatsapp_numero"):
-                motivo_txt = "\nMotivo: " + motivo if motivo else ""
-                msg = (
-                    "Solicitud no disponible - ViveroOnline\n\n"
-                    "Proyecto: " + nombre_proyecto + motivo_txt + "\n\n"
-                    "El vivero no tiene disponibilidad en este momento.\n"
-                    "Busca alternativas en el marketplace:\n" + base + "/marketplace"
-                )
-                await send_text_message(cliente.data[0]["whatsapp_numero"], msg)
-    except Exception as e:
-        logger.warning("No se pudo notificar al comprador tras rechazar: " + str(e))
+    # La notificación al comprador (con o sin alternativa) ya la envía
+    # rechazar_subcotizacion_vivero — no se duplica aquí.
