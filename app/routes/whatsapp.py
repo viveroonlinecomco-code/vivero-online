@@ -375,6 +375,32 @@ async def _handle_message(msg: dict):
 
         # ── Verificar acción pendiente de confirmación ────────────────────────
         accion_pendiente = session.get("accion_pendiente")
+
+        # Flujo de datos fiscales / mandato (intercepta antes que el executor normal)
+        if accion_pendiente and accion_pendiente.get("type") == "recolectar_datos_fiscales" and rol in ("viverista", "admin"):
+            from app.services.datos_fiscales_wa import procesar_respuesta_datos_fiscales
+            from app.routes.pedidos import aprobar_subcotizacion_vivero
+            from app.services.supabase import admin as db_admin_inner
+            resultado_fiscal = await procesar_respuesta_datos_fiscales(
+                body, accion_pendiente, vivero_id, whatsapp, sesion_id
+            )
+            if resultado_fiscal.get("cancelado"):
+                _limpiar_pendientes(sesion_id)
+            elif resultado_fiscal.get("completado"):
+                _limpiar_pendientes(sesion_id)
+                # Retobar la aprobación que quedó pendiente
+                cot_id_pendiente = resultado_fiscal.get("cotizacion_id")
+                if cot_id_pendiente:
+                    await send_text_message(
+                        whatsapp,
+                        "⏳ Mientras verificamos tus datos, tu aprobación quedó registrada. "
+                        "Te confirmamos cuando esté todo listo. 🌿"
+                    )
+            else:
+                # Actualizar acción pendiente con el nuevo estado del flujo
+                _set_accion_pendiente(sesion_id, resultado_fiscal.get("accion", accion_pendiente))
+            return
+
         if accion_pendiente and lower in CONFIRMACIONES and rol in ("viverista", "admin"):
             await _ejecutar_accion_confirmada(accion_pendiente, vivero_id, user.get("id"), sesion_id, whatsapp)
             return
@@ -740,9 +766,18 @@ async def _handle_aprobar(vivero_id: int, whatsapp: str, sesion_id: int, session
     a la misma función que usa el endpoint HTTP /aprobar, que sí respeta
     sub_cotizaciones y aplica el UPDATE condicional atómico contra
     condiciones de carrera con el cron de vencimiento.
+
+    AJUSTE (18 jun): antes de aprobar, verifica si el vivero ya tiene
+    Contrato de Mandato aceptado y datos fiscales registrados. Si no,
+    pausa la aprobación y dispara el flujo de recolección por WhatsApp.
+    La cotización se retoma automáticamente una vez completados los datos.
     """
     from app.routes.pedidos import aprobar_subcotizacion_vivero
     from app.services.supabase import admin as db_admin
+    from app.services.datos_fiscales_wa import (
+        vivero_necesita_datos_fiscales,
+        iniciar_flujo_mandato,
+    )
 
     accion = session.get("accion_pendiente") or {}
 
@@ -761,6 +796,12 @@ async def _handle_aprobar(vivero_id: int, whatsapp: str, sesion_id: int, session
         return
 
     db = db_admin()
+
+    # Verificar datos fiscales antes de aprobar por primera vez
+    if vivero_necesita_datos_fiscales(vivero_id):
+        await iniciar_flujo_mandato(vivero_id, whatsapp, sesion_id, cotizacion_id)
+        return
+
     resultado = await aprobar_subcotizacion_vivero(db, cotizacion_id, vivero_id)
 
     _limpiar_pendientes(sesion_id)
