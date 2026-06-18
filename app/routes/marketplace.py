@@ -14,7 +14,12 @@ from app.services.supabase import admin
 
 router = APIRouter(prefix="/api/marketplace", tags=["marketplace"])
 
-MARKUP_PLATAFORMA = 0.18
+# AJUSTE (18 jun): markup subido de 0.18 a 0.20 — decisión tomada en auditoría.
+# Composición del 20%: comisión plataforma 8% + coordinación logística 6% +
+# garantía de entrega 4% + margen operativo 2%.
+# El precio que el viverista ingresa sigue siendo su precio base (lo que recibe).
+# El comprador ve: precio_base × 1.20.
+MARKUP_PLATAFORMA = 0.20
 
 
 # ─────────────────── LISTAR MARKETPLACE ───────────────────
@@ -335,7 +340,6 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
         "fecha_creacion, fecha_vencimiento, fecha_conversion, notas_cliente"
     ).eq("cliente_id", user.cliente_id).order("fecha_creacion", desc=True).execute()
 
-    # Obtener estados de entrega para proyectos pagados
     cot_ids_pagados = [r["cotizacion_id"] for r in (resp.data or []) if r.get("estado") == "pagada"]
     entrega_map = {}
     if cot_ids_pagados:
@@ -466,7 +470,8 @@ async def obtener_cotizacion(
     db = admin()
     resp = db.table("cotizaciones").select(
         "cotizacion_id, cliente_id, prompt_original, estado, items, total_estimado, "
-        "fecha_creacion, fecha_vencimiento, fecha_conversion, notas_cliente, notas_agente"
+        "fecha_creacion, fecha_vencimiento, fecha_conversion, notas_cliente, notas_agente, "
+        "alternativas_vivero"
     ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
 
     if not resp.data:
@@ -476,8 +481,6 @@ async def obtener_cotizacion(
         raise HTTPException(404, detail="Cotización no encontrada")
 
     items_enriquecidos = _enriquecer_items(db, c.get("items") or [])
-
-    # ✅ NUEVO: incluir estado logístico de la entrega
     entrega = _obtener_estado_entrega(db, cotizacion_id)
 
     return {
@@ -495,11 +498,13 @@ async def obtener_cotizacion(
             "fecha_creacion": str(c.get("fecha_creacion") or ""),
             "fecha_vencimiento": str(c.get("fecha_vencimiento") or ""),
             "fecha_conversion": str(c.get("fecha_conversion")) if c.get("fecha_conversion") else None,
-            # Logística
             "estado_entrega": entrega.get("estado_entrega"),
             "fecha_despacho": str(entrega.get("fecha_despacho") or "") if entrega.get("fecha_despacho") else None,
             "fecha_entrega_real": str(entrega.get("fecha_entrega") or "") if entrega.get("fecha_entrega") else None,
             "direccion_entrega": entrega.get("direccion_entrega"),
+            # Alternativas de vivero cuando fue rechazada — el frontend las usa
+            # para mostrar el botón "Confirmar vivero alternativo".
+            "alternativas_vivero": c.get("alternativas_vivero"),
         },
     }
 
