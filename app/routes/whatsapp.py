@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 import os
 import re
-import time
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response
 
@@ -136,26 +135,34 @@ def _get_or_create_session(whatsapp, user_id, rol=None, vivero_id=None, cliente_
 
 
 def _save_message(sesion_id, role, content, agente=None, is_photo=False):
+    """Guarda un mensaje en el historial de la sesión.
+
+    AJUSTE (18 jun): antes hacía SELECT del contexto_json actual, lo
+    modificaba en memoria, y luego UPDATE — eso dejaba una ventana de
+    carrera: si dos requests llegaban casi simultáneas para la misma sesión
+    (reintento de webhook de Meta, o dos mensajes muy seguidos del mismo
+    usuario una vez que el número del bot esté público en la web), ambas
+    leían el mismo contexto_json viejo y la segunda en escribir pisaba por
+    completo el historial que dejó la primera.
+
+    Ahora delega todo (append al historial + recorte a 20 + incremento de
+    contadores) a la función SQL guardar_mensaje_sesion, que hace el UPDATE
+    completo dentro de una sola operación atómica de Postgres — dos llamadas
+    concurrentes para el mismo sesion_id se serializan a nivel de fila en
+    vez de pisarse.
+    """
     if not sesion_id:
         return
     db = admin()
-    resp = db.table("sesiones_agente").select(
-        "contexto_json, mensajes_count, fotos_procesadas"
-    ).eq("sesion_id", sesion_id).limit(1).execute()
-    if not resp.data:
-        return
-    ctx = resp.data[0].get("contexto_json") or {"historial": []}
-    history = ctx.get("historial", [])
-    history.append({"role": role, "content": content[:1000], "ts": int(time.time())})
-    ctx["historial"] = history[-20:]
-    update = {
-        "contexto_json": ctx,
-        "mensajes_count": (resp.data[0].get("mensajes_count") or 0) + 1,
-        "ultimo_mensaje": "now()",
-    }
-    if is_photo:
-        update["fotos_procesadas"] = (resp.data[0].get("fotos_procesadas") or 0) + 1
-    db.table("sesiones_agente").update(update).eq("sesion_id", sesion_id).execute()
+    try:
+        db.rpc("guardar_mensaje_sesion", {
+            "p_sesion_id": sesion_id,
+            "p_role": role,
+            "p_content": content[:1000],
+            "p_es_foto": is_photo,
+        }).execute()
+    except Exception as e:
+        logger.warning(f"No se pudo guardar mensaje en sesión {sesion_id}: {e}")
 
 
 def _set_accion_pendiente(sesion_id, accion):
