@@ -536,6 +536,10 @@ async def rechazar_subcotizacion_vivero(db, cotizacion_id: int, vivero_id: int, 
                 db.table("cotizaciones").update({
                     "estado": "rechazada",
                     "notas_agente": motivo or "Rechazada por todos los viveristas",
+                    # Guardar alternativas para que el frontend del comprador
+                    # pueda mostrar el botón "Confirmar vivero alternativo"
+                    # en vez de un link genérico al marketplace.
+                    "alternativas_vivero": alternativas if alternativas else None,
                 }).eq("cotizacion_id", cotizacion_id).eq("estado", "enviada").execute()
 
         return {
@@ -809,6 +813,95 @@ async def iniciar_checkout(
 
 
 # ═══════════════════════════════════════════════════════════
+# 7. COMPRADOR: Confirmar vivero alternativo tras rechazo
+# ═══════════════════════════════════════════════════════════
+
+@router.post("/{cotizacion_id}/confirmar-alternativa")
+async def confirmar_vivero_alternativo(
+    cotizacion_id: int,
+    user: UserContext = Depends(require_comprador),
+):
+    """Comprador acepta el vivero alternativo propuesto tras un rechazo.
+
+    Actualiza los items de la cotización con los inventario_id alternativos,
+    recalcula el total, y la devuelve a estado 'borrador' para que el
+    comprador pueda reenviarla al nuevo vivero.
+    """
+    db = db_admin()
+
+    cot = db.table("cotizaciones").select(
+        "cotizacion_id, cliente_id, estado, items, total_estimado, alternativas_vivero"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+
+    if not cot.data:
+        raise HTTPException(404, "Cotización no encontrada")
+    c = cot.data[0]
+
+    if c["cliente_id"] != user.cliente_id:
+        raise HTTPException(403, "No podés modificar esta cotización")
+    if c["estado"] != "rechazada":
+        raise HTTPException(400, f"Solo se puede confirmar alternativa en cotizaciones rechazadas. Estado: {c['estado']}")
+
+    alternativas = c.get("alternativas_vivero") or []
+    if not alternativas:
+        raise HTTPException(400, "Esta cotización no tiene vivero alternativo disponible")
+
+    # Construir mapa: inventario_original → inventario_alternativo
+    alt_map = {
+        a["inventario_original"]: a["inventario_alternativo"]
+        for a in alternativas if a.get("inventario_original") and a.get("inventario_alternativo")
+    }
+
+    # Actualizar items con los nuevos inventario_id
+    items_actuales = c.get("items") or []
+    items_nuevos = []
+    total_nuevo = 0.0
+
+    for it in items_actuales:
+        inv_id_original = it.get("inventario_id")
+        inv_id_nuevo = alt_map.get(inv_id_original, inv_id_original)
+
+        # Verificar stock y precio del inventario alternativo
+        inv = db.table("inventario").select(
+            "precio_mayorista, stock, estado_planta"
+        ).eq("inventario_id", inv_id_nuevo).limit(1).execute()
+
+        if not inv.data:
+            raise HTTPException(400, f"El inventario alternativo {inv_id_nuevo} ya no está disponible")
+        i = inv.data[0]
+        if i["estado_planta"] != "disponible" or (i.get("stock") or 0) < it.get("cantidad", 1):
+            raise HTTPException(400, f"El vivero alternativo ya no tiene stock suficiente para uno de los items")
+
+        precio_nuevo = float(i["precio_mayorista"])
+        subtotal = precio_nuevo * it.get("cantidad", 1)
+        total_nuevo += subtotal
+
+        items_nuevos.append({
+            **it,
+            "inventario_id": inv_id_nuevo,
+            "precio_unitario": precio_nuevo,
+            "subtotal": subtotal,
+        })
+
+    # Volver a borrador con los items actualizados y sin alternativas pendientes
+    db.table("cotizaciones").update({
+        "estado": "borrador",
+        "items": items_nuevos,
+        "total_estimado": total_nuevo,
+        "alternativas_vivero": None,
+        "notas_agente": "Redirigido a vivero alternativo por el comprador",
+    }).eq("cotizacion_id", cotizacion_id).execute()
+
+    return {
+        "ok": True,
+        "cotizacion_id": cotizacion_id,
+        "estado": "borrador",
+        "total_estimado": total_nuevo,
+        "mensaje": "Vivero alternativo confirmado. Ya podés reenviar la cotización.",
+    }
+
+
+# ═══════════════════════════════════════════════════════════
 # CRON — Vencer cotizaciones expiradas
 # ═══════════════════════════════════════════════════════════
 
@@ -886,6 +979,95 @@ async def vencer_cotizaciones_cron(request: Request):
 
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════
+# 7. COMPRADOR: Confirmar vivero alternativo tras rechazo
+# ═══════════════════════════════════════════════════════════
+
+@router.post("/{cotizacion_id}/confirmar-alternativa")
+async def confirmar_vivero_alternativo(
+    cotizacion_id: int,
+    user: UserContext = Depends(require_comprador),
+):
+    """Comprador acepta el vivero alternativo propuesto tras un rechazo.
+
+    Actualiza los items de la cotización con los inventario_id alternativos,
+    recalcula el total, y la devuelve a estado 'borrador' para que el
+    comprador pueda reenviarla al nuevo vivero.
+    """
+    db = db_admin()
+
+    cot = db.table("cotizaciones").select(
+        "cotizacion_id, cliente_id, estado, items, total_estimado, alternativas_vivero"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+
+    if not cot.data:
+        raise HTTPException(404, "Cotización no encontrada")
+    c = cot.data[0]
+
+    if c["cliente_id"] != user.cliente_id:
+        raise HTTPException(403, "No podés modificar esta cotización")
+    if c["estado"] != "rechazada":
+        raise HTTPException(400, f"Solo se puede confirmar alternativa en cotizaciones rechazadas. Estado: {c['estado']}")
+
+    alternativas = c.get("alternativas_vivero") or []
+    if not alternativas:
+        raise HTTPException(400, "Esta cotización no tiene vivero alternativo disponible")
+
+    # Construir mapa: inventario_original → inventario_alternativo
+    alt_map = {
+        a["inventario_original"]: a["inventario_alternativo"]
+        for a in alternativas if a.get("inventario_original") and a.get("inventario_alternativo")
+    }
+
+    # Actualizar items con los nuevos inventario_id
+    items_actuales = c.get("items") or []
+    items_nuevos = []
+    total_nuevo = 0.0
+
+    for it in items_actuales:
+        inv_id_original = it.get("inventario_id")
+        inv_id_nuevo = alt_map.get(inv_id_original, inv_id_original)
+
+        # Verificar stock y precio del inventario alternativo
+        inv = db.table("inventario").select(
+            "precio_mayorista, stock, estado_planta"
+        ).eq("inventario_id", inv_id_nuevo).limit(1).execute()
+
+        if not inv.data:
+            raise HTTPException(400, f"El inventario alternativo {inv_id_nuevo} ya no está disponible")
+        i = inv.data[0]
+        if i["estado_planta"] != "disponible" or (i.get("stock") or 0) < it.get("cantidad", 1):
+            raise HTTPException(400, f"El vivero alternativo ya no tiene stock suficiente para uno de los items")
+
+        precio_nuevo = float(i["precio_mayorista"])
+        subtotal = precio_nuevo * it.get("cantidad", 1)
+        total_nuevo += subtotal
+
+        items_nuevos.append({
+            **it,
+            "inventario_id": inv_id_nuevo,
+            "precio_unitario": precio_nuevo,
+            "subtotal": subtotal,
+        })
+
+    # Volver a borrador con los items actualizados y sin alternativas pendientes
+    db.table("cotizaciones").update({
+        "estado": "borrador",
+        "items": items_nuevos,
+        "total_estimado": total_nuevo,
+        "alternativas_vivero": None,
+        "notas_agente": "Redirigido a vivero alternativo por el comprador",
+    }).eq("cotizacion_id", cotizacion_id).execute()
+
+    return {
+        "ok": True,
+        "cotizacion_id": cotizacion_id,
+        "estado": "borrador",
+        "total_estimado": total_nuevo,
+        "mensaje": "Vivero alternativo confirmado. Ya podés reenviar la cotización.",
+    }
 
 
 # ═══════════════════════════════════════════════════════════
