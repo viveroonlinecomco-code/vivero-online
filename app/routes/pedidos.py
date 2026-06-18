@@ -814,19 +814,80 @@ async def iniciar_checkout(
 
 @router.post("/cron/vencer-cotizaciones")
 async def vencer_cotizaciones_cron(request: Request):
-    """Vence cotizaciones expiradas. Llamado por cron-job.org cada hora."""
+    """Vence cotizaciones expiradas y notifica por WhatsApp a cada comprador.
+
+    AJUSTE (18 jun): la función SQL ahora retorna las filas vencidas
+    (cotizacion_id + cliente_id) en vez de solo el conteo, así podemos
+    notificar al comprador en la misma corrida sin re-consultar ni usar
+    una tabla intermedia. Si la notificación WhatsApp falla para alguna
+    cotización, se loguea el error pero el cron sigue con las demás.
+    """
     import os
-    from fastapi import Request
+    import logging
     cron_secret = os.getenv("CRON_SECRET", "")
     if cron_secret:
         auth = request.headers.get("authorization", "")
         if auth != f"Bearer {cron_secret}":
             raise HTTPException(status_code=401, detail="No autorizado")
 
+    logger = logging.getLogger(__name__)
     db = db_admin()
+    notificadas = 0
+    errores_wa = 0
+
     try:
         result = db.rpc("vencer_cotizaciones_expiradas").execute()
-        total = result.data[0] if result.data else 0
-        return {"ok": True, "vencidas": total}
+        filas = result.data or []
+
+        for fila in filas:
+            cotizacion_id = fila.get("cotizacion_id")
+            cliente_id = fila.get("cliente_id")
+            if not cotizacion_id or not cliente_id:
+                continue
+
+            try:
+                cot = db.table("cotizaciones").select(
+                    "prompt_original"
+                ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+
+                cliente = db.table("clientes").select(
+                    "whatsapp_numero"
+                ).eq("cliente_id", cliente_id).limit(1).execute()
+
+                if not cliente.data or not cliente.data[0].get("whatsapp_numero"):
+                    continue
+
+                nombre_proyecto = (
+                    (cot.data[0].get("prompt_original") if cot.data else None)
+                    or f"Cotización #{cotizacion_id}"
+                )
+                base = get_settings().app_base_url
+
+                msg = (
+                    "⏰ *Tu cotización venció — ViveroOnline*\n\n"
+                    f"Proyecto: *{nombre_proyecto}*\n\n"
+                    "El tiempo para completar el pago expiró. "
+                    "Podés volver a solicitar disponibilidad desde el marketplace:\n"
+                    f"{base}/marketplace"
+                )
+                await send_text_message(cliente.data[0]["whatsapp_numero"], msg)
+                notificadas += 1
+
+            except Exception as e:
+                errores_wa += 1
+                logger.warning(f"No se pudo notificar vencimiento cotizacion_id={cotizacion_id}: {e}")
+
+        return {
+            "ok": True,
+            "vencidas": len(filas),
+            "notificadas": notificadas,
+            "errores_wa": errores_wa,
+        }
+
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+# ═══════════════════════════════════════════════════════════
+# CRON — Vencer cotizaciones expiradas (REEMPLAZAR el endpoint anterior)
+# ═══════════════════════════════════════════════════════════
