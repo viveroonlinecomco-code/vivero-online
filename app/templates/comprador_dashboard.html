@@ -143,7 +143,8 @@
 <script>
 if (!VO.requireAuth()) throw new Error('auth');
 
-const MARKUP = 0.18;
+// AJUSTE (18 jun): markup actualizado de 0.18 a 0.20
+const MARKUP = 0.20;
 
 const TIPO_CLIENTE_LABEL = {
     paisajista: 'Paisajista', constructora: 'Constructora',
@@ -235,7 +236,6 @@ function renderProyectoCard(p) {
     const nombre = p.nombre_proyecto
         ? escapeHTML(p.nombre_proyecto)
         : '<span class="italic text-slate-400">Sin nombre</span>';
-    // Si está pagada y tiene estado_entrega, mostrar ese estado
     const estadoMostrar = (p.estado === 'pagada' && p.estado_entrega && p.estado_entrega !== 'pendiente')
         ? p.estado_entrega
         : p.estado;
@@ -348,7 +348,6 @@ async function cargarItemsProyecto(cotizacion_id) {
                 </div>`;
 
         } else if (c.estado === 'aceptada') {
-            // Calcular tiempo restante para pagar
             const fechaVenc = c.fecha_vencimiento ? new Date(c.fecha_vencimiento) : null;
             let countdownHtml = '';
             if (fechaVenc && !isNaN(fechaVenc)) {
@@ -373,7 +372,6 @@ async function cargarItemsProyecto(cotizacion_id) {
             footerEl.querySelector('[data-pagar]')?.addEventListener('click', () => irACheckout(cotizacion_id));
 
         } else if (c.estado === 'convertida') {
-            // ✅ NUEVO: pago iniciado pero no confirmado → permitir reintentar
             footerEl.innerHTML = `
                 <div class="space-y-2">
                     <button data-reintentar class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-amber-500/30 transition">
@@ -386,19 +384,40 @@ async function cargarItemsProyecto(cotizacion_id) {
             footerEl.querySelector('[data-reintentar]')?.addEventListener('click', () => irACheckout(cotizacion_id));
 
         } else if (c.estado === 'rechazada') {
+            // AJUSTE (18 jun): mostrar botón de vivero alternativo si hay alternativas disponibles
+            const hayAlternativa = c.alternativas_vivero && c.alternativas_vivero.length > 0;
+            const nombresAlt = hayAlternativa
+                ? [...new Set(c.alternativas_vivero.map(a => a.nombre_vivero).filter(Boolean))].join(', ')
+                : '';
             footerEl.innerHTML = `
-                <div class="text-center py-2">
+                <div class="text-center py-2 space-y-3">
                     <span class="material-symbols-outlined text-red-400 text-3xl">cancel</span>
-                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200 mt-1">El vivero no pudo surtir este pedido</p>
-                    ${c.notas_agente ? `<p class="text-xs text-slate-500 mt-1 italic">"${escapeHTML(c.notas_agente)}"</p>` : ''}
-                    <a href="/marketplace" class="inline-flex items-center gap-1 text-primary text-xs font-semibold mt-3 hover:underline">
+                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200">El vivero no pudo surtir este pedido</p>
+                    ${c.notas_agente ? `<p class="text-xs text-slate-500 italic">"${escapeHTML(c.notas_agente)}"</p>` : ''}
+                    ${hayAlternativa ? `
+                    <div class="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3 text-left">
+                        <p class="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
+                            <span class="material-symbols-outlined text-sm">check_circle</span>
+                            Encontramos las mismas plantas en otro vivero
+                        </p>
+                        <p class="text-xs text-slate-600 dark:text-slate-300 mt-1">${escapeHTML(nombresAlt)}</p>
+                    </div>
+                    <button data-confirmar-alternativa class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-full flex items-center justify-center gap-2 transition">
+                        <span class="material-symbols-outlined">swap_horiz</span>
+                        Confirmar vivero alternativo
+                    </button>
+                    ` : ''}
+                    <a href="/marketplace" class="inline-flex items-center gap-1 text-primary text-xs font-semibold hover:underline">
                         <span class="material-symbols-outlined text-sm">explore</span>
-                        Buscar alternativas en el marketplace
+                        ${hayAlternativa ? 'O buscar más opciones en el marketplace' : 'Buscar alternativas en el marketplace'}
                     </a>
                 </div>`;
+            if (hayAlternativa) {
+                footerEl.querySelector('[data-confirmar-alternativa]')
+                    ?.addEventListener('click', () => confirmarAlternativa(cotizacion_id));
+            }
 
         } else if (c.estado === 'pagada') {
-            // Mostrar estado logístico según estado_entrega
             const estadoEntrega = c.estado_entrega || 'pendiente';
             const fechaDespacho = c.fecha_despacho ? new Date(c.fecha_despacho).toLocaleDateString('es-CO', {day:'2-digit', month:'short'}) : null;
             const fechaEntregaReal = c.fecha_entrega_real ? new Date(c.fecha_entrega_real).toLocaleDateString('es-CO', {day:'2-digit', month:'short'}) : null;
@@ -528,6 +547,28 @@ async function eliminarProyecto(cotizacion_id) {
         if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `Error ${resp.status}`); }
         window.location.reload();
     } catch (e) { alert('No se pudo eliminar: ' + (e.message || e)); }
+}
+
+// AJUSTE (18 jun): nueva función para confirmar vivero alternativo tras rechazo
+async function confirmarAlternativa(cotizacion_id) {
+    if (!confirm('¿Confirmar el pedido con el vivero alternativo?\n\nLa cotización volverá a borrador con el nuevo vivero para que puedas reenviarla.')) return;
+    const token = localStorage.getItem('vivero_access_token');
+    try {
+        const resp = await fetch(`/api/pedidos/${cotizacion_id}/confirmar-alternativa`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `Error ${resp.status}`);
+        }
+        if (typeof VO !== 'undefined' && VO.showToast) {
+            VO.showToast('✅ Vivero alternativo confirmado. Revisá tu cotización actualizada.', 'success');
+        }
+        setTimeout(() => window.location.reload(), 1500);
+    } catch (e) {
+        alert('No se pudo confirmar: ' + (e.message || e));
+    }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────
