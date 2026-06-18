@@ -259,13 +259,35 @@ class RechazarReq(BaseModel):
     motivo: Optional[str] = None
 
 
-@router.post("/{cotizacion_id}/aprobar")
-async def aprobar_cotizacion(cotizacion_id: int, user: UserContext = Depends(require_viverista)):
-    db = db_admin()
-    cot = _get_cotizacion(db, cotizacion_id)
+async def aprobar_subcotizacion_vivero(db, cotizacion_id: int, vivero_id: int) -> dict:
+    """Lógica de negocio compartida para aprobar la parte de un vivero dentro
+    de una cotización (multi-vivero o legacy de un solo vivero).
 
-    if cot["estado"] != "enviada":
-        raise HTTPException(400, f"Solo se pueden aprobar cotizaciones enviadas. Estado: {cot['estado']}")
+    Usada tanto por el endpoint HTTP /aprobar como por el handler de WhatsApp
+    APROBAR, para que ambos caminos respeten exactamente las mismas reglas
+    de sub_cotizaciones (AJUSTE 18 jun: antes el camino de WhatsApp duplicaba
+    esta lógica sin tocar sub_cotizaciones, rompiendo el flujo multi-vivero).
+
+    GUARD CLAUSE (AJUSTE 18 jun): el UPDATE de la cotización principal es
+    condicional y atómico — incluye `.eq("estado", "enviada")` en la cláusula
+    del propio UPDATE, no solo en una validación previa. Esto cierra la
+    ventana de carrera entre el SELECT de validación y el UPDATE (ej. el cron
+    de vencimiento corriendo justo cuando el viverista aprueba): si otro
+    proceso ya cambió el estado entre medio, este UPDATE no afecta ninguna
+    fila y `resp.data` viene vacío, así que lo detectamos y devolvemos un
+    resultado claro en vez de pisar silenciosamente el cambio del otro proceso.
+
+    Retorna dict con "ok": False y "motivo" si no se pudo aplicar (cotización
+    no encontrada, no tiene items de este vivero, o ya cambió de estado).
+    """
+    from datetime import datetime, timezone, timedelta
+
+    cot = db.table("cotizaciones").select(
+        "cotizacion_id, cliente_id, estado, items, total_estimado, prompt_original"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+    if not cot.data:
+        return {"ok": False, "motivo": "no_encontrada"}
+    cot = cot.data[0]
 
     items = cot.get("items") or []
     inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
@@ -273,21 +295,25 @@ async def aprobar_cotizacion(cotizacion_id: int, user: UserContext = Depends(req
         inv_resp = db.table("inventario").select("inventario_id, vivero_id").in_(
             "inventario_id", inv_ids
         ).execute()
-        if not any(r.get("vivero_id") == user.vivero_id for r in (inv_resp.data or [])):
-            raise HTTPException(403, "Esta cotización no contiene items de tu vivero")
+        if not any(r.get("vivero_id") == vivero_id for r in (inv_resp.data or [])):
+            return {"ok": False, "motivo": "sin_items_de_este_vivero"}
 
-    from datetime import datetime, timezone, timedelta
+    # ── Actualizar sub-cotización de este vivero (atómico: solo si seguía pendiente) ──
+    sub_update = db.table("sub_cotizaciones").update({
+        "estado": "aprobada",
+        "fecha_respuesta": datetime.now(timezone.utc).isoformat(),
+    }).eq("cotizacion_id", cotizacion_id).eq("vivero_id", vivero_id).eq(
+        "estado", "pendiente"
+    ).execute()
 
-    # ── Actualizar sub-cotización de este vivero ──────────────────────────────
-    sub = db.table("sub_cotizaciones").select("sub_cotizacion_id").eq(
-        "cotizacion_id", cotizacion_id
-    ).eq("vivero_id", user.vivero_id).eq("estado", "pendiente").limit(1).execute()
-
-    if sub.data:
-        db.table("sub_cotizaciones").update({
-            "estado": "aprobada",
-            "fecha_respuesta": datetime.now(timezone.utc).isoformat(),
-        }).eq("sub_cotizacion_id", sub.data[0]["sub_cotizacion_id"]).execute()
+    hubo_sub = bool(sub_update.data)
+    if not hubo_sub:
+        # Puede ser flujo legacy sin sub_cotizaciones, o ya fue procesada antes.
+        existe_sub = db.table("sub_cotizaciones").select("sub_cotizacion_id, estado").eq(
+            "cotizacion_id", cotizacion_id
+        ).eq("vivero_id", vivero_id).limit(1).execute()
+        if existe_sub.data and existe_sub.data[0]["estado"] != "pendiente":
+            return {"ok": False, "motivo": "ya_procesada", "estado_actual": existe_sub.data[0]["estado"]}
 
     # ── Verificar si TODAS las sub-cotizaciones están aprobadas ──────────────
     pendientes = db.table("sub_cotizaciones").select("sub_cotizacion_id").eq(
@@ -298,10 +324,20 @@ async def aprobar_cotizacion(cotizacion_id: int, user: UserContext = Depends(req
 
     if todas_aprobadas:
         fecha_vencimiento = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
-        db.table("cotizaciones").update({
+        # UPDATE condicional atómico: solo aplica si la cotización seguía en
+        # "enviada". Si ya la venció el cron o la cerró otro proceso, esto no
+        # afecta ninguna fila y lo detectamos por resp.data vacío.
+        update_resp = db.table("cotizaciones").update({
             "estado": "aceptada",
             "fecha_vencimiento": fecha_vencimiento,
-        }).eq("cotizacion_id", cotizacion_id).execute()
+        }).eq("cotizacion_id", cotizacion_id).eq("estado", "enviada").execute()
+
+        if not update_resp.data:
+            return {
+                "ok": False,
+                "motivo": "estado_cambio_antes_del_update",
+                "cotizacion_id": cotizacion_id,
+            }
 
         # Notificar al comprador solo cuando TODOS aprobaron
         try:
@@ -327,7 +363,12 @@ async def aprobar_cotizacion(cotizacion_id: int, user: UserContext = Depends(req
             import logging
             logging.getLogger(__name__).warning(f"No se pudo notificar al comprador: {e}")
 
-        return {"ok": True, "estado": "aceptada", "cotizacion_id": cotizacion_id}
+        return {
+            "ok": True,
+            "estado": "aceptada",
+            "cotizacion_id": cotizacion_id,
+            "nombre_proyecto": cot.get("prompt_original") or f"Cotización #{cotizacion_id}",
+        }
     else:
         # Hay sub-cotizaciones aún pendientes
         aprobadas = db.table("sub_cotizaciones").select("sub_cotizacion_id").eq(
@@ -344,20 +385,58 @@ async def aprobar_cotizacion(cotizacion_id: int, user: UserContext = Depends(req
             "aprobadas": total_aprobadas,
             "total_viveros": total,
             "cotizacion_id": cotizacion_id,
+            "nombre_proyecto": cot.get("prompt_original") or f"Cotización #{cotizacion_id}",
         }
+
+
+@router.post("/{cotizacion_id}/aprobar")
+async def aprobar_cotizacion(cotizacion_id: int, user: UserContext = Depends(require_viverista)):
+    db = db_admin()
+    resultado = await aprobar_subcotizacion_vivero(db, cotizacion_id, user.vivero_id)
+
+    if not resultado["ok"]:
+        motivo = resultado.get("motivo")
+        if motivo == "no_encontrada":
+            raise HTTPException(404, "Cotización no encontrada")
+        if motivo == "sin_items_de_este_vivero":
+            raise HTTPException(403, "Esta cotización no contiene items de tu vivero")
+        if motivo == "ya_procesada":
+            raise HTTPException(
+                400, f"Esta cotización ya fue procesada. Estado: {resultado.get('estado_actual')}"
+            )
+        if motivo == "estado_cambio_antes_del_update":
+            raise HTTPException(
+                409, "La cotización cambió de estado justo antes de confirmar tu aprobación "
+                     "(por ejemplo, venció). Revisá el estado actual antes de reintentar."
+            )
+        raise HTTPException(400, "No se pudo aprobar la cotización")
+
+    return resultado
 
 
 # ═══════════ 4. VIVERISTA: Rechazar cotización ═══════════
 
-@router.post("/{cotizacion_id}/rechazar")
-async def rechazar_cotizacion(
-    cotizacion_id: int, req: RechazarReq, user: UserContext = Depends(require_viverista)
-):
-    db = db_admin()
-    cot = _get_cotizacion(db, cotizacion_id)
+async def rechazar_subcotizacion_vivero(db, cotizacion_id: int, vivero_id: int, motivo: str | None = None) -> dict:
+    """Lógica de negocio compartida para rechazar la parte de un vivero
+    dentro de una cotización. Misma lógica usada por el endpoint HTTP
+    /rechazar y por el handler de WhatsApp RECHAZAR (AJUSTE 18 jun, ver
+    docstring de aprobar_subcotizacion_vivero para el contexto completo).
 
-    if cot["estado"] != "enviada":
-        raise HTTPException(400, f"Solo se pueden rechazar cotizaciones enviadas. Estado: {cot['estado']}")
+    GUARD CLAUSE: el UPDATE de sub_cotizaciones es condicional (.eq("estado",
+    "pendiente")) para no rechazar dos veces ni pisar una aprobación que ya
+    haya ocurrido. El UPDATE final de la cotización principal a "rechazada"
+    también es condicional sobre que no haya quedado ninguna sub-cotización
+    aprobada (evita marcar como rechazada una cotización que en paralelo
+    fue aprobada por todos los demás viveros).
+    """
+    from datetime import datetime, timezone
+
+    cot = db.table("cotizaciones").select(
+        "cotizacion_id, cliente_id, estado, items, prompt_original"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+    if not cot.data:
+        return {"ok": False, "motivo": "no_encontrada"}
+    cot = cot.data[0]
 
     items = cot.get("items") or []
     inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
@@ -365,27 +444,24 @@ async def rechazar_cotizacion(
         inv_resp = db.table("inventario").select("inventario_id, vivero_id").in_(
             "inventario_id", inv_ids
         ).execute()
-        if not any(r.get("vivero_id") == user.vivero_id for r in (inv_resp.data or [])):
-            raise HTTPException(403, "Esta cotización no contiene items de tu vivero")
+        if not any(r.get("vivero_id") == vivero_id for r in (inv_resp.data or [])):
+            return {"ok": False, "motivo": "sin_items_de_este_vivero"}
 
-    from datetime import datetime, timezone
+    # ── Marcar sub-cotización de este vivero como rechazada (atómico) ────────
+    # Se encadena .select("items") tras el update porque Supabase documenta
+    # que .select() después de update() es necesario para garantizar qué
+    # columnas vienen en la fila devuelta — no alcanza con que "estado" haya
+    # estado en el dict del update.
+    sub_update = db.table("sub_cotizaciones").update({
+        "estado": "rechazada",
+        "notas_rechazo": motivo or "Rechazada por el viverista",
+        "fecha_respuesta": datetime.now(timezone.utc).isoformat(),
+    }).eq("cotizacion_id", cotizacion_id).eq("vivero_id", vivero_id).eq(
+        "estado", "pendiente"
+    ).select("items").execute()
 
-    # ── Marcar sub-cotización de este vivero como rechazada ───────────────────
-    sub = db.table("sub_cotizaciones").select(
-        "sub_cotizacion_id, items"
-    ).eq("cotizacion_id", cotizacion_id).eq(
-        "vivero_id", user.vivero_id
-    ).eq("estado", "pendiente").limit(1).execute()
-
-    if sub.data:
-        db.table("sub_cotizaciones").update({
-            "estado": "rechazada",
-            "notas_rechazo": req.motivo or "Rechazada por el viverista",
-            "fecha_respuesta": datetime.now(timezone.utc).isoformat(),
-        }).eq("sub_cotizacion_id", sub.data[0]["sub_cotizacion_id"]).execute()
-
-        # ── Buscar vivero alternativo para cada item rechazado ────────────────
-        items_rechazados = sub.data[0].get("items") or []
+    if sub_update.data:
+        items_rechazados = sub_update.data[0].get("items") or []
         alternativas = []
 
         for it in items_rechazados:
@@ -397,7 +473,7 @@ async def rechazar_cotizacion(
             alt = db.rpc("buscar_vivero_alternativo", {
                 "p_inventario_id": inv_id,
                 "p_cantidad": cantidad,
-                "p_vivero_excluir": user.vivero_id,
+                "p_vivero_excluir": vivero_id,
             }).execute()
 
             if alt.data:
@@ -409,13 +485,14 @@ async def rechazar_cotizacion(
                     "precio_mayorista": float(alt.data[0]["precio_mayorista"]),
                 })
 
+        nombre_proyecto = cot.get("prompt_original") or f"Cotización #{cotizacion_id}"
+
         # ── Notificar al comprador con alternativa si existe ──────────────────
         try:
             base = get_settings().app_base_url
             cliente = db.table("clientes").select("whatsapp_numero").eq(
                 "cliente_id", cot["cliente_id"]
             ).limit(1).execute()
-            nombre_proyecto = cot.get("prompt_original") or f"Cotización #{cotizacion_id}"
 
             if cliente.data and cliente.data[0].get("whatsapp_numero"):
                 if alternativas:
@@ -428,7 +505,7 @@ async def rechazar_cotizacion(
                         f"{base}/comprador"
                     )
                 else:
-                    motivo_txt = f"\nMotivo: {req.motivo}" if req.motivo else ""
+                    motivo_txt = f"\nMotivo: {motivo}" if motivo else ""
                     msg = (
                         f"❌ *Solicitud no disponible — ViveroOnline*\n\n"
                         f"Proyecto: {nombre_proyecto}{motivo_txt}\n\n"
@@ -441,8 +518,9 @@ async def rechazar_cotizacion(
             import logging
             logging.getLogger(__name__).warning(f"No se pudo notificar al comprador: {e}")
 
-        # Si no hay más sub-cotizaciones pendientes y todas las demás están rechazadas
-        # → marcar cotización principal como rechazada
+        # Si no hay más sub-cotizaciones pendientes y ninguna fue aprobada
+        # → marcar cotización principal como rechazada (condicional: solo si
+        # sigue en "enviada", para no pisar un estado que ya cambió en paralelo)
         otras_pendientes = db.table("sub_cotizaciones").select("sub_cotizacion_id").eq(
             "cotizacion_id", cotizacion_id
         ).eq("estado", "pendiente").execute()
@@ -454,23 +532,69 @@ async def rechazar_cotizacion(
             if not aprobadas.data:
                 db.table("cotizaciones").update({
                     "estado": "rechazada",
-                    "notas_agente": req.motivo or "Rechazada por todos los viveristas",
-                }).eq("cotizacion_id", cotizacion_id).execute()
+                    "notas_agente": motivo or "Rechazada por todos los viveristas",
+                }).eq("cotizacion_id", cotizacion_id).eq("estado", "enviada").execute()
 
         return {
             "ok": True,
             "estado": "rechazada",
             "alternativas": alternativas,
             "cotizacion_id": cotizacion_id,
+            "nombre_proyecto": nombre_proyecto,
         }
 
-    # Sin sub-cotización — flujo legacy (un solo vivero)
-    db.table("cotizaciones").update({
-        "estado": "rechazada",
-        "notas_agente": req.motivo or "Rechazada por el viverista",
-    }).eq("cotizacion_id", cotizacion_id).execute()
+    # No se pudo actualizar ninguna sub-cotización pendiente: o no existe
+    # (flujo legacy de un solo vivero) o ya fue procesada antes.
+    existe_sub = db.table("sub_cotizaciones").select("sub_cotizacion_id, estado").eq(
+        "cotizacion_id", cotizacion_id
+    ).eq("vivero_id", vivero_id).limit(1).execute()
 
-    return {"ok": True, "estado": "rechazada", "cotizacion_id": cotizacion_id}
+    if existe_sub.data:
+        return {"ok": False, "motivo": "ya_procesada", "estado_actual": existe_sub.data[0]["estado"]}
+
+    # Flujo legacy sin sub_cotizaciones — UPDATE condicional sobre "enviada"
+    update_resp = db.table("cotizaciones").update({
+        "estado": "rechazada",
+        "notas_agente": motivo or "Rechazada por el viverista",
+    }).eq("cotizacion_id", cotizacion_id).eq("estado", "enviada").execute()
+
+    if not update_resp.data:
+        return {"ok": False, "motivo": "estado_cambio_antes_del_update", "cotizacion_id": cotizacion_id}
+
+    return {
+        "ok": True,
+        "estado": "rechazada",
+        "alternativas": [],
+        "cotizacion_id": cotizacion_id,
+        "nombre_proyecto": cot.get("prompt_original") or f"Cotización #{cotizacion_id}",
+    }
+
+
+@router.post("/{cotizacion_id}/rechazar")
+async def rechazar_cotizacion(
+    cotizacion_id: int, req: RechazarReq, user: UserContext = Depends(require_viverista)
+):
+    db = db_admin()
+    resultado = await rechazar_subcotizacion_vivero(db, cotizacion_id, user.vivero_id, req.motivo)
+
+    if not resultado["ok"]:
+        motivo = resultado.get("motivo")
+        if motivo == "no_encontrada":
+            raise HTTPException(404, "Cotización no encontrada")
+        if motivo == "sin_items_de_este_vivero":
+            raise HTTPException(403, "Esta cotización no contiene items de tu vivero")
+        if motivo == "ya_procesada":
+            raise HTTPException(
+                400, f"Esta cotización ya fue procesada. Estado: {resultado.get('estado_actual')}"
+            )
+        if motivo == "estado_cambio_antes_del_update":
+            raise HTTPException(
+                409, "La cotización cambió de estado justo antes de confirmar tu rechazo "
+                     "(por ejemplo, venció). Revisá el estado actual antes de reintentar."
+            )
+        raise HTTPException(400, "No se pudo rechazar la cotización")
+
+    return resultado
 
 
 # ═══════════ 5. COMPRADOR: Calcular flete antes del pago ═══════════
