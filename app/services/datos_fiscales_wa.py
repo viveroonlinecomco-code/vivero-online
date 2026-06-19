@@ -32,23 +32,24 @@ MANDATO_VERSION = "v1.0"
 
 CONTRATO_MANDATO_WA = """📋 *Contrato de Mandato Comercial — ViveroOnline*
 
-Antes de procesar tu primera venta, necesitamos que aceptes nuestro contrato de mandato.
+Antes de procesar tu primera venta necesitamos que aceptes nuestro Contrato de Mandato.
 
-*¿Qué significa esto?*
-ViveroOnline recauda el pago del comprador *en tu nombre*. Vos sos el vendedor real; nosotros somos tu mandatario.
+*¿Qué significa?*
+ViveroOnline recauda el pago del comprador *en tu nombre*. Vos sos el vendedor real; nosotros somos tu mandatario (Art. 2142 Código Civil colombiano).
 
-*Condiciones principales:*
+*Puntos clave que debés conocer:*
 • Tu precio ingresado = lo que recibís neto
-• ViveroOnline retiene 20% de orquestación (logística + garantía + plataforma)
-• Te transferimos tu pago en 48h tras confirmación de entrega
-• Sos responsable de facturar al comprador si aplica (DIAN)
+• ViveroOnline retiene 20% de orquestación (logística + garantía + plataforma + margen)
+• Te transferimos tu pago en *3 días hábiles* tras confirmación de entrega
+• Sos responsable de facturar al comprador ante la DIAN (ViveroOnline puede actuar como intermediario de facturación si está habilitado)
+• *No podés vender directamente* a compradores que lleguen por la plataforma, durante la vigencia del contrato y por *24 meses* después. El incumplimiento genera una penalidad del 20% sobre las ventas realizadas por fuera del canal
 
-*Marco legal:* Art. 2142-2199 Código Civil · Ley 527/1999 (comercio electrónico) · Ley 1480/2011 (consumidor)
+*Marco legal:* Art. 2142-2199 Código Civil · Art. 1262-1286 Código de Comercio · Ley 527/1999 · Res. DIAN 00165/2023
 
-El texto completo está disponible en:
+📄 Texto completo del contrato:
 https://www.viveroonline.com.co/contrato-de-mandato-comercial/
 
-Al responder *SÍ ACEPTO*, confirmás que leíste y aceptás el Contrato de Mandato, con la misma validez que una firma escrita (Ley 527 de 1999). Tu número de WhatsApp y la fecha quedan registrados como prueba.
+Al responder *SÍ ACEPTO*, confirmás que leíste y aceptás el Contrato de Mandato Mercantil Remunerado de ViveroOnline, con la misma validez que una firma escrita (Ley 527 de 1999, Art. 7). Tu número de WhatsApp y la fecha quedan registrados como prueba de aceptación.
 
 ¿Aceptás el Contrato de Mandato?
 Respondé *SÍ ACEPTO* o *NO* para cancelar."""
