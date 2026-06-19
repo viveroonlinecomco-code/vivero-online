@@ -5,10 +5,16 @@ Arquitectura:
 
 La clasificación usa Gemini Flash en modo estructurado para devolver
 el `agent_name`. Si falla, cae en AI_CEO como fallback.
+
+AJUSTE (18 jun): se agrega detección de intentos de extracción de
+información confidencial (tecnología, datos de usuarios, márgenes
+internos) antes de llegar a cualquier agente. Si se detecta, se
+responde directamente sin invocar ningún agente.
 """
 from __future__ import annotations
 import json
 import logging
+import re
 from typing import TypedDict
 
 from langgraph.graph import StateGraph, END
@@ -39,6 +45,45 @@ _AGENTS: dict[str, type] = {
     "landscape_advisor": LandscapeAdvisorAgent,
     "demand_predictor": DemandPredictorAgent,
 }
+
+
+# ─────────────────── FILTRO DE CONFIDENCIALIDAD ───────────────────
+# AJUSTE (18 jun): detecta patrones de extracción de información
+# confidencial ANTES de clasificar o despachar a cualquier agente.
+# Si hay match, se responde directamente sin invocar Gemini ni ningún
+# agente — así no hay riesgo de que el modelo "se convenza" de revelar.
+
+_PATRONES_EXTRACCION = [
+    # Tecnología interna
+    re.compile(r"(qu[eé]\s+(modelo|ia|inteligencia|llm|gpt|gemini|claude|openai|stack|tecnolog|framework|langchain|langgraph|yolo|base\s+de\s+datos|supabase|vercel|python|fastapi))", re.IGNORECASE),
+    re.compile(r"(c[oó]mo\s+(funciona|est[aá]\s+hecho|fue\s+construido|programaron|desarrollaron)\s+(el\s+)?(bot|sistema|plataforma|app))", re.IGNORECASE),
+    re.compile(r"(eres\s+(chatgpt|gpt|gemini|claude|llama|openai|anthropic|una?\s+ia\s+de))", re.IGNORECASE),
+    re.compile(r"(ignora|olvida|deja\s+de\s+lado).{0,30}(instrucciones|reglas|restricciones|sistema)", re.IGNORECASE),
+    re.compile(r"(act[uú]a\s+como|pretende\s+ser|eres\s+ahora|nuevo\s+rol|desde\s+ahora\s+eres)", re.IGNORECASE),
+    # Datos de usuarios
+    re.compile(r"(dame|dime|muestra|lista|cu[aá]les?\s+son).{0,20}(usuarios|clientes|viveristas|compradores|registrados|tel[eé]fonos|correos|contactos)", re.IGNORECASE),
+    re.compile(r"(cu[aá]ntos?\s+(usuarios|clientes|viveristas|compradores|registros|ventas|transacciones))", re.IGNORECASE),
+    # Márgenes y finanzas internas
+    re.compile(r"(margen|ganancia|utilidad|costo\s+operativo|cu[aá]nto\s+gana\s+viveroonline)", re.IGNORECASE),
+    # Prompt injection
+    re.compile(r"(system\s+prompt|prompt\s+del\s+sistema|instrucciones\s+del\s+sistema|jailbreak)", re.IGNORECASE),
+]
+
+_RESPUESTA_CONFIDENCIAL = (
+    "Esa información no está disponible. "
+    "¿En qué más puedo ayudarte con tus plantas o tu proyecto? 🌿"
+)
+
+
+def _es_intento_extraccion(mensaje: str) -> bool:
+    """Retorna True si el mensaje parece intentar extraer información
+    confidencial. Falsos positivos son aceptables — es mejor responder
+    con cautela que revelar información sensible."""
+    for patron in _PATRONES_EXTRACCION:
+        if patron.search(mensaje):
+            logger.warning(f"Intento de extracción detectado: {mensaje[:100]!r}")
+            return True
+    return False
 
 
 # ─────────────────── CLASIFICADOR ───────────────────
@@ -84,10 +129,6 @@ def _classify(mensaje: str, rol: str | None = None) -> str:
             return "ai_ceo"
         return name
     except Exception as e:
-        # AJUSTE (16 jun): antes este fallo era completamente silencioso —
-        # caía en ai_ceo sin dejar rastro en logs. Ahora queda registrado
-        # para poder distinguir "el clasificador falló" de "el clasificador
-        # decidió genuinamente ai_ceo".
         logger.warning(f"Clasificador de intención falló, usando ai_ceo como fallback: {e}")
         return "ai_ceo"
 
@@ -103,11 +144,19 @@ class RouterState(TypedDict):
 
 
 def classify_node(state: RouterState) -> RouterState:
+    # Filtro de confidencialidad ANTES de clasificar
+    if _es_intento_extraccion(state["mensaje"]):
+        state["agent_name"] = "confidencialidad_bloqueado"
+        state["respuesta"] = _RESPUESTA_CONFIDENCIAL
+        return state
     state["agent_name"] = _classify(state["mensaje"], state["ctx"].rol)
     return state
 
 
 def dispatch_node(state: RouterState) -> RouterState:
+    # Si ya fue bloqueado por el filtro, no invocar ningún agente
+    if state["agent_name"] == "confidencialidad_bloqueado":
+        return state
     agent_cls = _AGENTS.get(state["agent_name"], AICeoAgent)
     agent = agent_cls()
     result = agent.run(state["mensaje"], state["ctx"])
