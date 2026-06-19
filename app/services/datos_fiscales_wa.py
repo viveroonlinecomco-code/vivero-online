@@ -46,7 +46,7 @@ ViveroOnline recauda el pago del comprador *en tu nombre*. Vos sos el vendedor r
 *Marco legal:* Art. 2142-2199 Código Civil · Ley 527/1999 (comercio electrónico) · Ley 1480/2011 (consumidor)
 
 El texto completo está disponible en:
-https://viveroonline.com.co/contrato-mandato
+https://www.viveroonline.com.co/contrato-de-mandato-comercial/
 
 Al responder *SÍ ACEPTO*, confirmás que leíste y aceptás el Contrato de Mandato, con la misma validez que una firma escrita (Ley 527 de 1999). Tu número de WhatsApp y la fecha quedan registrados como prueba.
 
