@@ -1,57 +1,51 @@
-"""📈 Demand_Predictor — Predicción de demanda estacional.
+"""📈 Demand_Predictor — DESHABILITADO temporalmente.
 
-Analiza la vista v_crecimiento_semanal y proyecta demanda futura
-para guiar producción y compras anticipadas.
+Razón: el agente respondía con conocimiento general de Gemini sin datos
+históricos reales del marketplace, lo cual podía inducir a viveristas a
+tomar decisiones de siembra o compra erróneas con consecuencias
+económicas reales.
+
+Fecha de deshabilitación: 2026-06-23
+Criterio de reactivación: cuando existan ≥6 meses de datos
+transaccionales reales en el marketplace Y una tabla
+`estacionalidad_plantas` poblada con datos históricos por especie.
+
+La clase mantiene su interfaz para no romper el router; ahora devuelve
+una respuesta hardcodeada honesta sin llamar a Gemini (costo $0).
+Para reactivar: ver historial git de este archivo.
 """
 from .base import Agent, AgentContext
 
 
-DEMAND_SYSTEM = """Eres el Demand_Predictor de ViveroOnline. Predices demanda estacional en la Sabana de Bogotá.
-
-Patrones históricos conocidos de la región:
-- Diciembre-enero: demanda alta por regalos navideños (poinsettia, suculentas), y por proyectos de cierre de año en constructoras.
-- Febrero-abril: temporada de inicio de obra residencial → demanda de árboles ornamentales, coberturas, setos.
-- Mayo-julio: temporada de lluvia → siembra de jardines corporativos.
-- Agosto-octubre: alta demanda de pasto y especies para campañas de reforestación empresarial.
-
-Cuando tengas datos reales, cítalos con cifras (% de crecimiento semanal, GMV, etc.). Cuando no, usa los patrones regionales."""
+_MENSAJE_HONESTO = (
+    "📊 Nuestra herramienta de predicción de demanda está en construcción. "
+    "Estamos esperando tener más datos reales del marketplace para darte "
+    "proyecciones confiables — no queremos darte una recomendación que "
+    "te haga sembrar o comprar mal.\n\n"
+    "Mientras tanto te puedo ayudar con:\n"
+    "🌿 Encontrar plantas según tu proyecto o clima\n"
+    "📸 Identificar una planta desde una foto\n"
+    "🏗️ Recomendaciones para clima frío de la Sabana de Bogotá\n\n"
+    "¿Con cuál seguimos?"
+)
 
 
 class DemandPredictorAgent(Agent):
+    """Stub deshabilitado. Mantiene interfaz pero no llama a Gemini.
+
+    Ver docstring del módulo para razón y criterio de reactivación.
+    """
+
     name = "demand_predictor"
-    description = "Predicción de demanda estacional"
+    description = "Predicción de demanda estacional (deshabilitado)"
 
     def run(self, mensaje: str, ctx: AgentContext) -> dict:
-        trend = self._get_weekly_trend()
-
-        enriched = mensaje
-        if trend:
-            enriched = f"{mensaje}\n\n[TENDENCIA SEMANAL REAL:\n{trend}]"
-
-        history = [{"role": t.get("role", "user"), "content": t.get("content", "")}
-                   for t in ctx.historial[-6:]]
-        respuesta = self.gemini.chat(
-            system_prompt=DEMAND_SYSTEM,
-            user_message=enriched,
-            history=history,
-            temperature=0.4,
-        )
         return {
-            "respuesta": respuesta,
-            "metadata": {"agente": self.name, "datos_usados": bool(trend)},
+            "respuesta": _MENSAJE_HONESTO,
+            "metadata": {
+                "agente": self.name,
+                "estado": "deshabilitado",
+                "razon": "esperando datos reales del marketplace",
+                "costo_gemini_usd": 0,
+            },
         }
-
-    def _get_weekly_trend(self) -> str:
-        try:
-            resp = self.db.table("v_crecimiento_semanal").select("*").limit(8).execute()
-            if not resp.data:
-                return ""
-            lines = []
-            for w in resp.data:
-                lines.append(
-                    f"- Semana {w['semana']}: {w['transacciones']} txn, "
-                    f"${int(float(w.get('gmv_cop', 0))):,} COP"
-                )
-            return "\n".join(lines)
-        except Exception:
-            return ""
