@@ -17,14 +17,62 @@ Ahora el agente:
    con un link directo al producto en el marketplace (inventario_id, que
    es el ID real de la oferta comprable — no planta_id, que es genérico
    y no identifica qué vivero/precio/stock corresponde).
+
+AJUSTE (23 jun 2026): el bot respondía con la ciudad del VIVERO en lugar
+de la ciudad del CLIENTE. Cuando el cliente decía "para un jardín en Cota",
+el bot respondía "para tu jardín en Cajicá" (donde está vivero 11).
+
+Causa raíz:
+1. ctx.municipio estaba vacío para clientes no registrados, así que la
+   ciudad mencionada por el cliente en su mensaje no se estructuraba
+   en el contexto enviado a Gemini.
+2. El system prompt incluía un ejemplo anclado a "en Cajicá", y Cajicá
+   también aparecía como ciudad del vivero en las OPCIONES — Gemini
+   replicaba ese patrón por defecto sin contexto explícito de proyecto.
+
+Fix:
+- Nuevo método _extraer_ciudad_del_mensaje() detecta municipios de la
+  Sabana en el mensaje del usuario vía regex con word boundaries y
+  normalización UTF-8 (sin tildes).
+- Prioridad de ciudad: mensaje del cliente > ctx.municipio > sin ciudad.
+- System prompt agrega REGLA INQUEBRANTABLE 2 sobre ciudad del proyecto
+  vs ciudad del vivero, y muestra dos ejemplos (con/sin ciudad) en lugar
+  de uno solo anclado a Cajicá.
 """
+from __future__ import annotations
+import re
+import unicodedata
+
 from .base import Agent, AgentContext
 
 MARKETPLACE_BASE_URL = "https://app.viveroonline.com.co/marketplace/producto"
 
+# Municipios de la Sabana de Bogotá con forma canónica (con tildes).
+# El matching es contra texto normalizado sin tildes (lowercase + NFKD).
+# Word boundaries (\b) evitan falsos positivos tipo "Madrid" matcheando
+# dentro de palabras compuestas.
+_MUNICIPIOS_SABANA = [
+    ("Cota", r"\bcota\b"),
+    ("Cajicá", r"\bcajica\b"),
+    ("Chía", r"\bchia\b"),
+    ("Zipaquirá", r"\bzipaquira\b"),
+    ("Sopó", r"\bsopo\b"),
+    ("La Calera", r"\bla calera\b"),
+    ("Tabio", r"\btabio\b"),
+    ("Tenjo", r"\btenjo\b"),
+    ("Facatativá", r"\bfacatativa\b"),
+    ("Madrid", r"\bmadrid\b"),
+    ("Mosquera", r"\bmosquera\b"),
+    ("Funza", r"\bfunza\b"),
+    ("Tocancipá", r"\btocancipa\b"),
+    ("Bogotá", r"\bbogota\b"),
+]
+
 LANDSCAPE_SYSTEM = """Eres el Landscape_Advisor de ViveroOnline, asesor de paisajismo B2B para la Sabana de Bogotá.
 
-REGLA INQUEBRANTABLE: solo puedes recomendar plantas que aparezcan en la lista de "OPCIONES DISPONIBLES" que se te entrega abajo. NUNCA inventes especies, nombres científicos ni precios que no estén en esa lista, aunque tu conocimiento general de jardinería te sugiera otras. Si la lista está vacía o no calza con lo que pide el usuario, dilo claramente y sugiere la categoría más cercana que sí exista en la lista, o invita a contactar directamente al equipo.
+REGLA INQUEBRANTABLE 1 (catálogo): solo puedes recomendar plantas que aparezcan en la lista de "OPCIONES DISPONIBLES" que se te entrega abajo. NUNCA inventes especies, nombres científicos ni precios que no estén en esa lista, aunque tu conocimiento general de jardinería te sugiera otras. Si la lista está vacía o no calza con lo que pide el usuario, dilo claramente y sugiere la categoría más cercana que sí exista en la lista, o invita a contactar directamente al equipo.
+
+REGLA INQUEBRANTABLE 2 (ciudad del proyecto): si el contexto del mensaje indica "[Proyecto en {ciudad}, Sabana de Bogotá]", usá ESA ciudad en tu respuesta. NUNCA reemplaces la ciudad del proyecto por la ciudad del vivero, aunque sean distintas — la entrega coordinada cubre toda la Sabana, así que no importa dónde esté físicamente el vivero. Si NO se indica ciudad del proyecto, NO menciones ninguna ciudad: habla de "tu proyecto" o "tu jardín" sin localización, NUNCA inventes ni asumas.
 
 FORMATO DE RESPUESTA (obligatorio, sin excepciones):
 - Máximo 3-4 líneas en total. Nada de párrafos largos ni explicaciones botánicas extensas.
@@ -32,8 +80,13 @@ FORMATO DE RESPUESTA (obligatorio, sin excepciones):
 - Cierra SIEMPRE con el link directo a la opción principal recomendada (te lo entregamos ya armado, solo cópialo).
 - Tono práctico y vendedor, no de enciclopedia. El objetivo es que el comprador haga clic y compre, no que aprenda botánica.
 
-Ejemplo de estilo de respuesta ideal:
-"Para exterior en clima frío en Cajicá te recomiendo Bugambilia ($33.925) para cobertura con color, o Aralia Millonaria ($25.444) si buscas follaje denso. Mira el detalle y compra aquí: [link]"
+Ejemplos de estilo de respuesta ideal:
+
+CASO A (con ciudad del proyecto en el contexto):
+"Para tu jardín en Cota te recomiendo Bugambilia ($33.925) para cobertura con color, o Aralia Millonaria ($25.444) si buscas follaje denso. Mira el detalle y compra aquí: [link]"
+
+CASO B (sin ciudad del proyecto en el contexto):
+"Para tu proyecto te recomiendo Bugambilia ($33.925) para cobertura con color, o Aralia Millonaria ($25.444) si buscas follaje denso. Mira el detalle y compra aquí: [link]"
 """
 
 
@@ -45,9 +98,15 @@ class LandscapeAdvisorAgent(Agent):
         opciones = self._get_opciones_disponibles(mensaje)
         opciones_texto = self._formatear_opciones(opciones)
 
+        # Prioridad de ciudad: la mencionada en el mensaje del cliente
+        # > ctx.municipio (registro del usuario, puede estar vacío).
+        # El cliente puede tener proyecto en una ciudad distinta a su
+        # ciudad registrada, así que el mensaje gana siempre.
+        ciudad_proyecto = self._extraer_ciudad_del_mensaje(mensaje) or ctx.municipio
+
         enriched = mensaje
-        if ctx.municipio:
-            enriched = f"[Proyecto en {ctx.municipio}, Sabana de Bogotá]\n{mensaje}"
+        if ciudad_proyecto:
+            enriched = f"[Proyecto en {ciudad_proyecto}, Sabana de Bogotá]\n{mensaje}"
         enriched += f"\n\n[OPCIONES DISPONIBLES (catálogo real, con stock):\n{opciones_texto}]"
 
         history = [{"role": t.get("role", "user"), "content": t.get("content", "")}
@@ -61,8 +120,30 @@ class LandscapeAdvisorAgent(Agent):
         )
         return {
             "respuesta": respuesta,
-            "metadata": {"agente": self.name, "opciones_encontradas": len(opciones)},
+            "metadata": {
+                "agente": self.name,
+                "opciones_encontradas": len(opciones),
+                "ciudad_proyecto": ciudad_proyecto,
+            },
         }
+
+    def _extraer_ciudad_del_mensaje(self, mensaje: str) -> str | None:
+        """Detecta si el cliente mencionó una ciudad de la Sabana.
+
+        Matching con word boundaries sobre texto normalizado (lowercase
+        + sin tildes) para evitar falsos positivos. Devuelve la primera
+        ciudad encontrada en forma canónica (con tildes). Si no hay
+        match, devuelve None.
+        """
+        if not mensaje:
+            return None
+        nfkd = unicodedata.normalize("NFKD", mensaje.lower())
+        msg_norm = "".join(c for c in nfkd if not unicodedata.combining(c))
+
+        for ciudad_canonica, patron in _MUNICIPIOS_SABANA:
+            if re.search(patron, msg_norm):
+                return ciudad_canonica
+        return None
 
     def _get_opciones_disponibles(self, mensaje: str, limit: int = 8) -> list[dict]:
         """Trae plantas con uso paisajístico y stock real disponible.
