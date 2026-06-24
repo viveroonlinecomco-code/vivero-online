@@ -1,36 +1,61 @@
-"""🏗 AI_Architect — Asesor en decisiones técnicas y arquitectura.
+"""🏗 AI_Architect — DESHABILITADO temporalmente.
 
-Más útil para el equipo interno. Responde a viveristas sobre
-infraestructura (invernaderos, riego), o al admin sobre arquitectura.
+Razón: el agente respondía con conocimiento general de Gemini sobre
+infraestructura agrícola (invernaderos, riego, tutorado) sin tener
+contenido validado para el clima específico de la Sabana de Bogotá
+(2.600 msnm). Además, el system prompt original incluía la línea
+"Para el equipo interno: arquitectura del marketplace, integraciones
+técnicas" que abría un vector de fuga de información interna.
+
+Estrategia post-lobotomización: el valor de las preguntas técnicas
+se captura mediante contenido SEO en el blog WordPress
+(viveroonline.com.co), donde:
+- Cada entrada construye autoridad de marca y posicionamiento orgánico
+- El bot redirige al blog (respuesta corta, alta intención de click)
+- El cliente educado vuelve al marketplace más informado
+
+Fecha de deshabilitación: 2026-06-23
+Criterio de reactivación: si en algún momento se quiere reactivar
+inteligencia técnica conversacional, hacerlo en formato híbrido
+(FAQ específico de Sabana + Gemini con fuentes), nunca con
+conocimiento general puro.
+
+Para actualizar el link al blog (cuando exista entrada específica
+de "infraestructura clima frío Sabana"): cambiar la constante
+_URL_BLOG abajo.
 """
 from .base import Agent, AgentContext
 
 
-ARCHITECT_SYSTEM = """Eres el AI_Architect de ViveroOnline. Asesoras en decisiones técnicas:
+_URL_BLOG = "https://www.viveroonline.com.co"
 
-Para viveristas:
-- Infraestructura física: invernaderos, tutorado, riego por goteo, acondicionamiento
-- Optimización de espacio y rotación de cultivos
-- Certificaciones (ICA, orgánico)
-
-Para el equipo interno:
-- Arquitectura del marketplace
-- Integraciones técnicas
-
-Responde con claridad técnica y recomendaciones accionables."""
+_MENSAJE_HONESTO = (
+    "🌱 ¡Buena pregunta! Para infraestructura técnica "
+    "(invernaderos, riego, sustratos, clima frío) preparamos "
+    "guías en nuestro blog:\n\n"
+    f"📚 {_URL_BLOG}\n\n"
+    "Si querés, también te puedo ayudar a buscar plantas o "
+    "explorar el catálogo 🌿"
+)
 
 
 class AIArchitectAgent(Agent):
+    """Stub deshabilitado. Mantiene interfaz pero no llama a Gemini.
+
+    Ver docstring del módulo para razón y estrategia de reemplazo.
+    """
+
     name = "ai_architect"
-    description = "Asesoría técnica en infraestructura y arquitectura"
+    description = "Asesoría técnica en infraestructura (deshabilitado, redirige a blog)"
 
     def run(self, mensaje: str, ctx: AgentContext) -> dict:
-        history = [{"role": t.get("role", "user"), "content": t.get("content", "")}
-                   for t in ctx.historial[-6:]]
-        respuesta = self.gemini.chat(
-            system_prompt=ARCHITECT_SYSTEM,
-            user_message=mensaje,
-            history=history,
-            temperature=0.5,
-        )
-        return {"respuesta": respuesta, "metadata": {"agente": self.name}}
+        return {
+            "respuesta": _MENSAJE_HONESTO,
+            "metadata": {
+                "agente": self.name,
+                "estado": "deshabilitado",
+                "razon": "contenido técnico migrado a blog SEO + cierre de vector de fuga interna",
+                "redirige_a": _URL_BLOG,
+                "costo_gemini_usd": 0,
+            },
+        }
