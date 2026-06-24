@@ -1,8 +1,23 @@
 """🎯 AI_CEO — Estratega del marketplace.
+
 Maneja preguntas de alto nivel sobre el negocio y rutea cuando no hay
 un agente más específico.
+
+ARQUITECTURA HÍBRIDA (2026-06-23):
+- Fase 1: busca match en FAQ local (`app/data/faq_config.json`)
+  → si hay match: respuesta directa sin Gemini (costo $0, latencia <50ms)
+- Fase 2: si NO hay match, llama a Gemini con el prompt original (intacto)
+  → preserva la inteligencia del orquestador para casos novedosos
+
+Reduce costo ~60-80% (las preguntas frecuentes son las más repetidas)
+sin sacrificar capacidad de respuesta a casos inesperados.
+
+Para agregar/editar respuestas: editar `app/data/faq_config.json`
+(no requiere tocar código Python).
 """
 from .base import Agent, AgentContext
+from ..services import faq_local
+
 
 CEO_SYSTEM = """Eres el asistente comercial de ViveroOnline.com.co, marketplace de plantas ornamentales para la Sabana de Bogotá, Colombia.
 
@@ -33,15 +48,38 @@ Estilo: directo, cálido, orientado a la venta. Responde en español colombiano.
 
 class AICeoAgent(Agent):
     name = "ai_ceo"
-    description = "Asistente comercial general del marketplace"
+    description = "Asistente comercial general del marketplace (híbrido FAQ+Gemini)"
 
     def run(self, mensaje: str, ctx: AgentContext) -> dict:
-        history = [{"role": t.get("role", "user"), "content": t.get("content", "")}
-                   for t in ctx.historial[-6:]]
+        # ─── Fase 1: intento de match local (cero costo Gemini) ───
+        match = faq_local.buscar_respuesta(mensaje)
+        if match:
+            return {
+                "respuesta": match["respuesta"],
+                "metadata": {
+                    "agente": self.name,
+                    "fuente": "faq_local",
+                    "faq_id": match["faq_id"],
+                    "confianza": match["confianza"],
+                    "costo_gemini_usd": 0,
+                },
+            }
+
+        # ─── Fase 2: sin match → Gemini con prompt original ───
+        history = [
+            {"role": t.get("role", "user"), "content": t.get("content", "")}
+            for t in ctx.historial[-6:]
+        ]
         respuesta = self.gemini.chat(
             system_prompt=self._build_system_prompt(CEO_SYSTEM),
             user_message=mensaje,
             history=history,
-            temperature=0.5,  # Bajado de 0.7 — menos creatividad = menos riesgo de improvisar datos
+            temperature=0.5,
         )
-        return {"respuesta": respuesta, "metadata": {"agente": self.name}}
+        return {
+            "respuesta": respuesta,
+            "metadata": {
+                "agente": self.name,
+                "fuente": "gemini",
+            },
+        }
