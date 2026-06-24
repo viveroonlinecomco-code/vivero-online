@@ -1,0 +1,133 @@
+{
+  "version": "1.0",
+  "actualizado": "2026-06-23",
+  "config": {
+    "umbral_keywords_minimo": 2,
+    "keyword_largo_minimo_chars": 7
+  },
+  "fallback": {
+    "respuesta": "🌿 Gracias por escribirnos a ViveroOnline. Para ayudarte mejor, contame qué necesitás:\n\n🌱 Comprar plantas (paisajismo, proyectos, jardines)\n🌳 Vender en la plataforma (sos viverista)\n💬 Hablar con alguien del equipo\n\nTambién podés explorar el catálogo en app.viveroonline.com.co/marketplace"
+  },
+  "faqs": [
+    {
+      "id": "que_es_viveroonline",
+      "audiencia": "ambos",
+      "keywords": ["que es viveroonline", "que es vivero online", "que hacen ustedes", "que es esto", "que es la plataforma", "de que se trata", "que es esta pagina"],
+      "respuesta": "🌿 ViveroOnline.com.co es el marketplace B2B de plantas ornamentales para la Sabana de Bogotá. Conectamos viveros productores con paisajistas, constructoras y conjuntos residenciales que necesitan plantas de calidad y entrega coordinada.\n\n¿Sos viverista o comprador? Te ayudo a empezar 🌱"
+    },
+    {
+      "id": "como_funciona_marketplace",
+      "audiencia": "comprador",
+      "keywords": ["como funciona", "como es el proceso", "como compro", "como pido", "como hacen el pedido", "como trabajan"],
+      "respuesta": "📦 Es simple: entrás a app.viveroonline.com.co/marketplace, escogés las plantas de cualquier vivero aliado y solicitás cotización. Nosotros coordinamos con el viverista, confirmamos disponibilidad y precio, y agendamos la entrega. Vos solo recibís y pagás.\n\n¿Querés ver el catálogo? https://app.viveroonline.com.co/marketplace"
+    },
+    {
+      "id": "por_que_comprar_aqui",
+      "audiencia": "comprador",
+      "keywords": ["por que comprar", "porque comprar", "por que confiar", "por que ustedes", "que beneficio", "por que elegir", "para que sirve", "ventajas de comprar"],
+      "respuesta": "✅ Tres razones:\n\n1. Comparás varios viveros en UNA sola búsqueda (no llamás 5 lugares distintos)\n2. Precio directo del productor (sin sobrecostos de intermediarios)\n3. Nosotros coordinamos la entrega y respaldamos la calidad\n\nAhorrás tiempo y plata. ¿Querés que te ayude con tu próximo proyecto? 🌱"
+    },
+    {
+      "id": "comparar_viveros",
+      "audiencia": "comprador",
+      "keywords": ["comparar viveros", "varios viveros", "una sola busqueda", "varios proveedores", "ahorrar tiempo", "comparar precios", "comparar varios"],
+      "respuesta": "🔍 Esa es la ventaja principal: en app.viveroonline.com.co/marketplace ves productos de TODOS los viveros aliados en una sola búsqueda. Filtrás por especie, precio o ubicación.\n\nEn 5 minutos comparás lo que antes te tomaba un día llamando uno por uno. ¿Querés probarlo?"
+    },
+    {
+      "id": "precios_proyectos_grandes",
+      "audiencia": "comprador",
+      "keywords": ["mejores precios", "descuento", "descuentos", "proyectos grandes", "grandes cantidades", "mucha cantidad", "muchas plantas", "cotizar grande", "por volumen"],
+      "respuesta": "💰 Sí, para proyectos grandes (más de 100 plantas o cotizaciones sobre $5M COP) tenemos descuentos negociados directamente con el viverista.\n\nContanos qué necesitás: especies, cantidades y zona de entrega — y te armamos una cotización personalizada en menos de 24h."
+    },
+    {
+      "id": "proyectos_paisajismo",
+      "audiencia": "comprador",
+      "keywords": ["paisajismo", "paisajista", "proyecto de paisajismo", "constructora", "para obra", "reforestacion", "jardineria empresarial", "diseño de jardin"],
+      "respuesta": "🌳 Sí, trabajamos seguido con paisajistas y constructoras. Si tenés un proyecto, te podemos ayudar con:\n\n• Lista de especies por clima y uso (sol, sombra, cerca, cobertura)\n• Cotización por lotes\n• Coordinación de entrega en obra\n\nContanos sobre tu proyecto y te asesoramos."
+    },
+    {
+      "id": "garantia_calidad",
+      "audiencia": "comprador",
+      "keywords": ["garantia", "calidad de las plantas", "que tan buenas", "son buenas las plantas", "vivero confiable", "como saben que son buenas", "planta dañada", "planta mala"],
+      "respuesta": "🌱 Trabajamos solo con viveros productores verificados de la Sabana de Bogotá. Cada vivero responde por la calidad y sanidad de sus plantas.\n\nSi recibís una planta en mal estado, nos avisás dentro de 48h y coordinamos la reposición o devolución sin costo. Tu confianza es lo más importante."
+    },
+    {
+      "id": "especies_no_encontradas",
+      "audiencia": "comprador",
+      "keywords": ["no encuentro", "no esta la planta", "no veo la especie", "buscar planta", "consiguen", "pueden conseguir", "tienen otra especie"],
+      "respuesta": "🔍 Si no encontrás la especie que necesitás en el catálogo, escribinos con el nombre (común o científico). Consultamos con nuestra red de viveros productores y en 24-48h te confirmamos disponibilidad y precio.\n\nTrabajamos con 5+ viveros aliados de la Sabana — la red sigue creciendo."
+    },
+    {
+      "id": "formas_pago",
+      "audiencia": "comprador",
+      "keywords": ["formas de pago", "como pago", "que medios de pago", "tarjeta de credito", "transferencia bancaria", "como abono", "puedo pagar"],
+      "respuesta": "💳 Aceptamos transferencia bancaria y pago con tarjeta vía ePayco (todos los bancos colombianos).\n\nPara proyectos grandes manejamos pagos parciales: anticipo + saldo contra entrega. Generamos factura electrónica cumpliendo con la normativa DIAN."
+    },
+    {
+      "id": "tiempo_entrega",
+      "audiencia": "comprador",
+      "keywords": ["tiempo de entrega", "cuanto demora", "cuando llega", "plazo de entrega", "dias de entrega", "cuanto se demora"],
+      "respuesta": "🚚 Entregamos en 3-5 días hábiles en toda la Sabana de Bogotá. Para proyectos grandes coordinamos fecha específica.\n\nLas plantas viajan en bolsa plástica negra con sustrato, listas para trasplantar. La matera no está incluida en el precio."
+    },
+    {
+      "id": "zonas_cobertura",
+      "audiencia": "comprador",
+      "keywords": ["zonas de cobertura", "que ciudades", "donde entregan", "que cubren", "cobertura", "hacen entregas a", "llegan a"],
+      "respuesta": "📍 Cubrimos toda la Sabana de Bogotá: Cajicá, Chía, Zipaquirá, Cota, Tabio, Tenjo, Sopó, La Calera, Tocancipá, Funza, Mosquera, Madrid, Facatativá y Bogotá D.C.\n\nSi tu proyecto está fuera de esta zona, escribinos — para proyectos grandes podemos coordinar entregas adicionales."
+    },
+    {
+      "id": "persona_natural_o_empresa",
+      "audiencia": "comprador",
+      "keywords": ["persona natural", "solo empresas", "soy persona natural", "atienden personas", "solo b2b", "pedidos pequeños", "soy particular"],
+      "respuesta": "🏢 ViveroOnline está pensado principalmente para compradores B2B: paisajistas, constructoras, conjuntos residenciales, hoteles, fincas.\n\nSi sos persona natural con un proyecto grande (jardín completo, finca, varias plantas) también te atendemos. Para 1-2 macetas individuales te recomendamos un vivero local."
+    },
+    {
+      "id": "como_registro_vivero",
+      "audiencia": "viverista",
+      "keywords": ["registrar mi vivero", "registrar vivero", "inscribir vivero", "como me registro", "como me inscribo", "ser viverista aliado", "vender en viveroonline"],
+      "respuesta": "🌱 Para registrar tu vivero, escribinos por WhatsApp +57 311 555 7154 o entrá a viveroonline.com.co. Te ayudamos paso a paso:\n\n1. Datos básicos del vivero\n2. Datos fiscales (NIT, cuenta bancaria)\n3. Aceptación del contrato de mandato\n4. Carga de tu primer producto (te guiamos nosotros)\n\nEl registro es gratis."
+    },
+    {
+      "id": "cuanto_cobran_viveristas",
+      "audiencia": "viverista",
+      "keywords": ["cuanto cobran", "que comision", "comision al viverista", "cuanto me cobran", "me van a cobrar", "que me cuesta", "cuanto cuesta vender", "mensualidad", "cobran por inscripcion"],
+      "respuesta": "💰 No te cobramos inscripción ni mensualidad. Solo retenemos un 20% sobre el precio que vos definís.\n\nEste 20% cubre la coordinación logística, la garantía al comprador, la gestión de pago y nuestra comisión de plataforma. Si no vendés, no pagás nada."
+    },
+    {
+      "id": "sistema_complicado",
+      "audiencia": "viverista",
+      "keywords": ["sistema complicado", "no se de tecnologia", "no se usar", "soy mayor", "aprender sistema", "no entiendo de eso", "muy complicado", "tecnologico", "manejo de tecnologia"],
+      "respuesta": "📱 Para nada. Vos no tenés que aprender ningún sistema complicado. Toda la gestión la hacés desde WhatsApp:\n\n• Cargás producto enviando una foto\n• Aprobás cotizaciones respondiendo un mensaje\n• Recibís notificaciones de pago automáticas\n\nSi sabés usar WhatsApp, podés vender en ViveroOnline."
+    },
+    {
+      "id": "necesito_computador",
+      "audiencia": "viverista",
+      "keywords": ["necesito computador", "necesito pc", "necesito equipo", "que necesito", "computadora", "necesito internet"],
+      "respuesta": "📲 No, no necesitás computador. Todo se hace desde tu celular vía WhatsApp.\n\nSi tenés un teléfono con cámara y WhatsApp, ya tenés todo lo que se requiere para vender."
+    },
+    {
+      "id": "voy_a_perder_clientes",
+      "audiencia": "viverista",
+      "keywords": ["perder clientes", "perder mis clientes", "quitar clientes", "robar clientes", "mis clientes actuales", "voy a perder"],
+      "respuesta": "🌿 Al revés: ganás clientes nuevos.\n\nTus clientes actuales siguen comprando directo si lo prefieren. ViveroOnline te abre acceso a paisajistas, constructoras y conjuntos residenciales que NO te encontrarían de otra manera. Sumamos canales, no reemplazamos los tuyos."
+    },
+    {
+      "id": "ayuda_subir_productos",
+      "audiencia": "viverista",
+      "keywords": ["quien me ayuda", "ayudan a subir", "soporte", "ayuda subir productos", "carga de productos", "subir catalogo", "publicar productos"],
+      "respuesta": "🤝 Te ayudamos nosotros directamente. Vos solo nos enviás una foto de la planta por WhatsApp y nuestro equipo:\n\n• Identifica la especie\n• Confirma nombre comercial y científico\n• Define dimensiones de empaque\n• Te ayuda a fijar precio competitivo\n\nEn menos de 24h tu producto está publicado."
+    },
+    {
+      "id": "factura_electronica_viverista",
+      "audiencia": "viverista",
+      "keywords": ["facturar electronicamente", "factura electronica", "tengo que facturar", "necesito facturar", "rut vigente", "facturacion electronica", "dian factura"],
+      "respuesta": "🧾 No te preocupes: ViveroOnline emite la factura electrónica al comprador (cumpliendo Resolución DIAN 165/2023).\n\nVos solo necesitás tener RUT vigente. Si sos persona natural sin facturación electrónica propia, nosotros facturamos por vos como mandatario."
+    },
+    {
+      "id": "responder_mensajes_todo_dia",
+      "audiencia": "viverista",
+      "keywords": ["responder mensajes todo", "estar pendiente", "estar conectado", "atender mensajes", "tiempo del dia", "estar disponible"],
+      "respuesta": "⏰ No, vos no tenés que estar pendiente del WhatsApp todo el día.\n\nEl sistema te avisa cuando llega una cotización para aprobar — tenés hasta 12 horas hábiles para responder. Mientras tanto, seguís con tu trabajo normal en el vivero."
+    }
+  ]
+}
