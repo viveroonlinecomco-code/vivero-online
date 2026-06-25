@@ -22,11 +22,11 @@ from app.routes import public as public_routes
 from app.routes import ingesta as ingesta_routes
 from app.routes import inteligencia as inteligencia_routes
 from app.routes import suscripcion as suscripcion_routes
+from app.routes import onboarding as onboarding_routes
 from app.routes import pages as pages_routes
 from app.routes.admin_ops import router as admin_ops_router
 from app.routes.pedidos import router as pedidos_router
 from app.routes.suscripcion import router as suscripciones_router
-from app.routes import onboarding as onboarding_routes
 
 settings = get_settings()
 STATIC_DIR = Path(__file__).parent / "static"
