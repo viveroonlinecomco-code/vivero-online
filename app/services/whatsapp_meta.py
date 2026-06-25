@@ -43,7 +43,6 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from .supabase import admin
-from .whatsapp_meta import send_text_message
 
 logger = logging.getLogger(__name__)
 
