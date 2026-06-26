@@ -16,6 +16,11 @@ Flujo de conversación:
 AJUSTE (18 jun): no se dispara en el onboarding inicial ni en el primer
 mensaje del viverista — solo cuando va a aprobar una cotización real por
 primera vez, para no asustar con burocracia antes de que haya una venta.
+
+AJUSTE (25 jun): tras registrar aceptación del mandato, dispara
+iniciar_hito_0() de onboarding_wa para enviar la bienvenida del Día 0
+al viverista. El trigger SQL trg_crear_onboarding ya creó la fila en
+onboarding_viverista_hitos; acá solo enviamos el mensaje.
 """
 from __future__ import annotations
 import logging
@@ -23,6 +28,7 @@ from datetime import datetime, timezone
 
 from app.services.supabase import admin as db_admin
 from app.services.whatsapp_meta import send_text_message
+from app.services.onboarding_wa import iniciar_hito_0
 
 logger = logging.getLogger(__name__)
 
@@ -38,11 +44,11 @@ Antes de procesar tu primera venta necesitamos que aceptes nuestro Contrato de M
 ViveroOnline recauda el pago del comprador *en tu nombre*. Vos sos el vendedor real; nosotros somos tu mandatario (Art. 2142 Código Civil colombiano).
 
 *Puntos clave que debés conocer:*
-• Tu precio ingresado = lo que recibís neto
-• ViveroOnline retiene 20% de orquestación (logística + garantía + plataforma + margen)
-• Te transferimos tu pago en *3 días hábiles* tras confirmación de entrega
-• Sos responsable de facturar al comprador ante la DIAN (ViveroOnline puede actuar como intermediario de facturación si está habilitado)
-• *No podés vender directamente* a compradores que lleguen por la plataforma, durante la vigencia del contrato y por *24 meses* después. El incumplimiento genera una penalidad del 20% sobre las ventas realizadas por fuera del canal
+- Tu precio ingresado = lo que recibís neto
+- ViveroOnline retiene 20% de orquestación (logística + garantía + plataforma + margen)
+- Te transferimos tu pago en *3 días hábiles* tras confirmación de entrega
+- Sos responsable de facturar al comprador ante la DIAN (ViveroOnline puede actuar como intermediario de facturación si está habilitado)
+- *No podés vender directamente* a compradores que lleguen por la plataforma, durante la vigencia del contrato y por *24 meses* después. El incumplimiento genera una penalidad del 20% sobre las ventas realizadas por fuera del canal
 
 *Marco legal:* Art. 2142-2199 Código Civil · Art. 1262-1286 Código de Comercio · Ley 527/1999 · Res. DIAN 00165/2023
 
@@ -213,6 +219,22 @@ async def procesar_respuesta_datos_fiscales(
                     }).execute()
             except Exception as e:
                 logger.error(f"No se pudo registrar aceptación mandato: {e}")
+
+            # ── Disparar onboarding Día 0 (bienvenida) ──────────────────
+            # El trigger SQL trg_crear_onboarding ya creó la fila en
+            # onboarding_viverista_hitos. Acá enviamos el mensaje de bienvenida.
+            # Errores NO bloquean el flujo de datos fiscales (best-effort).
+            try:
+                resultado_hito_0 = await iniciar_hito_0(vivero_id)
+                logger.info(
+                    f"onboarding hito 0 disparado para vivero {vivero_id}: "
+                    f"{resultado_hito_0}"
+                )
+            except Exception as e:
+                logger.error(
+                    f"No se pudo disparar onboarding hito 0 para vivero "
+                    f"{vivero_id}: {e}"
+                )
 
             # Avanzar al primer paso de datos fiscales
             primer_paso = PASOS_DATOS_FISCALES[0]
