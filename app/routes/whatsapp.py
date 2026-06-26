@@ -17,6 +17,7 @@ from app.services.whatsapp_meta import (
     send_text_message,
     verify_signature,
 )
+from app.services.onboarding_wa import marcar_primer_producto
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
@@ -501,6 +502,19 @@ async def _handle_message(msg: dict):
 async def _ejecutar_accion_confirmada(accion, vivero_id, user_id, sesion_id, whatsapp):
     _limpiar_pendientes(sesion_id)
     resultado = ejecutar_accion(accion, vivero_id, user_id)
+
+    # ── Tracking onboarding: marcar primer producto si corresponde ──────────
+    # Si esta acción fue "agregar_producto" se intenta marcar primer_producto_at.
+    # La función marcar_primer_producto es IDEMPOTENTE: solo guarda si está NULL.
+    # Errores acá NO bloquean el flujo principal (best-effort).
+    if accion.get("type") == "agregar_producto":
+        try:
+            marcar_primer_producto(vivero_id)
+        except Exception as e:
+            logger.warning(
+                f"No se pudo marcar primer_producto vivero {vivero_id}: {e}"
+            )
+
     _save_message(sesion_id, "model", resultado.mensaje, agente="executor")
     await send_text_message(whatsapp, resultado.mensaje)
 
