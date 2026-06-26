@@ -19,6 +19,7 @@ from app.auth.deps import UserContext, require_comprador, require_viverista
 from app.config import get_settings
 from app.services.supabase import admin as db_admin
 from app.services.whatsapp_meta import send_text_message
+from app.services.onboarding_wa import marcar_primera_cotizacion
 
 router = APIRouter(prefix="/api/pedidos", tags=["pedidos"])
 
@@ -117,6 +118,18 @@ async def solicitar_aprobacion(
                     "total_estimado": total_vivero,
                     "estado": "pendiente",
                 }).execute()
+
+                # ── Tracking onboarding: marcar primera cotización si corresponde ─
+                # La función marcar_primera_cotizacion es IDEMPOTENTE: solo guarda
+                # si primera_cotizacion_at está NULL. Errores acá NO bloquean
+                # el flujo principal (best-effort).
+                try:
+                    marcar_primera_cotizacion(vivero_id)
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        f"No se pudo marcar primera_cotizacion vivero {vivero_id}: {e}"
+                    )
 
                 # Notificar al viverista
                 v = db.table("viveros").select(
