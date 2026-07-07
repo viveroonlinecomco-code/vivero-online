@@ -14,6 +14,10 @@
     {
       "path": "/api/onboarding/cron-diario",
       "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/pedidos/cron/vencer-cotizaciones",
+      "schedule": "30 13 * * *"
     }
   ],
   "headers": [
