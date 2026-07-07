@@ -3,6 +3,10 @@
 Llamado por Vercel Cron Jobs una vez al día (8 AM Bogotá = 13:00 UTC).
 Vercel envía automáticamente el header Authorization: Bearer <CRON_SECRET>.
 
+MÉTODO HTTP: GET (Vercel Cron Jobs solo soporta GET, confirmado 07 jul 2026).
+No usar POST — Vercel llama SIEMPRE con GET aunque el cron esté configurado
+para un endpoint tipo POST, y devuelve 405 Method Not Allowed.
+
 Lee filas pendientes de onboarding_viverista_hitos y procesa cada una
 con onboarding_wa.procesar_hito_diario(), que envía el hito que
 corresponda o saltea si no toca aún.
@@ -41,7 +45,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/onboarding", tags=["onboarding"])
 
 
-@router.post("/cron-diario")
+@router.get("/cron-diario")
 async def cron_diario(authorization: Optional[str] = Header(default=None)):
     """Endpoint invocado por Vercel Cron Jobs (1x/día, 8am Bogotá).
 
