@@ -26,6 +26,7 @@ from app.routes import pages as pages_routes
 from app.routes.admin_ops import router as admin_ops_router
 from app.routes.pedidos import router as pedidos_router
 from app.routes.suscripcion import router as suscripciones_router
+from app.services.google_ads_middleware import GoogleAdsMiddleware
 from app.routes import onboarding as onboarding_routes
 
 settings = get_settings()
@@ -42,6 +43,8 @@ app = FastAPI(
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+    
+app.add_middleware(GoogleAdsMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
