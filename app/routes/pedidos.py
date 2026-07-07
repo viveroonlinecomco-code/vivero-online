@@ -918,7 +918,7 @@ async def confirmar_vivero_alternativo(
 # CRON — Vencer cotizaciones expiradas
 # ═══════════════════════════════════════════════════════════
 
-@router.post("/cron/vencer-cotizaciones")
+@router.get("/cron/vencer-cotizaciones")
 async def vencer_cotizaciones_cron(request: Request):
     """Vence cotizaciones expiradas y notifica por WhatsApp a cada comprador.
 
