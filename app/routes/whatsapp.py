@@ -219,18 +219,31 @@ def _close_session(sesion_id):
 def _help_text(rol):
     if rol == "viverista":
         return (
-            "🌿 *ViveroOnline · Comandos*\n\n"
-            "📷 *Foto* → identifico la planta y la agrego\n\n"
-            "✏️ *Modificar:*\n"
-            "• precio [planta] [valor]\n"
-            "• stock [planta] [cantidad]\n"
-            "• agotado [planta]\n"
-            "• disponible [planta]\n\n"
-            "📦 *Pedidos:*\n"
-            "• APROBAR o RECHAZAR\n"
-            "• ENVIADO (cuando despachás)\n\n"
-            "Respondé *SÍ* para confirmar cambios.\n"
-            "Escribí *salir* para cerrar."
+            "🌱 *¡Bienvenido a ViveroOnline.com.co!*\n\n"
+            "Con nosotros vas a vender tus plantas directamente a "
+            "paisajistas, constructoras y conjuntos residenciales de la "
+            "Sabana. Sin intermediarios que te bajen el precio.\n\n"
+            "*Así de fácil funciona:*\n\n"
+            "*1️⃣ Subís tus plantas*\n"
+            "Mandame una foto de una planta que tengas en stock. "
+            "Yo identifico la especie, sugiero el precio y la agrego a "
+            "tu catálogo. Cero papeleo.\n\n"
+            "*2️⃣ Recibís cotizaciones*\n"
+            "Cuando un cliente quiera comprarte, te llegan las cotizaciones "
+            "acá mismo por WhatsApp. Vos decidís: *APROBAR* si te sirve, "
+            "*RECHAZAR* si no.\n\n"
+            "*3️⃣ Despachás*\n"
+            "Cuando el cliente paga, escribís *ENVIADO* al despachar. "
+            "Te pagamos en 3-5 días hábiles.\n\n"
+            "━━━━━━━━━━━━━━━\n"
+            "📚 *Comandos útiles:*\n"
+            "• *foto* → identifico y agrego la planta\n"
+            "• *precio [planta] [valor]* → cambiar precio\n"
+            "• *stock [planta] [cantidad]* → actualizar stock\n"
+            "• *agotado [planta]* / *disponible [planta]*\n"
+            "• *ayuda* → ver esto de nuevo\n"
+            "• *salir* → cerrar sesión\n\n"
+            "🚀 *¿Empezamos? Mandame la foto de tu primera planta.*"
         )
     if rol == "comprador":
         return (
@@ -300,8 +313,9 @@ async def _handle_message(msg: dict):
     if not user:
         await send_text_message(
             whatsapp,
-            "👋 ¡Hola! Aún no estás registrado en ViveroOnline.\n\n"
-            "Registrate gratis aquí:\nhttps://app.viveroonline.com.co/auth/ingresar",
+            "👋 ¡Hola! Aún no estás registrado.\n\n"
+            "Creá tu perfil de viverista y comenzá a vender:\n"
+            "https://app.viveroonline.com.co/auth/ingresar",
         )
         return
 
