@@ -29,7 +29,7 @@ jobs:
           pg_dump \
             --host=${{ secrets.SUPABASE_DB_HOST }} \
             --port=5432 \
-            --username=postgres \
+            --username=postgres.qhjditntqtjiljeftqun \
             --dbname=postgres \
             --no-owner \
             --no-acl \
