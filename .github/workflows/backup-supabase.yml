@@ -1,0 +1,53 @@
+name: Backup diario Supabase
+
+on:
+  schedule:
+    - cron: '0 7 * * *'  # 2 AM Bogotá = 07:00 UTC
+  workflow_dispatch:
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Instalar PostgreSQL 17 client
+        run: |
+          sudo sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+          wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo apt-key add -
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+
+      - name: Generar nombre del archivo
+        id: filename
+        run: echo "name=backup_$(date +'%Y-%m-%d_%H%M').sql" >> $GITHUB_OUTPUT
+
+      - name: Ejecutar pg_dump
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          pg_dump \
+            --host=${{ secrets.SUPABASE_DB_HOST }} \
+            --port=5432 \
+            --username=postgres \
+            --dbname=postgres \
+            --no-owner \
+            --no-acl \
+            --clean \
+            --if-exists \
+            --schema=public \
+            > ${{ steps.filename.outputs.name }}
+
+          gzip ${{ steps.filename.outputs.name }}
+          ls -lh ${{ steps.filename.outputs.name }}.gz
+
+      - name: Subir backup como artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.filename.outputs.name }}
+          path: ${{ steps.filename.outputs.name }}.gz
+          retention-days: 90
+
+      - name: Reportar resultado
+        if: success()
+        run: echo "✅ Backup exitoso. Retención 90 días."
