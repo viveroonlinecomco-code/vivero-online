@@ -23,8 +23,14 @@ jobs:
         run: echo "name=backup_$(date +'%Y-%m-%d_%H%M').sql" >> $GITHUB_OUTPUT
 
       - name: Ejecutar pg_dump
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
-          pg_dump "${{ secrets.SUPABASE_CONNECTION_STRING }}" \
+          pg_dump \
+            --host=${{ secrets.SUPABASE_DB_HOST }} \
+            --port=6543 \
+            --username=postgres.qhjditntqtjiljeftqun \
+            --dbname=postgres \
             --no-owner \
             --no-acl \
             --clean \
