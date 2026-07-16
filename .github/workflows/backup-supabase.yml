@@ -22,21 +22,26 @@ jobs:
         id: filename
         run: echo "name=backup_$(date +'%Y-%m-%d_%H%M').sql" >> $GITHUB_OUTPUT
 
-      - name: Ejecutar pg_dump
+      - name: Debug - Verificar lectura de contraseña
         env:
-          PGHOST: ${{ secrets.SUPABASE_DB_HOST }} # Debe ser: aws-1-sa-east-1.pooler.supabase.com
-          PGPORT: 5432
-          PGUSER: postgres.qhjditntqtjiljeftqun  # Correcto según tu imagen 2
-          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }} # Contraseña original, sin percent-encode
-          PGDATABASE: postgres
-          PGSSLMODE: require
+          DB_PASS: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
-          echo "Conectando al host: $PGHOST"
-          echo "Usuario: $PGUSER"
+          LEN=$(echo -n "$DB_PASS" | wc -c)
+          echo "GitHub está inyectando una contraseña de: $LEN caracteres."
+          echo "⚠️ Si este número es mayor al tamaño real de tu contraseña, hay un espacio en blanco al final de tu Secret."
+
+      - name: Ejecutar pg_dump (Conexión URI)
+        env:
+          DB_PASS: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
+          DB_USER: postgres.qhjditntqtjiljeftqun
+        run: |
           echo "Iniciando respaldo de base de datos..."
           
-          # Al usar la variable PGPASSWORD, pg_dump la toma automáticamente de forma segura
-          pg_dump \
+          # Usando el formato URI aseguramos que PostgreSQL ensamble los datos sin perder variables
+          CONNECTION_STRING="postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:5432/postgres"
+          
+          pg_dump "$CONNECTION_STRING" \
             --no-owner \
             --no-acl \
             --clean \
@@ -47,8 +52,6 @@ jobs:
             
           echo "Archivo generado con éxito. Comprimiendo..."
           gzip ${{ steps.filename.outputs.name }}
-          
-          echo "Proceso finalizado. Archivo comprimido:"
           ls -lh ${{ steps.filename.outputs.name }}.gz
 
       - name: Subir backup como artifact
