@@ -30,7 +30,7 @@ jobs:
           echo "GitHub está inyectando una contraseña de: $LEN caracteres."
           echo "⚠️ Si este número es mayor al tamaño real de tu contraseña, hay un espacio en blanco al final de tu Secret."
 
-      - name: Ejecutar pg_dump (Conexión URI)
+      - name: Ejecutar pg_dump (Conexión URI y PG17)
         env:
           DB_PASS: ${{ secrets.SUPABASE_DB_PASSWORD }}
           DB_HOST: ${{ secrets.SUPABASE_DB_HOST }}
@@ -38,10 +38,11 @@ jobs:
         run: |
           echo "Iniciando respaldo de base de datos..."
           
-          # Usando el formato URI aseguramos que PostgreSQL ensamble los datos sin perder variables
+          # Usando el formato URI aseguramos que PostgreSQL ensamble los datos
           CONNECTION_STRING="postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:5432/postgres"
           
-          pg_dump "$CONNECTION_STRING" \
+          # Forzamos el uso exacto del binario de la versión 17 instalado en el runner
+          /usr/lib/postgresql/17/bin/pg_dump "$CONNECTION_STRING" \
             --no-owner \
             --no-acl \
             --clean \
