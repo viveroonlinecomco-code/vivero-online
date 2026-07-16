@@ -22,13 +22,13 @@ jobs:
         id: filename
         run: echo "name=backup_$(date +'%Y-%m-%d_%H%M').sql" >> $GITHUB_OUTPUT
 
-      - name: Ejecutar pg_dump
+      - name: Ejecutar pg_dump (puerto directo 5432, no pooler)
         env:
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
         run: |
           pg_dump \
             --host=${{ secrets.SUPABASE_DB_HOST }} \
-            --port=6543 \
+            --port=5432 \
             --username=postgres.qhjditntqtjiljeftqun \
             --dbname=postgres \
             --no-owner \
@@ -36,9 +36,13 @@ jobs:
             --clean \
             --if-exists \
             --schema=public \
+            --verbose \
             > ${{ steps.filename.outputs.name }}
-
+          echo "Archivo generado:"
+          ls -lh ${{ steps.filename.outputs.name }}
+          echo "Comprimiendo..."
           gzip ${{ steps.filename.outputs.name }}
+          echo "Archivo comprimido:"
           ls -lh ${{ steps.filename.outputs.name }}.gz
 
       - name: Subir backup como artifact
