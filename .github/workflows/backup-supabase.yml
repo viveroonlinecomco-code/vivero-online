@@ -22,11 +22,18 @@ jobs:
         id: filename
         run: echo "name=backup_$(date +'%Y-%m-%d_%H%M').sql" >> $GITHUB_OUTPUT
 
-      - name: Ejecutar pg_dump (connection string completo)
+      - name: Ejecutar pg_dump con variables PG
+        env:
+          PGHOST: ${{ secrets.SUPABASE_DB_HOST }}
+          PGPORT: 5432
+          PGUSER: postgres.qhjditntqtjiljeftqun
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          PGDATABASE: postgres
+          PGSSLMODE: require
         run: |
-          # URL-encode del punto en el username usando %2E si fuera necesario,
-          # pero pg_dump maneja bien el punto dentro de una URI cerrada con :
-          pg_dump "postgresql://postgres.qhjditntqtjiljeftqun:${{ secrets.SUPABASE_DB_PASSWORD }}@${{ secrets.SUPABASE_DB_HOST }}:5432/postgres?sslmode=require" \
+          echo "Conectando como: $PGUSER"
+          echo "A host: $PGHOST puerto: $PGPORT"
+          pg_dump \
             --no-owner \
             --no-acl \
             --clean \
