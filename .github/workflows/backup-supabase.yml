@@ -22,45 +22,20 @@ jobs:
         id: filename
         run: echo "name=backup_$(date +'%Y-%m-%d_%H%M').sql" >> $GITHUB_OUTPUT
 
-      - name: Debug — verificar longitud de password (sin exponerla)
+      - name: Ejecutar pg_dump
         env:
-          PWD_LEN: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: |
-          # Longitud de la password (para verificar que llegó completa)
-          LEN=$(echo -n "$PWD_LEN" | wc -c)
-          echo "Longitud del Secret SUPABASE_DB_PASSWORD: $LEN caracteres"
-          # Primer y último caracter (útil para detectar espacios pegados)
-          FIRST=$(echo -n "$PWD_LEN" | head -c 1)
-          LAST=$(echo -n "$PWD_LEN" | tail -c 1)
-          echo "Primer char (código ASCII): $(printf '%d' "'$FIRST")"
-          echo "Último char (código ASCII): $(printf '%d' "'$LAST")"
-
-      - name: Crear archivo .pgpass
-        env:
-          PGPASSWORD_RAW: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          PGHOST_RAW: ${{ secrets.SUPABASE_DB_HOST }}
-        run: |
-          # Formato .pgpass: hostname:port:database:username:password
-          # * como wildcard permite conectar a cualquier DB del mismo host
-          echo "${PGHOST_RAW}:5432:*:postgres.qhjditntqtjiljeftqun:${PGPASSWORD_RAW}" > ~/.pgpass
-          chmod 600 ~/.pgpass
-          echo "Archivo .pgpass creado en ~/.pgpass con permisos 600"
-          # Verificar que se escribió (sin mostrar la password)
-          LINES=$(wc -l < ~/.pgpass)
-          echo "Líneas en .pgpass: $LINES (debe ser 1)"
-
-      - name: Ejecutar pg_dump usando .pgpass
-        env:
-          PGHOST: ${{ secrets.SUPABASE_DB_HOST }}
+          PGHOST: ${{ secrets.SUPABASE_DB_HOST }} # Debe ser: aws-1-sa-east-1.pooler.supabase.com
           PGPORT: 5432
-          PGUSER: postgres.qhjditntqtjiljeftqun
+          PGUSER: postgres.qhjditntqtjiljeftqun  # Correcto según tu imagen 2
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }} # Contraseña original, sin percent-encode
           PGDATABASE: postgres
           PGSSLMODE: require
         run: |
-          echo "Conectando como: $PGUSER"
-          echo "A host: $PGHOST puerto: $PGPORT"
-          echo "SSL mode: $PGSSLMODE"
-          echo "---"
+          echo "Conectando al host: $PGHOST"
+          echo "Usuario: $PGUSER"
+          echo "Iniciando respaldo de base de datos..."
+          
+          # Al usar la variable PGPASSWORD, pg_dump la toma automáticamente de forma segura
           pg_dump \
             --no-owner \
             --no-acl \
@@ -69,17 +44,12 @@ jobs:
             --schema=public \
             --verbose \
             > ${{ steps.filename.outputs.name }}
-          echo "---"
-          echo "Archivo generado:"
-          ls -lh ${{ steps.filename.outputs.name }}
-          echo "Comprimiendo..."
+            
+          echo "Archivo generado con éxito. Comprimiendo..."
           gzip ${{ steps.filename.outputs.name }}
-          echo "Archivo comprimido:"
+          
+          echo "Proceso finalizado. Archivo comprimido:"
           ls -lh ${{ steps.filename.outputs.name }}.gz
-
-      - name: Limpiar .pgpass
-        if: always()
-        run: rm -f ~/.pgpass
 
       - name: Subir backup como artifact
         uses: actions/upload-artifact@v4
