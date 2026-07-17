@@ -23,8 +23,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
 
 # ── NUEVO (Fase 5): número de WhatsApp del admin para notificaciones ─────────
-# Cuando alguien deja una solicitud (ticket) por el bot, se notifica acá.
-ADMIN_WHATSAPP_NOTIF = "+573178543819"  # Elena Obando
+# Se lee de variable de entorno para no hardcodear. Configurar en Vercel:
+#   ADMIN_WHATSAPP_NOTIF=+573178543819
+ADMIN_WHATSAPP_NOTIF = os.getenv("ADMIN_WHATSAPP_NOTIF", "").strip()
+if not ADMIN_WHATSAPP_NOTIF:
+    logger.warning(
+        "ADMIN_WHATSAPP_NOTIF no configurada — no se enviarán notificaciones "
+        "a admin sobre nuevos tickets"
+    )
 
 CONFIRMACIONES = {
     "sí", "si", "sí!", "si!", "dale", "ok", "okey", "listo",
@@ -49,8 +55,8 @@ RESPUESTA_OPCION_1_COMPRAR = (
     "🌿 Andá a nuestra tienda:\n"
     "https://viveroonline.com.co\n\n"
     "Podés comprar sin registrarte, con envío en la Sabana de Bogotá.\n\n"
-    "¿Preferís que te contactemos? Escribime tu nombre y qué buscás "
-    "(ej: '10 suculentas para mi oficina') y te respondo pronto."
+    "Si necesitás ayuda o tenés dudas, escribinos a "
+    "viveroonline.com.co@gmail.com"
 )
 
 RESPUESTA_OPCION_2_VENDER = (
@@ -161,8 +167,9 @@ async def _crear_ticket_soporte(
         logger.error(f"No se pudo crear ticket_soporte: {e}")
         return None
 
-    # Notificar al admin por WhatsApp (best-effort — no bloquea si falla)
-    if ticket_id:
+   # Notificar al admin por WhatsApp (best-effort — no bloquea si falla)
+    # Solo si ADMIN_WHATSAPP_NOTIF está configurada (ver header del archivo)
+    if ticket_id and ADMIN_WHATSAPP_NOTIF:
         try:
             emoji_prioridad = {
                 "urgente": "🚨",
@@ -349,7 +356,13 @@ async def whatsapp_webhook_verify(request: Request):
     mode = params.get("hub.mode")
     token = params.get("hub.verify_token")
     challenge = params.get("hub.challenge")
-    verify_token = os.getenv("META_WA_VERIFY_TOKEN", "")
+    verify_token = os.getenv("META_WA_VERIFY_TOKEN", "").strip()
+
+    # Fail-closed: si el token no está configurado, rechazar TODO
+    if not verify_token:
+        logger.error("META_WA_VERIFY_TOKEN no configurado — rechazando verificación")
+        raise HTTPException(status_code=500, detail="Server misconfigured")
+
     if mode == "subscribe" and token == verify_token:
         return Response(content=challenge or "", media_type="text/plain")
     raise HTTPException(status_code=403, detail="Verify token inválido")
@@ -361,14 +374,17 @@ async def whatsapp_webhook(request: Request, background_tasks: BackgroundTasks):
     signature = request.headers.get("x-hub-signature-256", "")
     if os.getenv("ENV") == "production":
         if not verify_signature(body_bytes, signature):
+            logger.warning(f"Firma inválida en webhook. Signature: {signature[:20]}...")
             raise HTTPException(status_code=403, detail="Firma inválida")
     try:
         payload = await request.json()
-    except Exception:
+    except Exception as e:
+        # Ya no tragamos el error: lo logueamos para diagnóstico
+        logger.error(f"No se pudo parsear payload Meta como JSON: {type(e).__name__}: {e}")
+        # Devolvemos 200 igual porque Meta reintenta agresivamente si damos error
         return {"ok": True}
     background_tasks.add_task(_process_payload, payload)
     return {"ok": True}
-
 
 async def _process_payload(payload: dict):
     try:
