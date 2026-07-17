@@ -22,17 +22,61 @@ from app.services.onboarding_wa import marcar_primer_producto
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/whatsapp", tags=["whatsapp"])
 
+# ── NUEVO (Fase 5): número de WhatsApp del admin para notificaciones ─────────
+# Cuando alguien deja una solicitud (ticket) por el bot, se notifica acá.
+ADMIN_WHATSAPP_NOTIF = "+573178543819"  # Elena Obando
+
 CONFIRMACIONES = {
     "sí", "si", "sí!", "si!", "dale", "ok", "okey", "listo",
     "confirmo", "confirmado", "apruebo", "aprueba", "actualiza",
     "actualizar", "guardar", "guarda", "agregar", "agrega", "yes",
 }
 
-# ── NUEVO: respuestas locales para comprador, sin tocar Gemini ───────────────
-# Cubren los casos más comunes (saludo, pedir ayuda, querer comprar, preguntar
-# qué hacer) para que el comprador nunca se quede sin respuesta útil aunque
-# Gemini/LangGraph esté caído. Si el mensaje no calza con ningún patrón,
-# seguimos al flujo normal (route_message) como hasta ahora.
+# ── NUEVO (Fase 5): mensaje de bienvenida para no-registrados ────────────────
+# Reemplaza el mensaje anterior que asumía todos eran viveristas.
+BIENVENIDA_NUEVO_USUARIO = (
+    "🌱 ¡Hola! Bienvenido a ViveroOnline.com.co\n\n"
+    "¿Qué necesitás hoy?\n\n"
+    "1️⃣ Comprar plantas vivas\n"
+    "2️⃣ Vender mis plantas (soy viverista)\n"
+    "3️⃣ Solo consultar\n\n"
+    "Escribí 1, 2 o 3 para arrancar."
+)
+
+# Respuestas según la opción elegida por el no-registrado
+RESPUESTA_OPCION_1_COMPRAR = (
+    "🛒 *¡Perfecto! Comprar es fácil:*\n\n"
+    "🌿 Andá a nuestra tienda:\n"
+    "https://viveroonline.com.co\n\n"
+    "Podés comprar sin registrarte, con envío en la Sabana de Bogotá.\n\n"
+    "¿Preferís que te contactemos? Escribime tu nombre y qué buscás "
+    "(ej: '10 suculentas para mi oficina') y te respondo pronto."
+)
+
+RESPUESTA_OPCION_2_VENDER = (
+    "🌿 *¡Excelente! Vender con nosotros:*\n\n"
+    "Creá tu perfil de viverista y empezá a vender:\n"
+    "https://viveroonline.com.co/auth/ingresar\n\n"
+    "Cuando estés registrado, mandame *ayuda* por acá para ver cómo cargar tus plantas."
+)
+
+RESPUESTA_OPCION_3_CONSULTAR = (
+    "💬 *¡Con gusto te ayudo!*\n\n"
+    "Podés ver precios y catálogo acá:\n"
+    "https://viveroonline.com.co\n\n"
+    "O si preferís, contame qué necesitás (nombre + consulta) y te contactamos:\n"
+    "Ejemplo: 'Soy Ana, quiero saber precio de 200 arizónicas para conjunto en Chía'"
+)
+
+RESPUESTA_OPCION_INVALIDA = (
+    "🌱 No entendí tu respuesta.\n\n"
+    "Por favor escribí *1, 2 o 3* para elegir:\n\n"
+    "1️⃣ Comprar plantas vivas\n"
+    "2️⃣ Vender mis plantas (soy viverista)\n"
+    "3️⃣ Solo consultar"
+)
+
+# ── respuestas locales para comprador registrado, sin tocar Gemini ───────────
 SALUDOS_COMPRADOR = {
     "hola", "buenas", "buenos dias", "buenos días", "buenas tardes",
     "buenas noches", "hey", "que tal", "qué tal",
@@ -69,9 +113,6 @@ PATRONES_COMPRADOR_LOCAL = [
 
 
 def _respuesta_local_comprador(body_lower: str) -> str | None:
-    """Intenta responder localmente a mensajes comunes de comprador sin usar
-    Gemini/LangGraph. Devuelve None si no hay match, para que el caller
-    siga con el flujo normal."""
     if body_lower.strip() in SALUDOS_COMPRADOR:
         return (
             "🌿 ¡Hola! Soy el asistente de ViveroOnline.\n\n"
@@ -83,6 +124,66 @@ def _respuesta_local_comprador(body_lower: str) -> str | None:
         if patron.search(body_lower):
             return respuesta
     return None
+
+
+# ─── NUEVO (Fase 5): Helpers para tickets de soporte ─────────────────────────
+
+async def _crear_ticket_soporte(
+    whatsapp: str,
+    tipo_solicitud: str,
+    descripcion: str,
+    nombre: str | None = None,
+    prioridad: str = "media",
+) -> int | None:
+    """Crea un ticket en tickets_soporte y notifica al admin por WhatsApp.
+
+    tipo_solicitud debe ser uno de: compra, venta, consulta, reclamo, otro.
+    prioridad debe ser: baja, media, urgente.
+
+    Retorna el ticket_id creado, o None si falló.
+    Errores NO bloquean el flujo del bot (best-effort).
+    """
+    ticket_id = None
+    try:
+        db = admin()
+        resp = db.table("tickets_soporte").insert({
+            "whatsapp_numero": whatsapp,
+            "nombre": nombre,
+            "tipo_solicitud": tipo_solicitud,
+            "descripcion": descripcion[:2000],  # cap por seguridad
+            "prioridad": prioridad,
+            "estado": "pendiente",
+        }).execute()
+        if resp.data:
+            ticket_id = resp.data[0]["ticket_id"]
+            logger.info(f"Ticket #{ticket_id} creado: {tipo_solicitud} desde {whatsapp}")
+    except Exception as e:
+        logger.error(f"No se pudo crear ticket_soporte: {e}")
+        return None
+
+    # Notificar al admin por WhatsApp (best-effort — no bloquea si falla)
+    if ticket_id:
+        try:
+            emoji_prioridad = {
+                "urgente": "🚨",
+                "media": "⚠️",
+                "baja": "ℹ️",
+            }.get(prioridad, "⚠️")
+
+            msg_admin = (
+                f"🎫 *Nuevo ticket #{ticket_id}*\n\n"
+                f"📞 Contacto: {whatsapp}\n"
+                f"👤 Nombre: {nombre or '(no informado)'}\n"
+                f"🏷️ Tipo: {tipo_solicitud}\n"
+                f"{emoji_prioridad} Prioridad: {prioridad}\n\n"
+                f"📝 _{descripcion[:400]}_\n\n"
+                f"Ver en dashboard: https://app.viveroonline.com.co/admin"
+            )
+            await send_text_message(ADMIN_WHATSAPP_NOTIF, msg_admin)
+        except Exception as e:
+            logger.warning(f"No se pudo notificar al admin del ticket #{ticket_id}: {e}")
+
+    return ticket_id
 
 
 # ─── Helpers de sesión ────────────────────────────────────────────────────────
@@ -136,22 +237,6 @@ def _get_or_create_session(whatsapp, user_id, rol=None, vivero_id=None, cliente_
 
 
 def _save_message(sesion_id, role, content, agente=None, is_photo=False):
-    """Guarda un mensaje en el historial de la sesión.
-
-    AJUSTE (18 jun): antes hacía SELECT del contexto_json actual, lo
-    modificaba en memoria, y luego UPDATE — eso dejaba una ventana de
-    carrera: si dos requests llegaban casi simultáneas para la misma sesión
-    (reintento de webhook de Meta, o dos mensajes muy seguidos del mismo
-    usuario una vez que el número del bot esté público en la web), ambas
-    leían el mismo contexto_json viejo y la segunda en escribir pisaba por
-    completo el historial que dejó la primera.
-
-    Ahora delega todo (append al historial + recorte a 20 + incremento de
-    contadores) a la función SQL guardar_mensaje_sesion, que hace el UPDATE
-    completo dentro de una sola operación atómica de Postgres — dos llamadas
-    concurrentes para el mismo sesion_id se serializan a nivel de fila en
-    vez de pisarse.
-    """
     if not sesion_id:
         return
     db = admin()
@@ -300,6 +385,134 @@ async def _process_payload(payload: dict):
         logger.exception(f"Error procesando payload Meta: {e}")
 
 
+# ─── NUEVO (Fase 5): Handler para NO-REGISTRADO ──────────────────────────────
+
+async def _handle_no_registrado(whatsapp: str, msg_type: str, body: str) -> None:
+    """Flujo para usuarios que NO están en perfiles.
+
+    Estados del flujo (guardados en sesiones_agente.accion_pendiente):
+      1. Sin sesión previa → mostrar menú 1/2/3 → guardar estado "menu_bienvenida"
+      2. Estado "menu_bienvenida" → esperar respuesta 1/2/3
+      3. Estado "esperando_solicitud_1|3" → capturar texto y crear ticket
+    """
+    db = admin()
+
+    # Buscar sesión activa del no-registrado
+    existing = db.table("sesiones_agente").select(
+        "sesion_id, accion_pendiente"
+    ).eq("whatsapp_numero", whatsapp).eq("estado", "activa").limit(1).execute()
+
+    sesion_id = existing.data[0]["sesion_id"] if existing.data else None
+    accion_prev = existing.data[0].get("accion_pendiente") if existing.data else None
+
+    # Si envió imagen o algo raro sin sesión → menú
+    if msg_type != "text" or not body:
+        await send_text_message(whatsapp, BIENVENIDA_NUEVO_USUARIO)
+        _guardar_estado_no_registrado(db, whatsapp, sesion_id, "menu_bienvenida")
+        return
+
+    lower = body.strip().lower()
+    estado_actual = (accion_prev or {}).get("estado_no_reg") if accion_prev else None
+
+    # ── PRIMER MENSAJE (sin sesión previa) ─────────────────────────────────
+    if not estado_actual:
+        await send_text_message(whatsapp, BIENVENIDA_NUEVO_USUARIO)
+        _guardar_estado_no_registrado(db, whatsapp, sesion_id, "menu_bienvenida")
+        return
+
+    # ── ESPERANDO RESPUESTA 1/2/3 ──────────────────────────────────────────
+    if estado_actual == "menu_bienvenida":
+        if lower in ("1", "1️⃣", "comprar", "una", "uno"):
+            await send_text_message(whatsapp, RESPUESTA_OPCION_1_COMPRAR)
+            _guardar_estado_no_registrado(db, whatsapp, sesion_id, "esperando_solicitud_compra")
+            return
+
+        if lower in ("2", "2️⃣", "vender", "viverista", "dos"):
+            await send_text_message(whatsapp, RESPUESTA_OPCION_2_VENDER)
+            # No requiere ticket — solo enviamos al registro
+            _guardar_estado_no_registrado(db, whatsapp, sesion_id, None)
+            return
+
+        if lower in ("3", "3️⃣", "consultar", "consulta", "tres"):
+            await send_text_message(whatsapp, RESPUESTA_OPCION_3_CONSULTAR)
+            _guardar_estado_no_registrado(db, whatsapp, sesion_id, "esperando_solicitud_consulta")
+            return
+
+        # Cualquier otra cosa → repetir menú
+        await send_text_message(whatsapp, RESPUESTA_OPCION_INVALIDA)
+        return
+
+    # ── USUARIO ESTÁ DEJANDO SOLICITUD (después de opción 1 o 3) ───────────
+    if estado_actual in ("esperando_solicitud_compra", "esperando_solicitud_consulta"):
+        tipo = "compra" if estado_actual == "esperando_solicitud_compra" else "consulta"
+        # Intentamos extraer nombre del mensaje (heurística simple)
+        nombre = None
+        m = re.search(r"soy\s+([A-Za-zÁÉÍÓÚáéíóúÑñ ]{2,40})", body, re.IGNORECASE)
+        if m:
+            nombre = m.group(1).strip().title()
+
+        ticket_id = await _crear_ticket_soporte(
+            whatsapp=whatsapp,
+            tipo_solicitud=tipo,
+            descripcion=body.strip(),
+            nombre=nombre,
+            prioridad="media",
+        )
+
+        if ticket_id:
+            await send_text_message(
+                whatsapp,
+                f"✅ *¡Recibí tu solicitud! (ticket #{ticket_id})*\n\n"
+                "Nuestro equipo te contactará por WhatsApp en las próximas horas.\n\n"
+                "Mientras tanto, podés ver el catálogo:\n"
+                "https://viveroonline.com.co"
+            )
+        else:
+            await send_text_message(
+                whatsapp,
+                "⚠️ Tuve un problema guardando tu solicitud. Intentá de nuevo en un momento "
+                "o escribinos a viveroonline.com.co@gmail.com"
+            )
+
+        _guardar_estado_no_registrado(db, whatsapp, sesion_id, None)
+        return
+
+    # Estado desconocido → resetear
+    await send_text_message(whatsapp, BIENVENIDA_NUEVO_USUARIO)
+    _guardar_estado_no_registrado(db, whatsapp, sesion_id, "menu_bienvenida")
+
+
+def _guardar_estado_no_registrado(db, whatsapp: str, sesion_id, nuevo_estado: str | None):
+    """Guarda el estado del flujo de bienvenida en sesiones_agente.
+
+    Si no hay sesión, la crea. Si nuevo_estado es None, limpia la accion_pendiente.
+    """
+    accion = {"estado_no_reg": nuevo_estado} if nuevo_estado else None
+
+    if sesion_id:
+        try:
+            db.table("sesiones_agente").update({
+                "accion_pendiente": accion,
+            }).eq("sesion_id", sesion_id).execute()
+        except Exception as e:
+            logger.warning(f"No se pudo actualizar estado no-registrado: {e}")
+    else:
+        # Crear sesión nueva anónima
+        try:
+            db.table("sesiones_agente").insert({
+                "whatsapp_numero": whatsapp,
+                "tipo_usuario": "anonimo",
+                "estado": "activa",
+                "flujo_actual": "bienvenida",
+                "contexto_json": {"historial": []},
+                "mensajes_count": 0,
+                "fotos_procesadas": 0,
+                "accion_pendiente": accion,
+            }).execute()
+        except Exception as e:
+            logger.warning(f"No se pudo crear sesión no-registrado: {e}")
+
+
 # ─── Handler principal ────────────────────────────────────────────────────────
 
 async def _handle_message(msg: dict):
@@ -310,13 +523,13 @@ async def _handle_message(msg: dict):
         return
 
     user = _find_user_by_whatsapp(whatsapp)
+
+    # ── NUEVO (Fase 5): flujo específico para NO-REGISTRADOS ─────────────────
     if not user:
-        await send_text_message(
-            whatsapp,
-            "👋 ¡Hola! Aún no estás registrado.\n\n"
-            "Creá tu perfil de viverista y comenzá a vender:\n"
-            "https://app.viveroonline.com.co/auth/ingresar",
-        )
+        body = ""
+        if msg_type == "text":
+            body = (msg.get("text") or {}).get("body", "").strip()
+        await _handle_no_registrado(whatsapp, msg_type, body)
         return
 
     session = _get_or_create_session(
@@ -369,7 +582,7 @@ async def _handle_message(msg: dict):
             await _handle_recibido(user.get("cliente_id"), whatsapp, sesion_id)
             return
 
-        # ── NUEVO: Verificar selección numerada pendiente ─────────────────────
+        # ── Verificar selección numerada pendiente ───────────────────────────
         seleccion_pendiente = session.get("seleccion_pendiente")
         if seleccion_pendiente and rol in ("viverista", "admin"):
             m = re.match(r'^(\d+)$', lower)
@@ -391,11 +604,9 @@ async def _handle_message(msg: dict):
         # ── Verificar acción pendiente de confirmación ────────────────────────
         accion_pendiente = session.get("accion_pendiente")
 
-        # Flujo de datos fiscales / mandato (intercepta antes que el executor normal)
+        # Flujo de datos fiscales / mandato
         if accion_pendiente and accion_pendiente.get("type") == "recolectar_datos_fiscales" and rol in ("viverista", "admin"):
             from app.services.datos_fiscales_wa import procesar_respuesta_datos_fiscales
-            from app.routes.pedidos import aprobar_subcotizacion_vivero
-            from app.services.supabase import admin as db_admin_inner
             resultado_fiscal = await procesar_respuesta_datos_fiscales(
                 body, accion_pendiente, vivero_id, whatsapp, sesion_id
             )
@@ -403,7 +614,6 @@ async def _handle_message(msg: dict):
                 _limpiar_pendientes(sesion_id)
             elif resultado_fiscal.get("completado"):
                 _limpiar_pendientes(sesion_id)
-                # Retobar la aprobación que quedó pendiente
                 cot_id_pendiente = resultado_fiscal.get("cotizacion_id")
                 if cot_id_pendiente:
                     await send_text_message(
@@ -412,7 +622,6 @@ async def _handle_message(msg: dict):
                         "Te confirmamos cuando esté todo listo. 🌿"
                     )
             else:
-                # Actualizar acción pendiente con el nuevo estado del flujo
                 _set_accion_pendiente(sesion_id, resultado_fiscal.get("accion", accion_pendiente))
             return
 
@@ -436,7 +645,7 @@ async def _handle_message(msg: dict):
             historial=history[-6:],
         )
 
-        # ── Para viveristas: Copilot PRIMERO (sin Gemini) ─────────────────────
+        # Copilot PRIMERO para viveristas
         if rol in ("viverista", "admin") and vivero_id:
             try:
                 inventario = get_inventario_snapshot(vivero_id)
@@ -451,7 +660,6 @@ async def _handle_message(msg: dict):
                 acciones = copilot_result.get("acciones", [])
                 seleccion = copilot_result.get("seleccion_pendiente")
 
-                # Si el copilot detectó un comando → responder directamente sin LangGraph
                 if acciones or seleccion or (respuesta_copilot and not copilot_result.get("_fallback")):
                     if seleccion:
                         _set_seleccion_pendiente(sesion_id, seleccion)
@@ -466,9 +674,7 @@ async def _handle_message(msg: dict):
             except Exception as e:
                 logger.warning(f"Copilot local error: {e}")
 
-        # ── NUEVO: Para compradores: respuestas locales comunes ANTES de Gemini
-        # Cubre saludo / pedir ayuda / querer comprar / preguntar qué hacer,
-        # así el comprador no depende 100% de Gemini para esos casos típicos.
+        # Respuestas locales comunes para comprador registrado
         if rol in ("comprador", "admin"):
             respuesta_local = _respuesta_local_comprador(lower)
             if respuesta_local:
@@ -476,15 +682,12 @@ async def _handle_message(msg: dict):
                 await send_text_message(whatsapp, respuesta_local)
                 return
 
-        # ── Fallback: LangGraph para consultas generales ──────────────────────
+        # Fallback: LangGraph
         try:
             result = route_message(body, ctx)
             respuesta_final = result.get("respuesta", "Hubo un problema. Intentá de nuevo.")
             agente = result.get("agente", "ai_ceo")
         except Exception as e:
-            # NUEVO: el mensaje de error ya no es un callejón sin salida —
-            # incluye un link directo al marketplace para que el comprador
-            # pueda seguir solo aunque Gemini siga caído.
             if rol in ("comprador", "admin"):
                 respuesta_final = (
                     "⏳ Tuve un problema procesando tu mensaje. Mientras lo resolvemos, "
@@ -517,10 +720,6 @@ async def _ejecutar_accion_confirmada(accion, vivero_id, user_id, sesion_id, wha
     _limpiar_pendientes(sesion_id)
     resultado = ejecutar_accion(accion, vivero_id, user_id)
 
-    # ── Tracking onboarding: marcar primer producto si corresponde ──────────
-    # Si esta acción fue "agregar_producto" se intenta marcar primer_producto_at.
-    # La función marcar_primer_producto es IDEMPOTENTE: solo guarda si está NULL.
-    # Errores acá NO bloquean el flujo principal (best-effort).
     if accion.get("type") == "agregar_producto":
         try:
             marcar_primer_producto(vivero_id)
@@ -583,7 +782,6 @@ async def _handle_image(image_id, user, sesion_id, whatsapp):
         altura = analisis.altura_cm_estimada or 30
 
         if rol in ("viverista", "admin") and vivero_id:
-            # Subir foto a Storage
             foto_url = None
             try:
                 import uuid as _uuid
@@ -640,11 +838,9 @@ async def _handle_image(image_id, user, sesion_id, whatsapp):
     await send_text_message(whatsapp, msg)
 
 
-
 # ─── Logística: viverista despacha ────────────────────────────────────────────
 
 async def _handle_enviado(body: str, vivero_id: int, whatsapp: str, sesion_id: int):
-    """Viverista escribe ENVIADO -> actualiza entrega a despachado -> notifica comprador."""
     from datetime import datetime, timezone
     db = admin()
 
@@ -709,7 +905,6 @@ async def _handle_enviado(body: str, vivero_id: int, whatsapp: str, sesion_id: i
 # ─── Logística: comprador confirma recibo ─────────────────────────────────────
 
 async def _handle_recibido(cliente_id: int, whatsapp: str, sesion_id: int):
-    """Comprador escribe RECIBIDO -> actualiza entrega a entregado -> notifica viverista."""
     from datetime import datetime, timezone
 
     if not cliente_id:
@@ -785,21 +980,6 @@ async def _handle_recibido(cliente_id: int, whatsapp: str, sesion_id: int):
 # ─── Aprobar cotización desde WhatsApp ────────────────────────────────────────
 
 async def _handle_aprobar(vivero_id: int, whatsapp: str, sesion_id: int, session: dict):
-    """Viverista escribe APROBAR → aprueba la cotización pendiente.
-
-    AJUSTE (18 jun): antes este handler actualizaba cotizaciones.estado
-    directamente, sin tocar sub_cotizaciones — eso rompía el flujo
-    multi-vivero (una cotización con 2+ viveros podía pasar a "aceptada"
-    aunque el otro vivero no hubiera respondido nada todavía). Ahora delega
-    a la misma función que usa el endpoint HTTP /aprobar, que sí respeta
-    sub_cotizaciones y aplica el UPDATE condicional atómico contra
-    condiciones de carrera con el cron de vencimiento.
-
-    AJUSTE (18 jun): antes de aprobar, verifica si el vivero ya tiene
-    Contrato de Mandato aceptado y datos fiscales registrados. Si no,
-    pausa la aprobación y dispara el flujo de recolección por WhatsApp.
-    La cotización se retoma automáticamente una vez completados los datos.
-    """
     from app.routes.pedidos import aprobar_subcotizacion_vivero
     from app.services.supabase import admin as db_admin
     from app.services.datos_fiscales_wa import (
@@ -825,7 +1005,6 @@ async def _handle_aprobar(vivero_id: int, whatsapp: str, sesion_id: int, session
 
     db = db_admin()
 
-    # Verificar datos fiscales antes de aprobar por primera vez
     if vivero_necesita_datos_fiscales(vivero_id):
         await iniciar_flujo_mandato(vivero_id, whatsapp, sesion_id, cotizacion_id)
         return
@@ -866,10 +1045,7 @@ async def _handle_aprobar(vivero_id: int, whatsapp: str, sesion_id: int, session
             "El comprador recibira la notificacion para pagar.\n\n"
             "Te avisamos cuando el pago sea confirmado."
         )
-        # La notificación al comprador ya la envía aprobar_subcotizacion_vivero
-        # cuando todos los viveros aprobaron — no se duplica aquí.
     else:
-        # parcialmente_aprobada: este vivero aprobó, pero faltan otros
         await send_text_message(
             whatsapp,
             "Tu aprobación quedó registrada\n\n"
@@ -882,13 +1058,6 @@ async def _handle_aprobar(vivero_id: int, whatsapp: str, sesion_id: int, session
 # ─── Rechazar cotización desde WhatsApp ──────────────────────────────────────
 
 async def _handle_rechazar(vivero_id: int, whatsapp: str, sesion_id: int, session: dict, motivo: str = ""):
-    """Viverista escribe RECHAZAR → rechaza la cotización pendiente.
-
-    AJUSTE (18 jun): antes este handler actualizaba cotizaciones.estado
-    directamente sin tocar sub_cotizaciones ni buscar vivero alternativo —
-    rompía el flujo multi-vivero y omitía la búsqueda de reemplazo que sí
-    existe en el endpoint HTTP /rechazar. Ahora delega a la misma función.
-    """
     from app.routes.pedidos import rechazar_subcotizacion_vivero
     from app.services.supabase import admin as db_admin
 
@@ -947,5 +1116,3 @@ async def _handle_rechazar(vivero_id: int, whatsapp: str, sesion_id: int, sessio
             if resultado.get("alternativas") else ""
         )
     )
-    # La notificación al comprador (con o sin alternativa) ya la envía
-    # rechazar_subcotizacion_vivero — no se duplica aquí.
