@@ -1,334 +1,254 @@
-"""Endpoints admin para leer/editar configuracion_global.
+"""Operaciones admin del marketplace — exclusivo para rol=admin.
 
-Solo accesibles por usuarios con rol=admin (via require_admin).
-Los cambios se aplican en tiempo real (invalidan caché del helper).
-Toda modificación queda registrada en admin_audit_log.
+Cubre: Comunidad, Suscripciones, Inventario, Viveros, Auditoría.
 """
+
+from datetime import datetime, timedelta
 from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.auth.deps import UserContext, require_admin
 from app.services.supabase import admin as db_admin
-from app.services.config_global import invalidate_cache
 
-router = APIRouter(prefix="/api/admin/config", tags=["admin-config"])
-
-
-# ═══════════ MODELOS ═══════════
-
-class UpdateConfigReq(BaseModel):
-    valor: str
-    descripcion: Optional[str] = None
+router = APIRouter(prefix="/api/admin", tags=["admin-ops"])
 
 
-class CreateConfigReq(BaseModel):
-    clave: str
-    valor: str
-    tipo_dato: str = "string"  # string | number | boolean | json
-    descripcion: Optional[str] = None
+# ═══════════ COMUNIDAD ═══════════
 
-
-# ═══════════ HELPERS ═══════════
-
-def _registrar_auditoria(
-    admin_id: str,
-    accion: str,
-    clave: str,
-    valor_anterior: Optional[dict] = None,
-    valor_nuevo: Optional[dict] = None,
-    descripcion: Optional[str] = None,
-) -> None:
-    """Registra una acción admin en admin_audit_log.
-
-    Best-effort: si falla, no bloquea la operación principal.
-    """
-    try:
-        db = db_admin()
-        db.table("admin_audit_log").insert({
-            "admin_id": admin_id,
-            "accion": accion,
-            "entidad": "configuracion_global",
-            "entidad_id": clave,
-            "valor_anterior": valor_anterior,
-            "valor_nuevo": valor_nuevo,
-            "descripcion": descripcion,
-        }).execute()
-    except Exception as e:
-        # No propagar — auditoría es best-effort
-        import logging
-        logging.getLogger(__name__).warning(
-            f"No se pudo registrar auditoría de {accion} sobre {clave}: {e}"
-        )
-
-
-# ═══════════ ENDPOINTS ═══════════
-
-@router.get("")
-async def listar_configuracion(
-    prefix: Optional[str] = None,
+@router.get("/comunidad")
+async def listar_comunidad(
+    q: Optional[str] = None,
+    rol: Optional[str] = None,
     user: UserContext = Depends(require_admin),
 ):
-    """Lista todas las claves de configuración con sus valores.
+    """Lista todos los usuarios con sus datos, vivero/cliente y suscripción."""
+    db = db_admin()
+    query = db.table("perfiles").select(
+        "id, rol, nombre_display, whatsapp_numero, onboarding_ok, creado_en, vivero_id, cliente_id"
+    )
+    if rol and rol in ("viverista", "comprador", "admin"):
+        query = query.eq("rol", rol)
+    result = query.order("creado_en", desc=True).execute()
 
-    Query params:
-        prefix: filtrar solo claves que empiezan con este prefix
-                (ej: 'descuento_' → solo claves de descuentos)
-
-    Returns:
-        {
-            "ok": true,
-            "config": [
-                {clave, valor, tipo_dato, descripcion, actualizado_en, actualizado_por},
-                ...
-            ],
-            "total": N
+    comunidad = []
+    for p in (result.data or []):
+        item = {
+            "user_id": p["id"],
+            "rol": p["rol"],
+            "nombre": p.get("nombre_display") or "Sin nombre",
+            "whatsapp": p.get("whatsapp_numero"),
+            "onboarding_ok": p.get("onboarding_ok", False),
+            "creado_en": str(p.get("creado_en") or ""),
+            "vivero_id": p.get("vivero_id"),
+            "cliente_id": p.get("cliente_id"),
+            "vivero": None,
+            "suscripcion": None,
         }
-    """
-    db = db_admin()
-    query = db.table("configuracion_global").select(
-        "clave, valor, tipo_dato, descripcion, actualizado_en, actualizado_por"
-    )
 
-    result = query.order("clave").execute()
-    items = result.data or []
+        if p.get("vivero_id"):
+            v = db.table("viveros").select(
+                "nombre_vivero, ciudad, estado, nit"
+            ).eq("vivero_id", p["vivero_id"]).limit(1).execute()
+            item["vivero"] = v.data[0] if v.data else None
 
-    if prefix:
-        prefix_lower = prefix.lower().strip()
-        items = [it for it in items if it["clave"].startswith(prefix_lower)]
+        sus = db.table("suscripciones").select(
+            "suscripcion_id, plan, estado, fecha_proximo_cobro"
+        ).eq("user_id", p["id"]).eq("estado", "activa").limit(1).execute()
+        item["suscripcion"] = sus.data[0] if sus.data else None
 
-    return {"ok": True, "config": items, "total": len(items)}
+        if q:
+            ql = q.lower()
+            nm = ql in (item["nombre"] or "").lower()
+            vn = ql in str((item.get("vivero") or {}).get("nombre_vivero", "")).lower()
+            if not nm and not vn:
+                continue
+
+        comunidad.append(item)
+
+    return {"ok": True, "comunidad": comunidad, "total": len(comunidad)}
 
 
-@router.get("/{clave}")
-async def obtener_configuracion(
-    clave: str,
+class EditarPerfilReq(BaseModel):
+    nombre_display: Optional[str] = None
+
+
+@router.patch("/usuario/{user_id}")
+async def editar_usuario(
+    user_id: str,
+    req: EditarPerfilReq,
     user: UserContext = Depends(require_admin),
 ):
-    """Obtiene el valor de una clave específica."""
     db = db_admin()
-    resp = db.table("configuracion_global").select(
-        "clave, valor, tipo_dato, descripcion, actualizado_en, actualizado_por"
-    ).eq("clave", clave).limit(1).execute()
-
-    if not resp.data:
-        raise HTTPException(404, f"Clave '{clave}' no existe en configuracion_global")
-
-    return {"ok": True, "config": resp.data[0]}
+    update = {}
+    if req.nombre_display:
+        update["nombre_display"] = req.nombre_display
+    if update:
+        db.table("perfiles").update(update).eq("id", user_id).execute()
+    return {"ok": True}
 
 
-@router.patch("/{clave}")
-async def actualizar_configuracion(
-    clave: str,
-    req: UpdateConfigReq,
+# ═══════════ VIVEROS ═══════════
+
+class CambiarEstadoViveroReq(BaseModel):
+    estado: str
+
+
+@router.patch("/vivero/{vivero_id}/estado")
+async def cambiar_estado_vivero(
+    vivero_id: int,
+    req: CambiarEstadoViveroReq,
     user: UserContext = Depends(require_admin),
 ):
-    """Actualiza el valor de una clave existente.
-
-    - Valida que la clave exista (404 si no)
-    - Registra en admin_audit_log (valor anterior + nuevo)
-    - Invalida la caché del helper get_config para aplicar cambio inmediato
-    - Actualiza actualizado_por con el user_id del admin
-
-    NO permite crear claves nuevas (para eso usar POST).
-    """
+    if req.estado not in ("activo", "suspendido"):
+        raise HTTPException(400, "Estado inválido. Usá: activo | suspendido")
     db = db_admin()
-
-    # 1. Verificar que la clave existe y capturar valor anterior
-    resp = db.table("configuracion_global").select(
-        "clave, valor, tipo_dato, descripcion"
-    ).eq("clave", clave).limit(1).execute()
-
-    if not resp.data:
-        raise HTTPException(
-            404,
-            f"Clave '{clave}' no existe. Para crear una clave nueva usá POST /api/admin/config"
-        )
-
-    valor_anterior = resp.data[0]
-
-    # 2. Validar el nuevo valor según tipo_dato
-    tipo_dato = valor_anterior["tipo_dato"]
-    valor_nuevo_str = req.valor.strip()
-
-    try:
-        if tipo_dato == "number":
-            # Verificar que sea número válido
-            float(valor_nuevo_str)
-        elif tipo_dato == "boolean":
-            if valor_nuevo_str.lower() not in ("true", "false", "1", "0", "yes", "no"):
-                raise ValueError("Debe ser 'true' o 'false'")
-        elif tipo_dato == "json":
-            import json
-            json.loads(valor_nuevo_str)
-    except (ValueError, Exception) as e:
-        raise HTTPException(
-            400,
-            f"Valor inválido para tipo {tipo_dato}: {e}"
-        )
-
-    # 3. Actualizar en BD
-    update_data = {
-        "valor": valor_nuevo_str,
-        "actualizado_por": user.user_id,
-    }
-    if req.descripcion is not None:
-        update_data["descripcion"] = req.descripcion
-
-    db.table("configuracion_global").update(update_data).eq("clave", clave).execute()
-
-    # 4. Invalidar caché del helper (cambio se aplica INMEDIATO)
-    invalidate_cache(clave)
-
-    # 5. Registrar en auditoría (best-effort)
-    _registrar_auditoria(
-        admin_id=user.user_id,
-        accion="update_config",
-        clave=clave,
-        valor_anterior={"valor": valor_anterior["valor"], "descripcion": valor_anterior.get("descripcion")},
-        valor_nuevo={"valor": valor_nuevo_str, "descripcion": req.descripcion or valor_anterior.get("descripcion")},
-        descripcion=f"Actualización de configuración '{clave}'",
-    )
-
-    return {
-        "ok": True,
-        "clave": clave,
-        "valor_anterior": valor_anterior["valor"],
-        "valor_nuevo": valor_nuevo_str,
-        "aplicado": "inmediato (caché invalidada)",
-    }
+    db.table("viveros").update({"estado": req.estado}).eq("vivero_id", vivero_id).execute()
+    return {"ok": True, "vivero_id": vivero_id, "estado": req.estado}
 
 
-@router.post("")
-async def crear_configuracion(
-    req: CreateConfigReq,
-    user: UserContext = Depends(require_admin),
-):
-    """Crea una nueva clave de configuración.
+# ═══════════ SUSCRIPCIONES ═══════════
 
-    Falla con 409 si la clave ya existe (para editar usar PATCH).
-    """
-    tipos_validos = ("string", "number", "boolean", "json")
-    if req.tipo_dato not in tipos_validos:
-        raise HTTPException(
-            400,
-            f"tipo_dato inválido. Usar: {' | '.join(tipos_validos)}"
-        )
-
-    clave = req.clave.strip().lower()
-    if not clave:
-        raise HTTPException(400, "clave no puede estar vacía")
-
+@router.get("/suscripciones")
+async def listar_suscripciones(user: UserContext = Depends(require_admin)):
     db = db_admin()
+    sus = db.table("suscripciones").select(
+        "suscripcion_id, user_id, plan, estado, monto_mensual_cop, "
+        "fecha_inicio, fecha_proximo_cobro, fecha_cancelacion, metadata"
+    ).order("fecha_inicio", desc=True).execute()
 
-    # Verificar que no exista
-    existing = db.table("configuracion_global").select("clave").eq("clave", clave).limit(1).execute()
-    if existing.data:
-        raise HTTPException(409, f"La clave '{clave}' ya existe. Para actualizar usar PATCH.")
+    result = []
+    for s in (sus.data or []):
+        p = db.table("perfiles").select("nombre_display, rol").eq("id", s["user_id"]).limit(1).execute()
+        s["nombre_usuario"] = (p.data[0].get("nombre_display") if p.data else None) or "Desconocido"
+        s["rol_usuario"] = (p.data[0].get("rol") if p.data else None) or ""
+        result.append(s)
 
-    # Validar valor según tipo
-    valor_str = req.valor.strip()
-    try:
-        if req.tipo_dato == "number":
-            float(valor_str)
-        elif req.tipo_dato == "boolean":
-            if valor_str.lower() not in ("true", "false", "1", "0", "yes", "no"):
-                raise ValueError("Debe ser 'true' o 'false'")
-        elif req.tipo_dato == "json":
-            import json
-            json.loads(valor_str)
-    except (ValueError, Exception) as e:
-        raise HTTPException(400, f"Valor inválido para tipo {req.tipo_dato}: {e}")
+    return {"ok": True, "suscripciones": result}
 
-    # Crear
-    db.table("configuracion_global").insert({
-        "clave": clave,
-        "valor": valor_str,
-        "tipo_dato": req.tipo_dato,
-        "descripcion": req.descripcion,
-        "actualizado_por": user.user_id,
+
+class ActivarSusReq(BaseModel):
+    user_id: str
+    dias: int = 30
+    nota: Optional[str] = None
+
+
+@router.post("/suscripcion/activar")
+async def activar_suscripcion(req: ActivarSusReq, user: UserContext = Depends(require_admin)):
+    db = db_admin()
+    existente = db.table("suscripciones").select("suscripcion_id").eq(
+        "user_id", req.user_id
+    ).eq("estado", "activa").limit(1).execute()
+    if existente.data:
+        raise HTTPException(400, "El usuario ya tiene una suscripción activa.")
+    now = datetime.utcnow()
+    r = db.table("suscripciones").insert({
+        "user_id": req.user_id,
+        "plan": "inteligencia",
+        "estado": "activa",
+        "monto_mensual_cop": 0,
+        "fecha_inicio": now.isoformat(),
+        "fecha_proximo_cobro": (now + timedelta(days=req.dias)).isoformat(),
+        "metadata": {
+            "tipo": "manual_admin",
+            "nota": req.nota or "Activado por admin",
+            "admin_id": user.user_id,
+        },
     }).execute()
-
-    # Registrar auditoría
-    _registrar_auditoria(
-        admin_id=user.user_id,
-        accion="create_config",
-        clave=clave,
-        valor_nuevo={"valor": valor_str, "tipo_dato": req.tipo_dato, "descripcion": req.descripcion},
-        descripcion=f"Nueva clave de configuración '{clave}'",
-    )
-
-    return {"ok": True, "clave": clave, "creado": True}
+    return {"ok": True, "suscripcion_id": r.data[0]["suscripcion_id"]}
 
 
-@router.delete("/{clave}")
-async def eliminar_configuracion(
-    clave: str,
+class ExtenderSusReq(BaseModel):
+    dias: int = 30
+
+
+@router.patch("/suscripcion/{sus_id}/extender")
+async def extender_suscripcion(
+    sus_id: int, req: ExtenderSusReq, user: UserContext = Depends(require_admin)
+):
+    db = db_admin()
+    sus = db.table("suscripciones").select(
+        "suscripcion_id, fecha_proximo_cobro"
+    ).eq("suscripcion_id", sus_id).limit(1).execute()
+    if not sus.data:
+        raise HTTPException(404, "Suscripción no encontrada")
+    fecha_str = str(sus.data[0]["fecha_proximo_cobro"]).replace("+00:00", "").split(".")[0]
+    fecha_actual = datetime.fromisoformat(fecha_str)
+    nueva = max(fecha_actual, datetime.utcnow()) + timedelta(days=req.dias)
+    db.table("suscripciones").update({
+        "fecha_proximo_cobro": nueva.isoformat(),
+        "estado": "activa",
+    }).eq("suscripcion_id", sus_id).execute()
+    return {"ok": True, "nueva_fecha_vencimiento": nueva.strftime("%d/%m/%Y")}
+
+
+@router.patch("/suscripcion/{sus_id}/cancelar")
+async def cancelar_suscripcion(sus_id: int, user: UserContext = Depends(require_admin)):
+    db = db_admin()
+    db.table("suscripciones").update({
+        "estado": "cancelada",
+        "fecha_cancelacion": datetime.utcnow().isoformat(),
+    }).eq("suscripcion_id", sus_id).execute()
+    return {"ok": True}
+
+
+# ═══════════ INVENTARIO ═══════════
+
+@router.get("/inventario")
+async def listar_inventario_admin(
+    q: Optional[str] = None,
     user: UserContext = Depends(require_admin),
 ):
-    """Elimina una clave de configuración.
-
-    ⚠️ USAR CON CUIDADO: si el código lee esta clave con get_config, quedará
-    con el valor por defecto. Preferí actualizar el valor antes de eliminar.
-    """
     db = db_admin()
+    r = db.table("inventario").select(
+        "inventario_id, altura_cm, precio_mayorista, stock, estado_planta, foto_ia_url, vivero_id, "
+        "plantas(nombre_comun), viveros(nombre_vivero, ciudad)"
+    ).order("inventario_id", desc=True).limit(200).execute()
+    items = []
+    for row in (r.data or []):
+        planta = row.get("plantas") or {}
+        vivero = row.get("viveros") or {}
+        item = {
+            "inventario_id": row["inventario_id"],
+            "nombre_comun": planta.get("nombre_comun", "Sin nombre"),
+            "nombre_vivero": vivero.get("nombre_vivero"),
+            "ciudad": vivero.get("ciudad"),
+            "vivero_id": row["vivero_id"],
+            "precio_mayorista": float(row.get("precio_mayorista") or 0),
+            "stock": row.get("stock") or 0,
+            "altura_cm": row.get("altura_cm") or 0,
+            "estado_planta": row.get("estado_planta"),
+            "foto_ia_url": row.get("foto_ia_url"),
+        }
+        if q and q.lower() not in (item["nombre_comun"] or "").lower() \
+               and q.lower() not in (item["nombre_vivero"] or "").lower():
+            continue
+        items.append(item)
 
-    # Capturar valor anterior para auditoría
-    resp = db.table("configuracion_global").select("*").eq("clave", clave).limit(1).execute()
-    if not resp.data:
-        raise HTTPException(404, f"Clave '{clave}' no existe")
-
-    valor_anterior = resp.data[0]
-
-    # Eliminar
-    db.table("configuracion_global").delete().eq("clave", clave).execute()
-
-    # Invalidar caché
-    invalidate_cache(clave)
-
-    # Auditoría
-    _registrar_auditoria(
-        admin_id=user.user_id,
-        accion="delete_config",
-        clave=clave,
-        valor_anterior={"valor": valor_anterior["valor"], "tipo_dato": valor_anterior.get("tipo_dato")},
-        descripcion=f"Eliminación de configuración '{clave}'",
-    )
-
-    return {"ok": True, "clave": clave, "eliminado": True}
+    return {"ok": True, "items": items, "total": len(items)}
 
 
-# ═══════════ AUDITORÍA DE CONFIGURACIÓN ═══════════
+class CambiarEstadoItemReq(BaseModel):
+    estado_planta: str
 
-@router.get("/_audit/history")
-async def historial_cambios(
-    clave: Optional[str] = None,
-    limit: int = 50,
-    user: UserContext = Depends(require_admin),
+
+@router.patch("/inventario/{inv_id}/estado")
+async def cambiar_estado_item(
+    inv_id: int, req: CambiarEstadoItemReq, user: UserContext = Depends(require_admin)
 ):
-    """Retorna el historial de cambios sobre configuración.
-
-    Query params:
-        clave: filtrar solo cambios sobre esta clave específica
-        limit: máximo de registros (default 50, máx 200)
-
-    Returns:
-        Lista de acciones ordenadas por fecha_hora DESC.
-    """
-    limit = min(max(limit, 1), 200)
-
+    validos = ("disponible", "agotado", "descontinuado")
+    if req.estado_planta not in validos:
+        raise HTTPException(400, f"Estado inválido. Usá: {' | '.join(validos)}")
     db = db_admin()
-    query = db.table("admin_audit_log").select(
-        "log_id, fecha_hora, admin_id, accion, entidad_id, valor_anterior, valor_nuevo, descripcion"
-    ).eq("entidad", "configuracion_global")
+    db.table("inventario").update({"estado_planta": req.estado_planta}).eq("inventario_id", inv_id).execute()
+    return {"ok": True, "inventario_id": inv_id, "estado_planta": req.estado_planta}
 
-    if clave:
-        query = query.eq("entidad_id", clave)
 
-    result = query.order("fecha_hora", desc=True).limit(limit).execute()
+# ═══════════ AUDITORÍA ═══════════
 
-    return {
-        "ok": True,
-        "historial": result.data or [],
-        "total": len(result.data or []),
-    }
+@router.get("/auditoria")
+async def listar_auditoria(user: UserContext = Depends(require_admin)):
+    db = db_admin()
+    logs = db.table("log_ia").select("*").order("creado_en", desc=True).limit(100).execute()
+    return {"ok": True, "logs": logs.data or []}
