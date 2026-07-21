@@ -1,4 +1,10 @@
-"""Rutas de pagos vía ePayco."""
+"""Rutas de pagos vía ePayco.
+
+Fase 4 (21 jul 2026): eliminado el hardcoded `monto_plataforma = monto_cop * 0.05`.
+El monto_plataforma ahora se lee de la transaccion_b2b correspondiente
+(que YA guardó el desglose calculado con el motor matricial de precios.py).
+Si por alguna razón no está disponible, se recalcula al vuelo desde el modelo.
+"""
 from __future__ import annotations
 from typing import Optional
 
@@ -12,6 +18,7 @@ from app.services.epayco import (
     get_epayco, map_epayco_state_to_db,
 )
 from app.services.supabase import admin
+from app.services.precios import calcular_precios_pedido
 
 
 router = APIRouter(prefix="/api/pagos", tags=["pagos"])
@@ -29,6 +36,66 @@ class IniciarPagoResponse(BaseModel):
     referencia: str
     checkout_payload: dict
     monto_cop: int
+
+
+def _obtener_desglose_pago(db, transaccion_id: int, monto_cop: int) -> tuple[float, float]:
+    """Devuelve (monto_viverista, monto_plataforma) para un pago.
+
+    Regla del Productor v2: viverista recibe el precio mayorista siempre.
+    Fase 4 estrategia:
+      1. Si la transaccion tiene comision_plataforma poblada por el motor
+         nuevo → usar ese valor directo (fuente de verdad = motor matricial).
+      2. Si no, recalcular al vuelo desde la cotización asociada usando
+         calcular_precios_pedido() para no dejar el desglose incorrecto.
+      3. Fallback conservador: monto_plataforma = 0, monto_viverista = monto_cop.
+         Preferible dejar al viverista con todo que cobrarle una comisión mal
+         calculada; la conciliación admin lo detecta y corrige.
+    """
+    # Estrategia 1 — Usar el desglose YA calculado por el motor
+    try:
+        txn = db.table("transacciones_b2b").select(
+            "cliente_id, cotizacion_id, precio_total, comision_plataforma"
+        ).eq("transaccion_id", transaccion_id).limit(1).execute()
+        if txn.data:
+            row = txn.data[0]
+            comision = row.get("comision_plataforma")
+            if comision is not None and float(comision) > 0:
+                monto_plataforma = float(comision)
+                monto_viverista = float(monto_cop) - monto_plataforma
+                return (round(monto_viverista, 2), round(monto_plataforma, 2))
+    except Exception:
+        pass
+
+    # Estrategia 2 — Recalcular desde la cotización
+    try:
+        cot_id = row.get("cotizacion_id") if txn.data else None
+        cliente_id = row.get("cliente_id") if txn.data else None
+        if cot_id and cliente_id:
+            cot = db.table("cotizaciones").select(
+                "items"
+            ).eq("cotizacion_id", cot_id).limit(1).execute()
+            cli = db.table("clientes").select(
+                "cliente_id, es_guest, tipo_cliente, activo"
+            ).eq("cliente_id", cliente_id).limit(1).execute()
+
+            if cot.data and cli.data:
+                items = cot.data[0].get("items") or []
+                cliente = cli.data[0]
+                resultado = calcular_precios_pedido(
+                    cliente=cliente,
+                    items=items,
+                    plazo="inmediato",
+                )
+                totales = resultado["totales"]
+                return (
+                    round(totales["monto_viverista_total"], 2),
+                    round(totales["monto_viveroonline_bruto_total"], 2),
+                )
+    except Exception:
+        pass
+
+    # Estrategia 3 — Fallback conservador (protege al viverista)
+    return (float(monto_cop), 0.0)
 
 
 @router.post("/iniciar", response_model=IniciarPagoResponse)
@@ -64,15 +131,15 @@ async def iniciar_pago(req: IniciarPagoRequest, user: UserContext = Depends(requ
     checkout_req = CheckoutRequest(
         transaccion_id=req.transaccion_id,
         monto_cop=monto_cop,
-        descripcion=f"ViveroOnline · Transacción #{req.transaccion_id}",
+        descripcion=f"viveroonline.com.co · Transacción #{req.transaccion_id}",
         nombre_cliente=cliente.get("nombre_representante") or cliente.get("nombre_empresa") or "Cliente",
         telefono_cliente=cliente.get("whatsapp_numero"),
     )
     payload = epayco.build_checkout_payload(checkout_req, response_url, confirmation_url)
     referencia = payload["invoice"]
 
-    monto_plataforma = round(monto_cop * 0.05, 2)
-    monto_viverista = monto_cop - monto_plataforma
+    # ── Fase 4: desglose desde el motor matricial (no más hardcoded 0.05) ──
+    monto_viverista, monto_plataforma = _obtener_desglose_pago(db, req.transaccion_id, monto_cop)
 
     pago_resp = db.table("pagos").insert({
         "transaccion_id": req.transaccion_id,
