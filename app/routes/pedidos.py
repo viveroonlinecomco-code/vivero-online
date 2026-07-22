@@ -16,6 +16,14 @@ según categoria_producto de cada SKU, respetando:
   - Plazos 30/60/90d: solo si fintech_activa=true en configuracion_global
 
 Todos los precios del comprador se calculan con calcular_precios_pedido().
+
+REGLA DE NEGOCIO — VISIBILIDAD DEL PRECIO COMPRADOR:
+El viverista NUNCA debe ver cuánto paga el comprador. Solo ve SU precio
+(el precio mayorista que él mismo publicó). Motivo: proteger el modelo
+comercial. En este archivo:
+  - Mensaje WhatsApp al viverista: solo "Tu precio"
+  - Endpoint /pendientes (que ve el viverista): NO incluye total_comprador
+El comprador SÍ ve su total (en el mensaje de aprobación y en el checkout).
 ═══════════════════════════════════════════════════════════════════════════
 
 Deuda técnica resuelta en este commit:
@@ -172,16 +180,15 @@ async def solicitar_aprobacion(
 
                 resumen = _resumir_items(db, vitems)
 
-                # ── Fase 4: precio comprador desde motor matricial ──
-                calc = _calcular_para_cotizacion(db, cot["cliente_id"], vitems)
-                total_comprador = int(calc["totales"]["precio_final_cliente"])
-
+                # ── FIX 21 jul: viverista NO ve el precio del comprador ──
+                # Solo mostramos su precio (el mayorista que él publicó).
+                # El motor matricial se sigue usando en el checkout para
+                # calcular el precio real del comprador, pero eso no viaja acá.
                 msg = (
                     f"🌿 *Nueva solicitud — viveroonline.com.co*\n\n"
                     f"Proyecto: *{nombre_proyecto}*\n\n"
                     f"📦 *Tus plantas solicitadas:*\n{resumen}\n\n"
                     f"💰 Tu precio: ${int(total_vivero_mayorista):,} COP\n"
-                    f"🛒 Comprador paga: ${total_comprador:,} COP\n"
                 )
                 if notas:
                     msg += f"\n📝 Notas: {notas}\n"
@@ -289,18 +296,16 @@ async def listar_pendientes(user: UserContext = Depends(require_viverista)):
 
         total_base = float(cot.get("total_estimado") or 0)
 
-        # ── Fase 4: total comprador desde motor matricial ──
-        calc = _calcular_para_cotizacion(db, cot["cliente_id"], mis_items)
-        total_comprador = int(calc["totales"]["precio_final_cliente"])
-
+        # ── FIX 21 jul: NO enviar total_comprador ──
+        # El viverista NO debe ver cuánto paga el comprador. Solo su total_estimado
+        # (precio mayorista que publicó).
         pendientes.append({
             "cotizacion_id": cot["cotizacion_id"],
             "nombre_proyecto": cot.get("prompt_original") or f"Cotización #{cot['cotizacion_id']}",
             "nombre_comprador": nombre_comprador,
             "estado": cot["estado"],
             "items": mis_items,
-            "total_estimado": total_base,
-            "total_comprador": total_comprador,
+            "total_estimado": total_base,  # SU precio (mayorista)
             "notas_cliente": cot.get("notas_cliente"),
             "fecha_creacion": str(cot.get("fecha_creacion") or ""),
         })
@@ -375,7 +380,7 @@ async def aprobar_subcotizacion_vivero(db, cotizacion_id: int, vivero_id: int) -
                 "cotizacion_id": cotizacion_id,
             }
 
-        # Notificar al comprador solo cuando TODOS aprobaron
+        # ── Notificar al COMPRADOR (él sí ve su total) ──
         try:
             base = get_settings().app_base_url
             cliente = db.table("clientes").select("whatsapp_numero").eq(
@@ -383,7 +388,7 @@ async def aprobar_subcotizacion_vivero(db, cotizacion_id: int, vivero_id: int) -
             ).limit(1).execute()
 
             if cliente.data and cliente.data[0].get("whatsapp_numero"):
-                # ── Fase 4: total comprador desde motor matricial ──
+                # El COMPRADOR sí ve su total real desde el motor matricial
                 calc = _calcular_para_cotizacion(db, cot["cliente_id"], items)
                 total_comprador = int(calc["totales"]["precio_final_cliente"])
 
@@ -454,11 +459,7 @@ async def aprobar_cotizacion(cotizacion_id: int, user: UserContext = Depends(req
 # ═══════════════ 4. VIVERISTA: Rechazar cotización ═══════════════
 
 async def rechazar_subcotizacion_vivero(db, cotizacion_id: int, vivero_id: int, motivo: str | None = None) -> dict:
-    """Lógica de negocio compartida para rechazar la parte de un vivero.
-
-    Ver docstring histórico del archivo original para el contexto completo
-    de los guard clauses atómicos (AJUSTE 18 jun).
-    """
+    """Lógica de negocio compartida para rechazar la parte de un vivero."""
     from datetime import datetime, timezone
 
     cot = db.table("cotizaciones").select(
@@ -826,7 +827,7 @@ async def iniciar_checkout(
         "monto_cop":        monto_cop,
         "monto_viverista":  round(monto_viverista_real),
         "monto_plataforma": round(monto_plataforma),
-        # ── Fase 4: desglose adicional para transparencia ──
+        # ── Fase 4: desglose adicional para transparencia (solo comprador y admin) ──
         "canal":            calc["canal"],
         "plazo":            calc["plazo"],
         "aplica_descuento_b2b": calc["aplica_descuento_b2b"],
@@ -837,20 +838,13 @@ async def iniciar_checkout(
 # ═══════════════════════════════════════════════════════════
 # 7. COMPRADOR: Confirmar vivero alternativo tras rechazo
 # ═══════════════════════════════════════════════════════════
-# NOTA Fase 4: se eliminó el duplicado que existía al final del archivo.
-# Esta es la única implementación.
 
 @router.post("/{cotizacion_id}/confirmar-alternativa")
 async def confirmar_vivero_alternativo(
     cotizacion_id: int,
     user: UserContext = Depends(require_comprador),
 ):
-    """Comprador acepta el vivero alternativo propuesto tras un rechazo.
-
-    Actualiza los items de la cotización con los inventario_id alternativos,
-    recalcula el total, y la devuelve a estado 'borrador' para que el
-    comprador pueda reenviarla al nuevo vivero.
-    """
+    """Comprador acepta el vivero alternativo propuesto tras un rechazo."""
     db = db_admin()
 
     cot = db.table("cotizaciones").select(
