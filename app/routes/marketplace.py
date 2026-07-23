@@ -1,25 +1,66 @@
-"""Marketplace (para compradores) + cotizaciones."""
+"""Marketplace (para compradores) + cotizaciones.
+
+═══════════════════════════════════════════════════════════════════════════
+Fase 4 (22 jul 2026) — Motor comercial matricial por categoría.
+
+ANTES: MARKUP_PLATAFORMA = 0.20 hardcoded aplicado a todos los items por igual.
+AHORA: cada item calcula su precio_comprador según su categoría (17/20/25%)
+       usando el motor calcular_precios_pedido de app/services/precios.py.
+
+Impacto:
+- Endpoint listar_marketplace devuelve precio_comprador correcto por categoría
+- Endpoint detalle_item devuelve precio_comprador correcto
+- Endpoints de cotizaciones (proyectos, borrador, detalle) devuelven además:
+    * items[].precio_comprador_unitario  (vitrina unitaria con markup categoria)
+    * items[].subtotal_comprador          (subtotal_mayorista * (1+markup))
+    * total_comprador                     (total con markup, para que el HTML
+                                           NO calcule y solo pinte)
+El HTML seguirá recibiendo total_estimado (mayorista, para compatibilidad) pero
+también recibirá total_comprador para que los templates puedan pintar precios
+sin aplicar sus propios markups.
+═══════════════════════════════════════════════════════════════════════════
+"""
 from __future__ import annotations
 from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, Query
-
 from app.auth.deps import UserContext, require_comprador, require_user
 from app.schemas.catalog import InventarioItem
 from app.schemas.transactions import (
     CotizacionRequest, CotizacionResponse, RenameProyectoRequest,
 )
 from app.services.supabase import admin
-
+from app.services.config_global import get_markup_categoria
+from app.services.precios import calcular_precios_pedido
 
 router = APIRouter(prefix="/api/marketplace", tags=["marketplace"])
 
-# AJUSTE (18 jun): markup subido de 0.18 a 0.20 — decisión tomada en auditoría.
-# Composición del 20%: comisión plataforma 8% + coordinación logística 6% +
-# garantía de entrega 4% + margen operativo 2%.
-# El precio que el viverista ingresa sigue siendo su precio base (lo que recibe).
-# El comprador ve: precio_base × 1.20.
-MARKUP_PLATAFORMA = 0.20
+
+# ═══════════════════════════════════════════════════════════
+# Helpers Fase 4 — motor matricial por categoría
+# ═══════════════════════════════════════════════════════════
+
+def _resolver_categoria(db, inventario_id: int) -> str:
+    """Resuelve la categoría efectiva del SKU vía función SQL get_categoria_producto.
+    Fallback a 'plantas_ornamentales' si falla.
+    """
+    try:
+        resp = db.rpc("get_categoria_producto", {
+            "p_inventario_id": inventario_id
+        }).execute()
+        if resp.data:
+            return str(resp.data)
+    except Exception:
+        pass
+    return "plantas_ornamentales"
+
+
+def _precio_comprador_por_item(db, inventario_id: int, precio_mayorista: float) -> int:
+    """Calcula el precio_comprador (vitrina) de UN item aplicando el markup
+    correspondiente a su categoría. Retorna entero redondeado en COP.
+    """
+    categoria = _resolver_categoria(db, inventario_id)
+    markup = get_markup_categoria(categoria)
+    return round(precio_mayorista * (1 + markup))
 
 
 # ─────────────────── LISTAR MARKETPLACE ───────────────────
@@ -37,7 +78,6 @@ async def listar_marketplace(
     user: UserContext = Depends(require_user),
 ):
     db = admin()
-
     if q and q.strip():
         resp = db.rpc("buscar_plantas_cercanas", {
             "p_nombre_planta": q.strip(),
@@ -48,18 +88,19 @@ async def listar_marketplace(
             "p_cantidad_min": cantidad_min,
             "p_limite": limite,
         }).execute()
-
         items = []
         for r in resp.data or []:
             precio_base = float(r.get("precio_mayorista") or 0)
+            inv_id = r["inventario_id"]
             items.append({
-                "inventario_id": r["inventario_id"],
+                "inventario_id": inv_id,
                 "planta_id": r["planta_id"],
                 "nombre_comun": r["nombre_comun"],
                 "nombre_cientifico": r.get("nombre_cientifico"),
                 "foto_ia_url": r.get("foto_ia_url"),
                 "precio_mayorista": precio_base,
-                "precio_comprador": round(precio_base * (1 + MARKUP_PLATAFORMA)),
+                # ── Fase 4: markup por categoría vía motor matricial ──
+                "precio_comprador": _precio_comprador_por_item(db, inv_id, precio_base),
                 "stock": r["stock"],
                 "altura_cm": r["altura_cm"],
                 "vivero_id": r["vivero_id"],
@@ -88,14 +129,16 @@ async def listar_marketplace(
         planta = r.get("plantas") or {}
         vivero = r.get("viveros") or {}
         precio_base = float(r.get("precio_mayorista") or 0)
+        inv_id = r["inventario_id"]
         items.append({
-            "inventario_id": r["inventario_id"],
+            "inventario_id": inv_id,
             "planta_id": r["planta_id"],
             "nombre_comun": planta.get("nombre_comun", "Sin nombre"),
             "nombre_cientifico": planta.get("nombre_cientifico"),
             "foto_ia_url": r.get("foto_ia_url"),
             "precio_mayorista": precio_base,
-            "precio_comprador": round(precio_base * (1 + MARKUP_PLATAFORMA)),
+            # ── Fase 4: markup por categoría vía motor matricial ──
+            "precio_comprador": _precio_comprador_por_item(db, inv_id, precio_base),
             "stock": r.get("stock") or 0,
             "altura_cm": r.get("altura_cm") or 0,
             "unidad_medida": r.get("unidad_medida"),
@@ -114,7 +157,6 @@ async def detalle_item(
     user: UserContext = Depends(require_user),
 ):
     db = admin()
-
     tiene_suscripcion = user.rol == "admin"
     if not tiene_suscripcion:
         sus = db.table("suscripciones").select("suscripcion_id").eq(
@@ -131,7 +173,6 @@ async def detalle_item(
 
     if not resp.data:
         raise HTTPException(404, detail="Item no encontrado")
-
     item = resp.data[0]
 
     if not tiene_suscripcion and item.get("viveros"):
@@ -140,9 +181,9 @@ async def detalle_item(
         item["viveros"]["direccion"] = None
 
     precio_base = float(item.get("precio_mayorista") or 0)
-    item["precio_comprador"] = round(precio_base * (1 + MARKUP_PLATAFORMA))
+    # ── Fase 4: markup por categoría vía motor matricial ──
+    item["precio_comprador"] = _precio_comprador_por_item(db, inventario_id, precio_base)
     item["tiene_suscripcion"] = tiene_suscripcion
-
     return {"ok": True, "item": item}
 
 
@@ -182,7 +223,6 @@ def _merge_items_y_actualizar(
 ) -> CotizacionResponse:
     cotizacion_id = borrador["cotizacion_id"]
     items_combinados = list(borrador.get("items") or [])
-
     for nuevo in items_nuevos:
         match_idx = next(
             (idx for idx, it in enumerate(items_combinados)
@@ -195,9 +235,7 @@ def _merge_items_y_actualizar(
             it["subtotal"] = it["cantidad"] * it.get("precio_unitario", 0)
         else:
             items_combinados.append(nuevo)
-
     total_combinado = sum(float(it.get("subtotal") or 0) for it in items_combinados)
-
     update_payload = {
         "items": items_combinados,
         "total_estimado": total_combinado,
@@ -206,9 +244,7 @@ def _merge_items_y_actualizar(
         update_payload["notas_cliente"] = notas_nuevas
     if nombre_nuevo:
         update_payload["prompt_original"] = nombre_nuevo
-
     db.table("cotizaciones").update(update_payload).eq("cotizacion_id", cotizacion_id).execute()
-
     return CotizacionResponse(
         ok=True,
         cotizacion_id=cotizacion_id,
@@ -218,6 +254,14 @@ def _merge_items_y_actualizar(
 
 
 def _enriquecer_items(db, items_raw: list[dict]) -> list[dict]:
+    """Enriquece cada item con datos de la planta + vivero + precios comprador.
+
+    ── Fase 4: cada item ahora incluye:
+       - categoria: categoría efectiva del SKU
+       - precio_comprador_unitario: precio vitrina calculado con motor matricial
+       - subtotal_comprador: subtotal_vitrina (cantidad × unitario)
+    Esto permite que los templates HTML muestren precios sin calcular markups.
+    """
     if not items_raw:
         return []
     inventario_ids = [it.get("inventario_id") for it in items_raw if it.get("inventario_id")]
@@ -232,9 +276,19 @@ def _enriquecer_items(db, items_raw: list[dict]) -> list[dict]:
 
     enriquecidos = []
     for it in items_raw:
-        inv = inv_map.get(it.get("inventario_id"), {})
+        inv_id = it.get("inventario_id")
+        inv = inv_map.get(inv_id, {})
         planta = inv.get("plantas") or {}
         vivero = inv.get("viveros") or {}
+
+        # ── Fase 4: calcular precio_comprador para este item ──
+        precio_unit = float(it.get("precio_unitario") or 0)
+        cantidad = int(it.get("cantidad") or 1)
+        categoria = _resolver_categoria(db, inv_id) if inv_id else "plantas_ornamentales"
+        markup = get_markup_categoria(categoria)
+        precio_comprador_unitario = round(precio_unit * (1 + markup))
+        subtotal_comprador = precio_comprador_unitario * cantidad
+
         enriquecidos.append({
             **it,
             "nombre_comun": planta.get("nombre_comun"),
@@ -244,8 +298,17 @@ def _enriquecer_items(db, items_raw: list[dict]) -> list[dict]:
             "vivero_id": (vivero or {}).get("vivero_id"),
             "nombre_vivero": vivero.get("nombre_vivero"),
             "ciudad_vivero": vivero.get("ciudad"),
+            # ── Fase 4 ──
+            "categoria": categoria,
+            "precio_comprador_unitario": precio_comprador_unitario,
+            "subtotal_comprador": subtotal_comprador,
         })
     return enriquecidos
+
+
+def _total_comprador_desde_items(items_enriquecidos: list[dict]) -> int:
+    """Suma los subtotal_comprador de todos los items para dar el total con markup."""
+    return sum(int(it.get("subtotal_comprador") or 0) for it in items_enriquecidos)
 
 
 def _obtener_estado_entrega(db, cotizacion_id: int) -> dict:
@@ -273,18 +336,14 @@ async def crear_o_agregar_a_borrador(
 ):
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
-
     if req.cotizacion_id is not None and req.nombre_proyecto is not None:
         raise HTTPException(400, detail="Especificá solo cotizacion_id O nombre_proyecto, no ambos")
-
     db = admin()
     items_nuevos, total_nuevo = _validar_items_y_calcular(db, req.items)
-
     if req.cotizacion_id is not None:
         existente = db.table("cotizaciones").select(
             "cotizacion_id, cliente_id, estado, items, total_estimado"
         ).eq("cotizacion_id", req.cotizacion_id).limit(1).execute()
-
         if not existente.data:
             raise HTTPException(404, detail="Proyecto no encontrado")
         b = existente.data[0]
@@ -293,7 +352,6 @@ async def crear_o_agregar_a_borrador(
         if b["estado"] != "borrador":
             raise HTTPException(400, detail=f"No se pueden agregar items a un proyecto en estado '{b['estado']}'")
         return _merge_items_y_actualizar(db, b, items_nuevos)
-
     if req.nombre_proyecto is not None:
         cot_resp = db.table("cotizaciones").insert({
             "cliente_id": user.cliente_id,
@@ -306,16 +364,13 @@ async def crear_o_agregar_a_borrador(
         }).execute()
         cotizacion_id = cot_resp.data[0]["cotizacion_id"]
         return CotizacionResponse(ok=True, cotizacion_id=cotizacion_id, total_cop=total_nuevo, estado="borrador")
-
     existente = db.table("cotizaciones").select(
         "cotizacion_id, items, total_estimado, notas_cliente, prompt_original"
     ).eq("cliente_id", user.cliente_id).eq("estado", "borrador").order(
         "fecha_creacion", desc=True
     ).limit(1).execute()
-
     if existente.data:
         return _merge_items_y_actualizar(db, existente.data[0], items_nuevos, notas_nuevas=req.notas, nombre_nuevo=req.proyecto)
-
     cot_resp = db.table("cotizaciones").insert({
         "cliente_id": user.cliente_id,
         "total_estimado": total_nuevo,
@@ -331,9 +386,13 @@ async def crear_o_agregar_a_borrador(
 
 @router.get("/cotizacion/proyectos")
 async def listar_proyectos(user: UserContext = Depends(require_comprador)):
+    """Lista de proyectos del comprador.
+
+    ── Fase 4: cada proyecto incluye total_comprador (con markup por categoría)
+       además del total_estimado (mayorista). El template lo usa directamente.
+    """
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
-
     db = admin()
     resp = db.table("cotizaciones").select(
         "cotizacion_id, prompt_original, estado, total_estimado, items, "
@@ -355,12 +414,26 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
     for r in resp.data or []:
         items = r.get("items") or []
         cot_id = r["cotizacion_id"]
+
+        # ── Fase 4: calcular total_comprador aplicando markup por categoría a cada item ──
+        total_comprador = 0
+        for it in items:
+            inv_id = it.get("inventario_id")
+            precio_unit = float(it.get("precio_unitario") or 0)
+            cantidad = int(it.get("cantidad") or 0)
+            if inv_id:
+                categoria = _resolver_categoria(db, inv_id)
+                markup = get_markup_categoria(categoria)
+                total_comprador += round(precio_unit * (1 + markup)) * cantidad
+
         proyectos.append({
             "cotizacion_id": cot_id,
             "nombre_proyecto": r.get("prompt_original"),
             "estado": r["estado"],
             "estado_entrega": entrega_map.get(cot_id),
             "total_estimado": float(r.get("total_estimado") or 0),
+            # ── Fase 4 ──
+            "total_comprador": total_comprador,
             "num_items": sum(it.get("cantidad", 0) for it in items),
             "num_items_distintos": len(items),
             "fecha_creacion": str(r.get("fecha_creacion") or ""),
@@ -368,7 +441,6 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
             "fecha_conversion": str(r.get("fecha_conversion")) if r.get("fecha_conversion") else None,
             "notas_cliente": r.get("notas_cliente"),
         })
-
     return {"ok": True, "proyectos": proyectos, "total": len(proyectos)}
 
 
@@ -376,7 +448,6 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
 async def obtener_borrador(user: UserContext = Depends(require_comprador)):
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
-
     db = admin()
     resp = db.table("cotizaciones").select(
         "cotizacion_id, items, total_estimado, fecha_creacion, "
@@ -384,19 +455,19 @@ async def obtener_borrador(user: UserContext = Depends(require_comprador)):
     ).eq("cliente_id", user.cliente_id).eq("estado", "borrador").order(
         "fecha_creacion", desc=True
     ).limit(1).execute()
-
     if not resp.data:
         return {"ok": True, "borrador": None}
-
     b = resp.data[0]
     items_enriquecidos = _enriquecer_items(db, b.get("items") or [])
-
+    total_comprador = _total_comprador_desde_items(items_enriquecidos)
     return {
         "ok": True,
         "borrador": {
             "cotizacion_id": b["cotizacion_id"],
             "items": items_enriquecidos,
             "total_estimado": float(b.get("total_estimado") or 0),
+            # ── Fase 4 ──
+            "total_comprador": total_comprador,
             "num_items": sum(it.get("cantidad", 0) for it in items_enriquecidos),
             "num_viveros_distintos": len({it.get("vivero_id") for it in items_enriquecidos if it.get("vivero_id")}),
             "notas_cliente": b.get("notas_cliente"),
@@ -415,9 +486,7 @@ async def quitar_item_borrador(
 ):
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
-
     db = admin()
-
     if cotizacion_id is not None:
         resp = db.table("cotizaciones").select(
             "cotizacion_id, cliente_id, estado, items"
@@ -438,23 +507,18 @@ async def quitar_item_borrador(
         if not resp.data:
             raise HTTPException(404, detail="No tienes un borrador activo")
         b = resp.data[0]
-
     items_actuales = b.get("items") or []
     items_filtrados = [it for it in items_actuales if it.get("inventario_id") != inventario_id]
-
     if len(items_filtrados) == len(items_actuales):
         raise HTTPException(404, detail=f"Item {inventario_id} no está en este borrador")
-
     if not items_filtrados:
         db.table("cotizaciones").delete().eq("cotizacion_id", b["cotizacion_id"]).execute()
         return {"ok": True, "cotizacion_id": b["cotizacion_id"], "eliminado": True, "borrador": None}
-
     total_nuevo = sum(float(it.get("subtotal") or 0) for it in items_filtrados)
     db.table("cotizaciones").update({
         "items": items_filtrados,
         "total_estimado": total_nuevo,
     }).eq("cotizacion_id", b["cotizacion_id"]).execute()
-
     return {"ok": True, "cotizacion_id": b["cotizacion_id"], "total_estimado": total_nuevo, "items_restantes": len(items_filtrados)}
 
 
@@ -463,26 +527,23 @@ async def obtener_cotizacion(
     cotizacion_id: int,
     user: UserContext = Depends(require_comprador),
 ):
-    """Detalle de UN proyecto con items enriquecidos + estado logístico."""
+    """Detalle de UN proyecto con items enriquecidos + estado logístico + total_comprador."""
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
-
     db = admin()
     resp = db.table("cotizaciones").select(
         "cotizacion_id, cliente_id, prompt_original, estado, items, total_estimado, "
         "fecha_creacion, fecha_vencimiento, fecha_conversion, notas_cliente, notas_agente, "
         "alternativas_vivero"
     ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
-
     if not resp.data:
         raise HTTPException(404, detail="Cotización no encontrada")
     c = resp.data[0]
     if c["cliente_id"] != user.cliente_id:
         raise HTTPException(404, detail="Cotización no encontrada")
-
     items_enriquecidos = _enriquecer_items(db, c.get("items") or [])
+    total_comprador = _total_comprador_desde_items(items_enriquecidos)
     entrega = _obtener_estado_entrega(db, cotizacion_id)
-
     return {
         "ok": True,
         "cotizacion": {
@@ -491,6 +552,8 @@ async def obtener_cotizacion(
             "estado": c["estado"],
             "items": items_enriquecidos,
             "total_estimado": float(c.get("total_estimado") or 0),
+            # ── Fase 4 ──
+            "total_comprador": total_comprador,
             "num_items": sum(it.get("cantidad", 0) for it in items_enriquecidos),
             "num_viveros_distintos": len({it.get("vivero_id") for it in items_enriquecidos if it.get("vivero_id")}),
             "notas_cliente": c.get("notas_cliente"),
@@ -502,8 +565,6 @@ async def obtener_cotizacion(
             "fecha_despacho": str(entrega.get("fecha_despacho") or "") if entrega.get("fecha_despacho") else None,
             "fecha_entrega_real": str(entrega.get("fecha_entrega") or "") if entrega.get("fecha_entrega") else None,
             "direccion_entrega": entrega.get("direccion_entrega"),
-            # Alternativas de vivero cuando fue rechazada — el frontend las usa
-            # para mostrar el botón "Confirmar vivero alternativo".
             "alternativas_vivero": c.get("alternativas_vivero"),
         },
     }
@@ -517,10 +578,8 @@ async def renombrar_proyecto(
 ):
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
-
     db = admin()
     resp = db.table("cotizaciones").select("cliente_id, estado").eq("cotizacion_id", cotizacion_id).limit(1).execute()
-
     if not resp.data:
         raise HTTPException(404, detail="Cotización no encontrada")
     c = resp.data[0]
@@ -528,7 +587,6 @@ async def renombrar_proyecto(
         raise HTTPException(404, detail="Cotización no encontrada")
     if c["estado"] != "borrador":
         raise HTTPException(400, detail=f"No se puede renombrar una cotización en estado '{c['estado']}'.")
-
     db.table("cotizaciones").update({"prompt_original": req.nombre_proyecto}).eq("cotizacion_id", cotizacion_id).execute()
     return {"ok": True, "cotizacion_id": cotizacion_id, "nombre_proyecto": req.nombre_proyecto}
 
@@ -540,10 +598,8 @@ async def eliminar_proyecto(
 ):
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
-
     db = admin()
     resp = db.table("cotizaciones").select("cliente_id, estado").eq("cotizacion_id", cotizacion_id).limit(1).execute()
-
     if not resp.data:
         raise HTTPException(404, detail="Cotización no encontrada")
     c = resp.data[0]
@@ -551,6 +607,5 @@ async def eliminar_proyecto(
         raise HTTPException(404, detail="Cotización no encontrada")
     if c["estado"] not in ("borrador", "vencida", "rechazada"):
         raise HTTPException(400, detail=f"No se puede eliminar una cotización en estado '{c['estado']}'.")
-
     db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
     return {"ok": True, "cotizacion_id": cotizacion_id, "eliminado": True}
