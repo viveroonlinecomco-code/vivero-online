@@ -1,23 +1,12 @@
 """Endpoint TEMPORAL de debug para diagnosticar el motor de precios.
 
-⚠️ ELIMINAR después de resolver el bug de Fase 4.
-
-Uso: GET /api/debug/precios/{cotizacion_id}
-Devuelve el desglose completo de lo que el motor calcula, incluyendo:
-- Todas las claves de configuracion_global leídas
-- Categoría resuelta por cada item
-- Markup aplicado por cada item
-- Descuentos aplicados (o no)
-- Costo fintech
-- Desglose item por item
-- Totales
-
-Solo accesible por admin.
+⚠️⚠️⚠️ CRÍTICO: ELIMINAR este archivo después de resolver el bug de Fase 4.
+⚠️⚠️⚠️ Este endpoint NO tiene autenticación por decisión temporal para diagnóstico.
+⚠️⚠️⚠️ Expone precios internos, márgenes y configuración. NO dejar en producción.
 """
 from __future__ import annotations
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 
-from app.auth.deps import UserContext, require_admin
 from app.services.supabase import admin as db_admin
 from app.services.precios import calcular_precios_pedido
 from app.services.config_global import (
@@ -25,7 +14,6 @@ from app.services.config_global import (
     get_matriz_comercial,
     get_markup_categoria,
     get_descuento_b2b,
-    get_costo_fintech,
     _MATRIZ_DEFAULT,
 )
 
@@ -33,19 +21,12 @@ router = APIRouter(prefix="/api/debug", tags=["debug"])
 
 
 @router.get("/precios/{cotizacion_id}")
-async def debug_precios(
-    cotizacion_id: int,
-    user: UserContext = Depends(require_admin),
-):
-    """Devuelve TODO lo que el motor de precios calcula internamente.
-
-    Útil para diagnosticar por qué el checkout devuelve precios inesperados.
-    """
+async def debug_precios(cotizacion_id: int):
+    """TEMPORAL - sin auth para diagnóstico rápido. ELIMINAR después."""
     db = db_admin()
 
-    # 1. Obtener cotización
     cot = db.table("cotizaciones").select(
-        "cotizacion_id, cliente_id, items, total_estimado"
+        "cotizacion_id, cliente_id, items, total_estimado, estado"
     ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
 
     if not cot.data:
@@ -54,36 +35,31 @@ async def debug_precios(
     cot_row = cot.data[0]
     items = cot_row.get("items") or []
 
-    # 2. Obtener cliente
     cliente = db.table("clientes").select(
-        "cliente_id, es_guest, tipo_cliente, activo"
+        "cliente_id, es_guest, tipo_cliente, activo, nombre_empresa"
     ).eq("cliente_id", cot_row["cliente_id"]).limit(1).execute()
     cliente_data = cliente.data[0] if cliente.data else {"cliente_id": cot_row["cliente_id"]}
 
-    # 3. Leer estado actual de configuracion_global
     matriz_actual = get_matriz_comercial()
     fintech_activa = get_config("fintech_activa", default=False)
     smlmv = get_config("smlmv_actual", default=1_750_905)
     umbral_smlmv = get_config("umbral_descuento_b2b_smlmv", default=5)
     comision_plataforma = get_config("comision_plataforma", default=None)
 
-    # 4. Para cada item, calcular manualmente lo que DEBERÍA salir
     diagnostico_items = []
     for item in items:
         inv_id = item.get("inventario_id")
         if not inv_id:
             continue
 
-        # Categoría vía función SQL
         try:
             cat_resp = db.rpc("get_categoria_producto", {
                 "p_inventario_id": inv_id
             }).execute()
-            categoria_sql = str(cat_resp.data) if cat_resp.data else "ERROR"
+            categoria_sql = str(cat_resp.data) if cat_resp.data else "ERROR_NO_DATA"
         except Exception as e:
             categoria_sql = f"EXCEPTION: {e}"
 
-        # Categoría desde inventario directamente
         inv_data = db.table("inventario").select(
             "precio_mayorista, categoria_producto, planta_id"
         ).eq("inventario_id", inv_id).limit(1).execute()
@@ -92,33 +68,29 @@ async def debug_precios(
         override_inv = inv_data.data[0].get("categoria_producto") if inv_data.data else None
         planta_id = inv_data.data[0].get("planta_id") if inv_data.data else None
 
-        # Categoría desde plantas
         categoria_planta = None
         if planta_id:
-            pl = db.table("plantas").select("categoria_producto").eq(
+            pl = db.table("plantas").select("categoria_producto, nombre_comun").eq(
                 "planta_id", planta_id
             ).limit(1).execute()
             categoria_planta = pl.data[0].get("categoria_producto") if pl.data else None
 
-        # Markup que aplica el motor para esa categoría
         markup_efectivo = get_markup_categoria(categoria_sql)
-
-        # Descuento B2B (asumiendo B2B ≥ 5 SMLMV para ver el valor)
         descuento_b2b_inmediato = get_descuento_b2b(categoria_sql, "inmediato")
 
-        # Cálculos esperados
         cantidad = int(item.get("cantidad", 1))
         precio_vitrina_esperado = precio_mayorista * (1 + markup_efectivo)
         subtotal_vitrina_esperado = precio_vitrina_esperado * cantidad
 
-        # Precio_unitario en el JSONB de la cotización (importante)
         precio_unitario_jsonb = item.get("precio_unitario")
+        subtotal_jsonb = item.get("subtotal")
 
         diagnostico_items.append({
             "inventario_id": inv_id,
             "cantidad": cantidad,
             "precio_mayorista_bd": precio_mayorista,
             "precio_unitario_jsonb_cotizacion": precio_unitario_jsonb,
+            "subtotal_jsonb_cotizacion": subtotal_jsonb,
             "categoria_via_sql_rpc": categoria_sql,
             "categoria_override_inventario": override_inv,
             "categoria_default_plantas": categoria_planta,
@@ -128,7 +100,6 @@ async def debug_precios(
             "subtotal_vitrina_esperado": round(subtotal_vitrina_esperado, 2),
         })
 
-    # 5. Llamar al motor REAL con el cliente y items
     try:
         resultado_motor = calcular_precios_pedido(
             cliente=cliente_data,
@@ -136,11 +107,12 @@ async def debug_precios(
             plazo="inmediato",
         )
     except Exception as e:
-        resultado_motor = {"error": f"Excepción en motor: {e}"}
+        resultado_motor = {"error": f"Excepción en motor: {str(e)}", "type": str(type(e).__name__)}
 
-    # 6. Devolver TODO junto
     return {
+        "warning": "ENDPOINT TEMPORAL SIN AUTENTICACION - ELIMINAR DESPUES",
         "cotizacion_id": cotizacion_id,
+        "cotizacion_estado": cot_row.get("estado"),
         "cliente": cliente_data,
         "items_del_carrito": items,
         "estado_configuracion_global": {
