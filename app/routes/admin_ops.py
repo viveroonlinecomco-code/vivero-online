@@ -1,10 +1,14 @@
 """Operaciones admin del marketplace — exclusivo para rol=admin.
+
 Cubre: Comunidad, Suscripciones, Inventario, Viveros, Auditoría.
 """
+
 from datetime import datetime, timedelta
 from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+
 from app.auth.deps import UserContext, require_admin
 from app.services.supabase import admin as db_admin
 
@@ -26,10 +30,9 @@ async def listar_comunidad(
     )
     if rol and rol in ("viverista", "comprador", "admin"):
         query = query.eq("rol", rol)
-
     result = query.order("creado_en", desc=True).execute()
-    comunidad = []
 
+    comunidad = []
     for p in (result.data or []):
         item = {
             "user_id": p["id"],
@@ -139,7 +142,6 @@ async def activar_suscripcion(req: ActivarSusReq, user: UserContext = Depends(re
     ).eq("estado", "activa").limit(1).execute()
     if existente.data:
         raise HTTPException(400, "El usuario ya tiene una suscripción activa.")
-
     now = datetime.utcnow()
     r = db.table("suscripciones").insert({
         "user_id": req.user_id,
@@ -171,7 +173,6 @@ async def extender_suscripcion(
     ).eq("suscripcion_id", sus_id).limit(1).execute()
     if not sus.data:
         raise HTTPException(404, "Suscripción no encontrada")
-
     fecha_str = str(sus.data[0]["fecha_proximo_cobro"]).replace("+00:00", "").split(".")[0]
     fecha_actual = datetime.fromisoformat(fecha_str)
     nueva = max(fecha_actual, datetime.utcnow()) + timedelta(days=req.dias)
@@ -204,7 +205,6 @@ async def listar_inventario_admin(
         "inventario_id, altura_cm, precio_mayorista, stock, estado_planta, foto_ia_url, vivero_id, "
         "plantas(nombre_comun), viveros(nombre_vivero, ciudad)"
     ).order("inventario_id", desc=True).limit(200).execute()
-
     items = []
     for row in (r.data or []):
         planta = row.get("plantas") or {}

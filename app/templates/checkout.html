@@ -21,7 +21,6 @@ tailwind.config = {
 <style>body { min-height: max(884px, 100dvh); font-family: 'Inter', sans-serif; }</style>
 </head>
 <body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 pb-32">
-
 <header class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-primary/10">
     <div class="max-w-lg mx-auto px-4 h-16 flex items-center gap-3">
         <a href="/comprador" class="flex items-center justify-center w-9 h-9 rounded-full hover:bg-primary/10 transition-colors text-primary">
@@ -34,9 +33,7 @@ tailwind.config = {
         <span class="material-symbols-outlined text-primary text-2xl">energy_savings_leaf</span>
     </div>
 </header>
-
 <main class="max-w-lg mx-auto px-4 py-6 space-y-5">
-
     <div id="state-loading" class="space-y-4">
         <div class="animate-pulse bg-white dark:bg-slate-800 rounded-xl p-5 space-y-3">
             <div class="h-5 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
@@ -44,7 +41,6 @@ tailwind.config = {
         </div>
         <div class="animate-pulse bg-white dark:bg-slate-800 rounded-xl p-5 h-32"></div>
     </div>
-
     <div id="state-error" class="hidden text-center py-16">
         <span class="material-symbols-outlined text-5xl text-red-300 mb-3">error_outline</span>
         <p class="font-bold text-lg text-slate-700 dark:text-slate-200">No se pudo cargar el pedido</p>
@@ -53,9 +49,7 @@ tailwind.config = {
             <span class="material-symbols-outlined text-base">arrow_back</span>Volver
         </a>
     </div>
-
     <div id="state-content" class="hidden space-y-5">
-
         <!-- Badge aprobado -->
         <div class="flex items-center gap-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl px-4 py-3">
             <span class="material-symbols-outlined text-emerald-600 text-xl">verified</span>
@@ -64,7 +58,6 @@ tailwind.config = {
                 <p class="text-xs text-emerald-600 dark:text-emerald-400">El stock está reservado. Completá el pago para confirmar.</p>
             </div>
         </div>
-
         <!-- Resumen del pedido -->
         <div class="bg-white dark:bg-slate-800 rounded-xl border border-primary/10 shadow-sm overflow-hidden">
             <div class="px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-700">
@@ -102,7 +95,6 @@ tailwind.config = {
                 </div>
             </div>
         </div>
-
         <!-- Datos de entrega -->
         <div class="bg-white dark:bg-slate-800 rounded-xl border border-primary/10 shadow-sm p-5 space-y-4">
             <h2 class="font-bold text-base flex items-center gap-2">
@@ -110,7 +102,6 @@ tailwind.config = {
                 Datos de entrega en obra
             </h2>
             <p class="text-xs text-slate-500 -mt-2">Campos con * son obligatorios. El flete se calcula automáticamente al seleccionar la ciudad.</p>
-
             <!-- Aviso tiempo de entrega -->
             <div id="aviso-entrega" class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3">
                 <p class="text-xs text-amber-800 dark:text-amber-200 font-semibold flex items-start gap-2">
@@ -118,7 +109,6 @@ tailwind.config = {
                     <span id="aviso-entrega-texto">Las plantas tienen un tiempo mínimo de entrega de 5 días hábiles desde el pago.</span>
                 </p>
             </div>
-
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Ciudad de entrega *</label>
                 <select id="ciudad-entrega"
@@ -138,14 +128,12 @@ tailwind.config = {
                     </optgroup>
                 </select>
             </div>
-
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Dirección exacta de entrega *</label>
                 <input type="text" id="direccion-entrega"
                     placeholder="Ej: Cra 15 #80-20, Conjunto Las Palmas, Portería Norte"
                     class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
             </div>
-
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Encargado de recibir *</label>
@@ -158,7 +146,6 @@ tailwind.config = {
                         class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
                 </div>
             </div>
-
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
                     Fecha de entrega deseada
@@ -179,14 +166,12 @@ tailwind.config = {
                         class="w-full px-3 py-2.5 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
                 </div>
             </div>
-
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Notas para el vivero</label>
                 <textarea id="notas-entrega" rows="2" maxlength="500"
                     placeholder="Ej: Ingresar por portería norte, no tienen montacargas..."
                     class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm resize-none"></textarea>
             </div>
-
             <div class="bg-primary/5 border border-primary/10 rounded-xl px-4 py-3">
                 <p class="text-xs text-primary font-semibold flex items-start gap-2">
                     <span class="material-symbols-outlined text-sm mt-0.5">info</span>
@@ -194,14 +179,12 @@ tailwind.config = {
                 </p>
             </div>
         </div>
-
         <!-- Error checkout -->
         <div id="checkout-error" class="hidden bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl px-4 py-3">
             <p class="text-sm text-red-700 dark:text-red-300 font-semibold" id="checkout-error-msg"></p>
         </div>
     </div>
 </main>
-
 <!-- Footer sticky -->
 <div id="sticky-footer" class="hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 p-4 z-40">
     <div class="max-w-lg mx-auto">
@@ -213,29 +196,33 @@ tailwind.config = {
         <p class="text-center text-xs text-slate-400 mt-2">🔒 Pago seguro · Plantas + flete en un solo cobro</p>
     </div>
 </div>
-
 <script src="/static/js/vivero.js"></script>
 <script>
 (async function() {
+    // ═══════════════════════════════════════════════════════════════════
+    // FASE 4 (22 jul 2026): eliminado const MARKUP = 0.18 hardcoded.
+    //
+    // Los precios comprador ahora vienen calculados desde el backend usando
+    // el motor matricial por categoría (17% sustrato, 20% plantas, 25% materas).
+    //
+    // Campos que consume este template desde el endpoint:
+    //   - cotizacion.total_comprador           = total plantas con markup
+    //   - cotizacion.items[].precio_comprador_unitario
+    //   - cotizacion.items[].subtotal_comprador
+    // ═══════════════════════════════════════════════════════════════════
     const match = window.location.pathname.match(/\/checkout\/(\d+)/);
     if (!match) { showError('URL inválida'); return; }
     const cotizacionId = parseInt(match[1]);
-
     if (!VO.requireAuth()) return;
     let me;
     try { me = await VO.me(); } catch { showError('No se pudo verificar tu sesión.'); return; }
     if (me.rol !== 'comprador' && me.rol !== 'admin') {
         window.location.href = '/comprador'; return;
     }
-
-    const MARKUP = 0.18;
-    const fmtMarkup = v => '$' + Math.round((parseFloat(v)||0) * (1 + MARKUP)).toLocaleString('es-CO');
-    let totalViverista = 0;
+    let totalPlantas = 0;  // total_comprador desde backend (motor matricial)
     let fleteCop = 0;
-
     function fmt(v) { return '$' + Math.round(parseFloat(v) || 0).toLocaleString('es-CO'); }
     function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
     function setState(id) {
         ['state-loading','state-error','state-content'].forEach(s => document.getElementById(s).classList.add('hidden'));
         document.getElementById(id).classList.remove('hidden');
@@ -245,9 +232,8 @@ tailwind.config = {
         setState('state-error');
     }
     function actualizarTotales() {
-        const montoPlantas = Math.round(totalViverista * (1 + MARKUP));
-        const totalFinal   = montoPlantas + fleteCop;
-        document.getElementById('subtotal-plantas').textContent = fmt(montoPlantas);
+        const totalFinal = totalPlantas + fleteCop;
+        document.getElementById('subtotal-plantas').textContent = fmt(totalPlantas);
         if (fleteCop > 0) {
             document.getElementById('flete-valor').textContent = fmt(fleteCop);
             document.getElementById('flete-valor').className = 'font-semibold text-slate-700';
@@ -255,10 +241,9 @@ tailwind.config = {
         } else {
             document.getElementById('flete-valor').textContent = 'Seleccioná la ciudad';
             document.getElementById('flete-valor').className = 'font-semibold text-amber-600';
-            document.getElementById('total').textContent = fmt(montoPlantas) + ' + flete';
+            document.getElementById('total').textContent = fmt(totalPlantas) + ' + flete';
         }
     }
-
     // ── Calcular días hábiles (lunes a viernes) ───────────────
     function agregarDiasHabiles(fecha, dias) {
         let contador = 0;
@@ -270,7 +255,6 @@ tailwind.config = {
         }
         return d;
     }
-
     // ── Detectar si hay materas/kokedamas en los items ────────
     function tieneMateras(items) {
         const palabrasMatera = ['matera', 'maceta', 'kokedama', 'kit kokedama'];
@@ -279,22 +263,17 @@ tailwind.config = {
             return palabrasMatera.some(p => nombre.includes(p));
         });
     }
-
     // ── Configurar fecha mínima según tipo de items ───────────
     function configurarFechaMinima(items) {
         const conMateras = tieneMateras(items);
         const diasMinimos = conMateras ? 10 : 5;
         const fechaMin = agregarDiasHabiles(new Date(), diasMinimos);
         const fechaMinStr = fechaMin.toISOString().split('T')[0];
-
         const inputFecha = document.getElementById('fecha-entrega');
         inputFecha.min = fechaMinStr;
-        inputFecha.value = fechaMinStr; // Pre-seleccionar la fecha mínima
-
-        // Actualizar etiqueta y aviso
+        inputFecha.value = fechaMinStr;
         document.getElementById('label-dias-minimos').textContent =
             '(mínimo ' + diasMinimos + ' días hábiles)';
-
         const avisoTexto = document.getElementById('aviso-entrega-texto');
         if (conMateras) {
             avisoTexto.textContent =
@@ -306,21 +285,18 @@ tailwind.config = {
                 'Las plantas tienen un tiempo mínimo de entrega de 5 días hábiles desde el pago.';
         }
     }
-
     let cotizacion;
     try {
         const data = await VO.api(`/api/marketplace/cotizacion/${cotizacionId}`);
         cotizacion = data.cotizacion;
     } catch (e) { showError('No se pudo cargar el pedido: ' + e.message); return; }
-
     if (cotizacion.estado !== 'aceptada' && cotizacion.estado !== 'convertida') {
         showError(`Estado "${cotizacion.estado}". Solo los pedidos aprobados se pueden pagar.`);
         return;
     }
-
-    totalViverista = parseFloat(cotizacion.total_estimado || 0);
+    // ── Fase 4: total_comprador desde backend (con markup por categoría) ──
+    totalPlantas = parseInt(cotizacion.total_comprador || 0);
     document.getElementById('nombre-proyecto').textContent = cotizacion.nombre_proyecto || `Pedido #${cotizacionId}`;
-
     const items = cotizacion.items || [];
     document.getElementById('lista-items').innerHTML = items.map(it => `
         <div class="flex items-center gap-3 px-5 py-3">
@@ -330,27 +306,22 @@ tailwind.config = {
                  onerror="this.src='https://placehold.co/64x64/e2e8f0/64748b?text=%F0%9F%8C%B1'">
             <div class="flex-1 min-w-0">
                 <p class="font-semibold text-sm truncate">${esc(it.nombre_comun || 'Planta')}</p>
-                <p class="text-xs text-slate-500">${it.cantidad} × ${fmtMarkup(it.precio_unitario)}</p>
+                <p class="text-xs text-slate-500">${it.cantidad} × ${fmt(it.precio_comprador_unitario || 0)}</p>
                 <p class="text-xs text-slate-400 truncate">${esc(it.nombre_vivero || '')}${it.ciudad_vivero ? ' · '+esc(it.ciudad_vivero) : ''}</p>
             </div>
-            <span class="font-bold text-primary text-sm whitespace-nowrap">${fmtMarkup(it.subtotal)}</span>
+            <span class="font-bold text-primary text-sm whitespace-nowrap">${fmt(it.subtotal_comprador || 0)}</span>
         </div>
     `).join('');
-
-    // Configurar fecha mínima según si hay materas
     configurarFechaMinima(items);
-
     actualizarTotales();
     setState('state-content');
     document.getElementById('sticky-footer').classList.remove('hidden');
-
     // ── Calcular flete al seleccionar ciudad ──────────────────
     document.getElementById('ciudad-entrega').addEventListener('change', async (e) => {
         const ciudad = e.target.value;
         const fleRow  = document.getElementById('flete-row');
         const fleLoad = document.getElementById('flete-loading');
         const fleErr  = document.getElementById('flete-error');
-
         if (!ciudad) {
             fleteCop = 0;
             fleRow.classList.add('hidden');
@@ -359,17 +330,14 @@ tailwind.config = {
             actualizarTotales();
             return;
         }
-
         fleLoad.style.display = 'flex';
         fleRow.classList.add('hidden');
         fleErr.classList.add('hidden');
-
         try {
             const res = await VO.api(
                 `/api/pedidos/${cotizacionId}/calcular-flete?ciudad=${encodeURIComponent(ciudad)}`
             );
             fleteCop = res.total_flete || 0;
-
             const tierLabels = { S: 'Tier S · Pequeño', M: 'Tier M · Mediano', L: 'Tier L · Grande', XL: 'Tier XL · Árbol' };
             document.getElementById('flete-tier-badge').textContent = tierLabels[res.tier] || res.tier || '';
             document.getElementById('flete-valor').textContent = fmt(fleteCop);
@@ -384,7 +352,6 @@ tailwind.config = {
             actualizarTotales();
         }
     });
-
     // ── Botón pagar ───────────────────────────────────────────
     document.getElementById('btn-pagar').addEventListener('click', async () => {
         const ciudad    = document.getElementById('ciudad-entrega').value;
@@ -395,13 +362,10 @@ tailwind.config = {
         const errBox    = document.getElementById('checkout-error');
         const btn       = document.getElementById('btn-pagar');
         const btnText   = document.getElementById('btn-pagar-text');
-
-        // Validar fecha mínima
         const conMateras = tieneMateras(items);
         const diasMinimos = conMateras ? 10 : 5;
         const fechaMin = agregarDiasHabiles(new Date(), diasMinimos);
         const fechaMinStr = fechaMin.toISOString().split('T')[0];
-
         const errores = [
             [!ciudad,    'Seleccioná la ciudad de entrega.',               'ciudad-entrega'],
             [!direccion, 'La dirección exacta de entrega es obligatoria.', 'direccion-entrega'],
@@ -419,14 +383,11 @@ tailwind.config = {
                 return;
             }
         }
-
         errBox.classList.add('hidden');
         btn.disabled = true;
         btnText.textContent = 'Preparando pago...';
-
         const horaIni = document.getElementById('ventana-inicio').value;
         const horaFin = document.getElementById('ventana-fin').value;
-
         try {
             const payload = await VO.api(`/api/pedidos/${cotizacionId}/checkout`, {
                 method: 'POST',
@@ -442,23 +403,20 @@ tailwind.config = {
                     flete_cop:                fleteCop,
                 }),
             });
-
             if (payload.pago_id) localStorage.setItem('vivero_pago_id', String(payload.pago_id));
-
             const cp = payload.checkout_payload;
             if (!cp) throw new Error('No se recibió el payload de pago.');
-
             const handler = ePayco.checkout.configure({
                 key: cp.p_cust_id_cliente || cp.key,
                 test: false,
             });
-
             handler.open({
                 name:         cp.name        || 'ViveroOnline',
                 description:  cp.description || 'Pedido ViveroOnline',
                 invoice:      cp.invoice,
                 currency:     cp.currency    || 'cop',
-                amount:       String(cp.amount || (Math.round(totalViverista * (1+MARKUP)) + fleteCop)),
+                // ── Fase 4: monto correcto desde backend (motor matricial + flete) ──
+                amount:       String(cp.amount || (totalPlantas + fleteCop)),
                 tax_base:     String(cp.tax_base || 0),
                 tax:          String(cp.tax || 0),
                 country:      cp.country     || 'co',
@@ -469,10 +427,8 @@ tailwind.config = {
                 response:     cp.response    || `${window.location.origin}/pagos/resultado`,
                 confirmation: cp.confirmation || `${window.location.origin}/api/pagos/confirmacion`,
             });
-
             btnText.textContent = 'Pagar con ePayco';
             btn.disabled = false;
-
         } catch (e) {
             document.getElementById('checkout-error-msg').textContent = e.message || 'Error al iniciar el pago.';
             errBox.classList.remove('hidden');
@@ -480,7 +436,6 @@ tailwind.config = {
             btn.disabled = false;
         }
     });
-
 })();
 </script>
 </body>
