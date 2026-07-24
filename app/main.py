@@ -30,7 +30,6 @@ from app.routes.pedidos import router as pedidos_router
 from app.routes.suscripcion import router as suscripciones_router
 from app.services.google_ads_middleware import GoogleAdsMiddleware
 from app.routes import onboarding as onboarding_routes
-from app.routes.debug_precios import router as debug_precios_router
 
 settings = get_settings()
 STATIC_DIR = Path(__file__).parent / "static"
@@ -149,7 +148,6 @@ app.include_router(pedidos_router)
 app.include_router(onboarding_routes.router)
 # HTML pages (deben ir al final para no capturar /api/*)
 app.include_router(pages_routes.router)
-app.include_router(debug_precios_router)
 
 
 @app.exception_handler(Exception)
