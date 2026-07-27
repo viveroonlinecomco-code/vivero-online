@@ -11,7 +11,7 @@
   window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
 </script>
 <script defer src="/_vercel/speed-insights/script.js"></script>
-<title>Marketplace · ViveroOnline.com.co</title>
+<title>Marketplace · viveroonline.com.co</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
@@ -35,6 +35,8 @@
 </script>
 <style>
     body { min-height: max(884px, 100dvh); }
+    /* Extra padding-bottom si hay widget carrito */
+    body.has-cart-widget { padding-bottom: 100px; }
 </style>
 </head>
 <body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100">
@@ -44,7 +46,7 @@
     <div class="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
         <a href="/" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <span class="material-symbols-outlined text-primary text-3xl">energy_savings_leaf</span>
-            <h2 class="text-base md:text-lg font-bold leading-tight tracking-tight">ViveroOnline.com.co</h2>
+            <h2 class="text-base md:text-lg font-bold leading-tight tracking-tight">viveroonline.com.co</h2>
         </a>
         <a data-vo="header-action" href="/auth/ingresar" class="inline-flex items-center gap-1 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:text-primary transition-colors px-4 py-2 rounded-full whitespace-nowrap">
             Iniciar Sesión
@@ -115,8 +117,56 @@
 
 </main>
 
+<!-- ═══════════ Widget carrito guest (sticky bottom) ═══════════ -->
+<div data-vo="cart-widget" class="hidden fixed bottom-4 left-0 right-0 z-40 px-4 pointer-events-none">
+    <div class="max-w-7xl mx-auto pointer-events-auto">
+        <a href="/carrito-guest" class="flex items-center justify-between bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-4 rounded-full shadow-xl shadow-emerald-600/40 transition">
+            <span class="flex items-center gap-2 font-semibold">
+                <span class="material-symbols-outlined">shopping_cart</span>
+                <span>Ver carrito · <span data-vo="cart-widget-count"></span></span>
+            </span>
+            <span class="font-black text-lg" data-vo="cart-widget-total"></span>
+        </a>
+    </div>
+</div>
+
 <script src="/static/js/vivero.js"></script>
 <script>
+// ═══════════════════════════════════════════════════════════════════
+// FASE 8 (24 jul 2026) — Marketplace con soporte guest B2C
+//
+// Cambios respecto a versión Fase 4:
+// - FIX: eliminado fallback "× 1.18" hardcoded en el precio
+//   (usa item.precio_comprador que el backend garantiza con motor matricial)
+// - Widget carrito guest sticky (aparece si localStorage tiene items)
+// - Copy intro adaptado según rol (guest: comprar / B2B: cotizar)
+//
+// El endpoint /api/public/marketplace ya está filtrando tier S+M para guest,
+// así que este template NO tiene que filtrar manualmente. Solo pinta lo que
+// llega del backend.
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Utilidades carrito guest (compartidas con marketplace_detalle.html) ─
+const CART_KEY = 'vivero_guest_cart';
+
+function cartRead() {
+    try {
+        const raw = localStorage.getItem(CART_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+}
+
+function cartTotalItems() {
+    return cartRead().reduce((sum, it) => sum + (it.cantidad || 0), 0);
+}
+
+function cartTotalCOP() {
+    return cartRead().reduce(
+        (sum, it) => sum + ((it.precio_comprador_unitario || 0) * (it.cantidad || 0)),
+        0
+    );
+}
+
 (async function init() {
     const $ = (sel) => document.querySelector(sel);
     const stateLoading = $('[data-vo="state-loading"]');
@@ -142,9 +192,16 @@
         headerAction.href = panelPath;
         headerAction.innerHTML = '<span class="material-symbols-outlined text-base">dashboard</span> Mi panel';
     }
-    authNote.textContent = me
-        ? 'Hacé click en una planta para ver el detalle.'
-        : 'Iniciá sesión para cotizar y contactar al vivero.';
+
+    // ─── Copy intro según rol (Fase 8) ───
+    if (me && (me.rol === 'comprador' || me.rol === 'admin')) {
+        authNote.textContent = 'Hacé click en una planta para cotizar.';
+    } else if (me) {
+        authNote.textContent = 'Hacé click en una planta para ver el detalle.';
+    } else {
+        // Guest B2C
+        authNote.innerHTML = 'Comprá directo desde ' + (Math.min(10, 10) ? '1 hasta 10 unidades por producto' : '') + '. <a href="/auth/registro?tipo=empresa" class="text-primary font-semibold hover:underline">¿Sos empresa?</a>';
+    }
 
     // ─── State machine ───
     function setState(s) {
@@ -169,10 +226,14 @@
             const vivero = escapeHTML(item.nombre_vivero || 'Vivero');
             const municipio = escapeHTML(item.municipio || '');
             const distancia = item.distancia_km ? `${item.distancia_km.toFixed(1)} km` : '';
-            const precioBase = item.precio_mayorista || 0;
-            const precio = VO.formatCOPFull(item.precio_comprador || Math.round(precioBase * 1.18));
+            // ── FIX Fase 4: sin fallback × 1.18. Backend garantiza precio_comprador ──
+            const precio = VO.formatCOPFull(item.precio_comprador || 0);
             const stock = item.stock || 0;
             const meta = [vivero, municipio, distancia].filter(Boolean).join(' · ');
+
+            // CTA label: guest ve "Comprar", B2B ve "Ver detalle"
+            const ctaLabel = me ? 'Ver detalle' : 'Comprar';
+            const ctaIcon = me ? 'chevron_right' : 'shopping_bag';
 
             return `
                 <a href="/marketplace/producto/${item.inventario_id}" class="block bg-white dark:bg-slate-800 rounded-2xl overflow-hidden shadow-sm border border-slate-100 dark:border-slate-700 hover:shadow-lg transition-shadow">
@@ -194,8 +255,8 @@
                         <div class="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-700">
                             <span class="text-xs text-slate-500">${stock} disponibles</span>
                             <span class="text-primary font-bold text-sm inline-flex items-center gap-1">
-                                Ver detalle
-                                <span class="material-symbols-outlined text-base">chevron_right</span>
+                                ${ctaLabel}
+                                <span class="material-symbols-outlined text-base">${ctaIcon}</span>
                             </span>
                         </div>
                     </div>
@@ -218,7 +279,7 @@
                 // Autenticado: endpoint completo (incluye contactos)
                 data = await VO.api('/api/marketplace' + (qs ? qs + '&limite=120' : '?limite=120'));
             } else {
-                // Anónimo: endpoint público (sin contactos)
+                // Guest B2C: endpoint público (tier S+M, sanitizado, sin auth)
                 const resp = await fetch('/api/public/marketplace' + qs);
                 if (!resp.ok) throw new Error('HTTP ' + resp.status);
                 data = await resp.json();
@@ -238,6 +299,30 @@
             timer = setTimeout(() => loadItems(e.target.value.trim()), 400);
         });
     }
+
+    // ─── Widget carrito guest (solo si no está logueado y hay items) ───
+    function actualizarCarritoWidget() {
+        if (me) return; // widget solo aplica a guest
+        const items = cartRead();
+        const widget = $('[data-vo="cart-widget"]');
+        if (items.length === 0) {
+            widget.classList.add('hidden');
+            document.body.classList.remove('has-cart-widget');
+            return;
+        }
+        const totalItems = cartTotalItems();
+        const totalCOP = cartTotalCOP();
+        $('[data-vo="cart-widget-count"]').textContent = totalItems === 1 ? '1 planta' : `${totalItems} plantas`;
+        $('[data-vo="cart-widget-total"]').textContent = VO.formatCOPFull(totalCOP);
+        widget.classList.remove('hidden');
+        document.body.classList.add('has-cart-widget');
+    }
+    actualizarCarritoWidget();
+
+    // Escuchar cambios en localStorage (por si abre otra pestaña y modifica)
+    window.addEventListener('storage', (e) => {
+        if (e.key === CART_KEY) actualizarCarritoWidget();
+    });
 
     await loadItems();
 })();
