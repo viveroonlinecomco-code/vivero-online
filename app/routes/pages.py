@@ -79,6 +79,10 @@ async def app_producto(inventario_id: int):
 async def app_carrito_guest():
     return _tpl("carrito_guest.html")
 
+@router.get("/checkout-guest", response_class=HTMLResponse)
+async def app_checkout_guest():
+    return _tpl("checkout_guest.html")
+
 
 # Dashboard único del comprador. El subtipo (paisajista, constructora, conjunto,
 # empresa, otro) vive en `clientes.tipo_cliente` y se usa solo como metadata
