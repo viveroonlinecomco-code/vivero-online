@@ -1,27 +1,31 @@
-"""Checkout guest B2C — Fase 10.2
+"""Checkout guest B2C — Fase 10.2 + 10.3
 
 Endpoints públicos SIN autenticación para el flujo de compra guest.
-Este archivo solo cubre validación pre-checkout. Fase 10.3 agrega create-order
-+ webhook ePayco.
 
-Endpoints:
-- POST /api/public/checkout-guest/validate-cart  → re-valida items del carrito
-- POST /api/public/checkout-guest/calcular-flete → calcula flete por ciudad
+Fase 10.2 (26 jul): validate-cart + calcular-flete
+Fase 10.3 (29 jul): create-order — crea cliente_guest + cotización + payment intent ePayco
 
 Reglas B2C guest:
 - Solo tier S+M
 - Máx 10 unidades por producto
 - Máx 120 plantas total
 - Precios via motor matricial por categoría
+- Reserva stock 15 min al iniciar pago
+- Post-pago: reusa webhook /api/pagos/confirmacion existente
 """
 from __future__ import annotations
 from typing import Optional
-from decimal import Decimal
+from datetime import datetime, timedelta, timezone
+import logging
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 
+from app.config import get_settings
+from app.services.epayco import CheckoutRequest, get_epayco
 from app.services.supabase import admin
 from app.services.config_global import get_matriz_comercial
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/public/checkout-guest", tags=["checkout-guest"])
 
@@ -44,20 +48,50 @@ class CalcularFleteRequest(BaseModel):
     items: list[CartItem] = Field(min_length=1)
 
 
+class CreateOrderRequest(BaseModel):
+    # Items
+    items: list[CartItem] = Field(min_length=1, max_length=60)
+    # Datos comprador (para factura)
+    nombre: str = Field(min_length=3, max_length=150)
+    tipo_documento: str = Field(pattern="^(CC|NIT|CE|PP)$")
+    num_documento: str = Field(min_length=5, max_length=20)
+    email: EmailStr
+    whatsapp: str = Field(pattern="^3\\d{9}$", description="10 dígitos Colombia empezando con 3")
+    # Datos entrega
+    ciudad: str = Field(min_length=2, max_length=100)
+    direccion: str = Field(min_length=10, max_length=300)
+    referencia: Optional[str] = Field(default=None, max_length=200)
+    mismo_receptor: bool = True
+    receptor_nombre: Optional[str] = Field(default=None, max_length=150)
+    receptor_telefono: Optional[str] = Field(default=None, max_length=20)
+    fecha_entrega: Optional[str] = Field(default=None, description="ISO date YYYY-MM-DD")
+    notas: Optional[str] = Field(default=None, max_length=500)
+    # Aceptaciones legales
+    acepta_perecedero: bool
+    acepta_habeas_data: bool
+
+
+class CreateOrderResponse(BaseModel):
+    ok: bool
+    cotizacion_id: int
+    transaccion_id: int
+    pago_id: int
+    referencia: str
+    monto_total: int
+    checkout_payload: dict
+    expires_at: str  # ISO string
+
+
 # ═══════════════════════════════════════════════════════════
-# Helpers
+# Helpers de flete y categorías
 # ═══════════════════════════════════════════════════════════
 
 _TIER_ORDER = {"S": 1, "M": 2, "L": 3, "XL": 4}
 
-# Tarifas base por tier + zona (COP)
-# Zona 1: Sabana cercana (Chía, Cajicá, Cota, Tenjo, Tabio, Sopó, Bogotá Norte)
-# Zona 2: Sabana lejana (Zipaquirá, La Calera, Facatativá, Madrid, Mosquera, Funza, Tocancipá, Bogotá Centro, Bogotá Sur)
 _ZONA_1 = {"Chía", "Cajicá", "Cota", "Tenjo", "Tabio", "Sopó", "Bogotá Norte"}
 _ZONA_2 = {"Zipaquirá", "La Calera", "Facatativá", "Madrid", "Mosquera",
            "Funza", "Tocancipá", "Bogotá Centro", "Bogotá Sur", "Otro"}
 
-# Fallback tarifas (misma estructura que _calcular_flete_stub en el sistema legacy)
 _FLETE_STUB = {
     ("S", 1): 25_000, ("S", 2): 40_000,
     ("M", 1): 35_000, ("M", 2): 55_000,
@@ -67,14 +101,12 @@ _FLETE_STUB = {
 
 
 def _resolver_zona(ciudad: str) -> int:
-    """Devuelve 1 (cercana) o 2 (lejana). Fallback: 2."""
     if ciudad in _ZONA_1:
         return 1
     return 2
 
 
 def _tier_mayor(tiers: list[str]) -> str:
-    """De una lista de tiers, devuelve el mayor (el flete se cobra por el mayor)."""
     tiers_validos = [t for t in tiers if t in _TIER_ORDER]
     if not tiers_validos:
         return "M"
@@ -82,7 +114,6 @@ def _tier_mayor(tiers: list[str]) -> str:
 
 
 def _calcular_flete_por_tarifa(db, ciudad: str, tier: str) -> int:
-    """Consulta tabla tarifas_logistica si existe. Fallback: stub."""
     try:
         resp = db.table("tarifas_logistica").select(
             "tarifa_cop"
@@ -91,13 +122,11 @@ def _calcular_flete_por_tarifa(db, ciudad: str, tier: str) -> int:
             return int(resp.data[0]["tarifa_cop"])
     except Exception:
         pass
-    # Fallback stub
     zona = _resolver_zona(ciudad)
     return _FLETE_STUB.get((tier, zona), 55_000)
 
 
 def _resolver_categorias_batch(db, inventario_ids: list[int]) -> dict[int, str]:
-    """Batch para múltiples items (copia de marketplace.py para no duplicar imports)."""
     if not inventario_ids:
         return {}
     resp = db.table("inventario").select(
@@ -111,40 +140,20 @@ def _resolver_categorias_batch(db, inventario_ids: list[int]) -> dict[int, str]:
     return resultado
 
 
-# ═══════════════════════════════════════════════════════════
-# Endpoint 1: VALIDATE CART
-# ═══════════════════════════════════════════════════════════
+def _validar_y_calcular_carrito(db, items_req: list[CartItem]) -> dict:
+    """Valida items + calcula precio_comprador y precio_mayorista.
 
-@router.post("/validate-cart")
-async def validate_cart(req: ValidateCartRequest):
-    """Re-valida items del carrito guest contra la BD.
-
-    Casos que valida:
-    - Item existe
-    - Item es tier S o M (guest no puede comprar L/XL)
-    - Item está disponible
-    - Stock >= cantidad pedida
-    - Cantidad <= 10 por producto
-    - Total <= 120 plantas
-    - Recalcula precio_comprador (por si cambió el markup en la matriz)
-
-    Devuelve items válidos con precios actualizados, o lista de errores.
+    Retorna dict con items validados, totales, errores.
     """
-    db = admin()
-
-    # Límite total 120 plantas
-    total_unidades = sum(it.cantidad for it in req.items)
+    total_unidades = sum(it.cantidad for it in items_req)
     if total_unidades > 120:
-        raise HTTPException(400, detail={
-            "error": "limite_total",
-            "mensaje": f"Máximo 120 plantas por compra (tenés {total_unidades}). Registrate como empresa para más.",
-            "total_actual": total_unidades,
-            "limite": 120,
-        })
+        return {
+            "ok": False,
+            "error_code": "limite_total",
+            "mensaje": f"Máximo 120 plantas por compra (tenés {total_unidades})",
+        }
 
-    inv_ids = [it.inventario_id for it in req.items]
-
-    # Batch: datos completos del inventario
+    inv_ids = [it.inventario_id for it in items_req]
     inv_resp = db.table("inventario").select(
         "inventario_id, precio_mayorista, stock, estado_planta, "
         "logistics_tier, foto_ia_url, categoria_producto, "
@@ -153,43 +162,30 @@ async def validate_cart(req: ValidateCartRequest):
     ).in_("inventario_id", inv_ids).execute()
     inv_map = {r["inventario_id"]: r for r in (inv_resp.data or [])}
 
-    # Precargar matriz
     matriz = get_matriz_comercial()
     markups_b2c = matriz.get("markup_b2c", {})
 
     items_validados = []
     errores = []
     total_plantas = 0
-    total_cop = 0
+    total_comprador = 0
+    total_mayorista = 0
     tiers_presentes = []
 
-    for req_item in req.items:
+    for req_item in items_req:
         inv = inv_map.get(req_item.inventario_id)
 
         if not inv:
-            errores.append({
-                "inventario_id": req_item.inventario_id,
-                "error": "no_existe",
-                "mensaje": "Producto ya no está disponible",
-            })
+            errores.append({"inventario_id": req_item.inventario_id, "error": "no_existe"})
             continue
 
-        # Guardrail: guest solo S+M
         tier = inv.get("logistics_tier", "M")
         if tier not in ("S", "M"):
-            errores.append({
-                "inventario_id": req_item.inventario_id,
-                "error": "tier_no_permitido",
-                "mensaje": "Este producto requiere cuenta empresa",
-            })
+            errores.append({"inventario_id": req_item.inventario_id, "error": "tier_no_permitido"})
             continue
 
         if inv.get("estado_planta") != "disponible":
-            errores.append({
-                "inventario_id": req_item.inventario_id,
-                "error": "no_disponible",
-                "mensaje": "Producto sin stock",
-            })
+            errores.append({"inventario_id": req_item.inventario_id, "error": "no_disponible"})
             continue
 
         stock = inv.get("stock") or 0
@@ -197,20 +193,18 @@ async def validate_cart(req: ValidateCartRequest):
             errores.append({
                 "inventario_id": req_item.inventario_id,
                 "error": "stock_insuficiente",
-                "mensaje": f"Solo hay {stock} disponibles",
                 "stock_disponible": stock,
-                "cantidad_solicitada": req_item.cantidad,
             })
             continue
 
-        # Calcular precio comprador via motor matricial
         override_inv = inv.get("categoria_producto")
         default_planta = (inv.get("plantas") or {}).get("categoria_producto")
         categoria = override_inv or default_planta or "plantas_ornamentales"
         markup = float(markups_b2c.get(categoria, 0.20))
         precio_mayorista = float(inv.get("precio_mayorista") or 0)
         precio_comprador = round(precio_mayorista * (1 + markup))
-        subtotal = precio_comprador * req_item.cantidad
+        subtotal_comprador = precio_comprador * req_item.cantidad
+        subtotal_mayorista = round(precio_mayorista) * req_item.cantidad
 
         planta = inv.get("plantas") or {}
         vivero = inv.get("viveros") or {}
@@ -223,35 +217,29 @@ async def validate_cart(req: ValidateCartRequest):
             "municipio": vivero.get("ciudad"),
             "foto_ia_url": inv.get("foto_ia_url"),
             "precio_comprador_unitario": precio_comprador,
-            "subtotal": subtotal,
+            "precio_mayorista_unitario": round(precio_mayorista),
+            "precio_unitario": round(precio_mayorista),  # compatibilidad con _obtener_desglose_pago
+            "subtotal": subtotal_comprador,
+            "subtotal_comprador": subtotal_comprador,
+            "subtotal_mayorista": subtotal_mayorista,
             "categoria": categoria,
             "logistics_tier": tier,
         })
         total_plantas += req_item.cantidad
-        total_cop += subtotal
+        total_comprador += subtotal_comprador
+        total_mayorista += subtotal_mayorista
         tiers_presentes.append(tier)
 
-    # Si hay errores, devolver 400 con detalles
-    if errores:
-        return {
-            "ok": False,
-            "errores": errores,
-            "items_validados": items_validados,
-            "total_plantas": total_plantas,
-            "total_cop": total_cop,
-        }
-
-    # Detectar si hay materas (afecta días de entrega)
-    tiene_materas = any(
-        (it.get("categoria") == "materas") for it in items_validados
-    )
+    tiene_materas = any(it.get("categoria") == "materas" for it in items_validados)
     dias_entrega_minimos = 10 if tiene_materas else 5
 
     return {
-        "ok": True,
+        "ok": len(errores) == 0,
+        "errores": errores,
         "items": items_validados,
         "total_plantas": total_plantas,
-        "total_cop": total_cop,
+        "total_comprador": total_comprador,
+        "total_mayorista": total_mayorista,
         "tier_logistico": _tier_mayor(tiers_presentes),
         "tiene_materas": tiene_materas,
         "dias_entrega_minimos": dias_entrega_minimos,
@@ -259,20 +247,50 @@ async def validate_cart(req: ValidateCartRequest):
 
 
 # ═══════════════════════════════════════════════════════════
-# Endpoint 2: CALCULAR FLETE
+# Endpoint 1: VALIDATE CART (Fase 10.2)
+# ═══════════════════════════════════════════════════════════
+
+@router.post("/validate-cart")
+async def validate_cart(req: ValidateCartRequest):
+    """Re-valida items del carrito guest contra la BD."""
+    db = admin()
+    resultado = _validar_y_calcular_carrito(db, req.items)
+
+    if resultado.get("error_code") == "limite_total":
+        raise HTTPException(400, detail={
+            "error": "limite_total",
+            "mensaje": resultado["mensaje"],
+        })
+
+    if not resultado["ok"]:
+        return {
+            "ok": False,
+            "errores": resultado["errores"],
+            "items_validados": resultado["items"],
+            "total_plantas": resultado["total_plantas"],
+            "total_cop": resultado["total_comprador"],
+        }
+
+    return {
+        "ok": True,
+        "items": resultado["items"],
+        "total_plantas": resultado["total_plantas"],
+        "total_cop": resultado["total_comprador"],
+        "tier_logistico": resultado["tier_logistico"],
+        "tiene_materas": resultado["tiene_materas"],
+        "dias_entrega_minimos": resultado["dias_entrega_minimos"],
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# Endpoint 2: CALCULAR FLETE (Fase 10.2)
 # ═══════════════════════════════════════════════════════════
 
 @router.post("/calcular-flete")
 async def calcular_flete(req: CalcularFleteRequest):
-    """Calcula flete para el pedido guest según ciudad + tier logístico.
-
-    Toma el tier MAYOR entre todos los items (el camión debe caber lo más grande).
-    Usa tabla tarifas_logistica si existe, fallback stub por zona.
-    """
     db = admin()
     inv_ids = [it.inventario_id for it in req.items]
 
-    # Traer tiers de todos los items
     tier_resp = db.table("inventario").select(
         "inventario_id, logistics_tier"
     ).in_("inventario_id", inv_ids).execute()
@@ -283,7 +301,6 @@ async def calcular_flete(req: CalcularFleteRequest):
 
     tier_mayor = _tier_mayor(tiers)
 
-    # Guardrail: guest no debería tener L/XL (validate-cart lo bloquea antes)
     if tier_mayor not in ("S", "M"):
         raise HTTPException(400, detail="Este pedido requiere cuenta empresa")
 
@@ -302,3 +319,388 @@ async def calcular_flete(req: CalcularFleteRequest):
         "flete_cop": flete_cop,
         "dias_entrega_estimados": 5 if zona == 1 else 7,
     }
+
+
+# ═══════════════════════════════════════════════════════════
+# Endpoint 3: CREATE ORDER (Fase 10.3)
+# ═══════════════════════════════════════════════════════════
+
+def _liberar_reservas_expiradas(db) -> int:
+    """Limpieza pasiva: libera stock de cotizaciones guest expiradas sin pago.
+
+    Se ejecuta al inicio de cada create-order. Con volumen bajo B2C (5-10/día)
+    esto reemplaza un cron dedicado.
+    """
+    try:
+        # Buscar cotizaciones guest expiradas sin pago aprobado
+        ahora_iso = datetime.now(timezone.utc).isoformat()
+        cot_resp = db.table("cotizaciones").select(
+            "cotizacion_id, items, estado"
+        ).eq("estado", "convertida").lt("fecha_vencimiento", ahora_iso).execute()
+
+        if not cot_resp.data:
+            return 0
+
+        cot_ids = [c["cotizacion_id"] for c in cot_resp.data]
+
+        # Verificar cuáles NO tienen pago aprobado
+        txn_resp = db.table("transacciones_b2b").select(
+            "cotizacion_id, transaccion_id"
+        ).in_("cotizacion_id", cot_ids).execute()
+        cot_txn_map = {t["cotizacion_id"]: t["transaccion_id"] for t in (txn_resp.data or [])}
+
+        expiradas_sin_pago = []
+        for cot in cot_resp.data:
+            cot_id = cot["cotizacion_id"]
+            txn_id = cot_txn_map.get(cot_id)
+            if not txn_id:
+                expiradas_sin_pago.append(cot)
+                continue
+            pago = db.table("pagos").select("estado_pago").eq(
+                "transaccion_id", txn_id
+            ).eq("estado_pago", "aprobado").limit(1).execute()
+            if not pago.data:
+                expiradas_sin_pago.append(cot)
+
+        # Para cada expirada, liberar stock y marcar como vencida
+        liberadas = 0
+        for cot in expiradas_sin_pago:
+            for it in cot.get("items") or []:
+                try:
+                    db.rpc("liberar_stock", {
+                        "p_inventario_id": it.get("inventario_id"),
+                        "p_cantidad": it.get("cantidad"),
+                    }).execute()
+                except Exception as e:
+                    logger.warning(f"Error liberando stock cot {cot['cotizacion_id']}: {e}")
+
+            db.table("cotizaciones").update({
+                "estado": "vencida",
+            }).eq("cotizacion_id", cot["cotizacion_id"]).execute()
+            liberadas += 1
+
+        return liberadas
+    except Exception as e:
+        logger.exception(f"Error en limpieza pasiva: {e}")
+        return 0
+
+
+def _upsert_cliente_guest(
+    db,
+    nombre: str,
+    tipo_documento: str,
+    num_documento: str,
+    email: str,
+    whatsapp: str,
+) -> tuple[int, bool]:
+    """Busca o crea cliente_guest por email normalizado.
+
+    Retorna (cliente_id, es_compra_recurrente).
+    Recurrente = tiene 1+ pagos previos aprobados (esta será la 2da+).
+    """
+    email_norm = email.strip().lower()
+
+    # Buscar cliente guest existente por email
+    existing = db.table("clientes").select(
+        "cliente_id, whatsapp_numero, nombre_representante"
+    ).eq("es_guest", True).eq("email", email_norm).limit(1).execute()
+
+    if existing.data:
+        cliente_id = existing.data[0]["cliente_id"]
+
+        # Actualizar datos si cambiaron
+        db.table("clientes").update({
+            "nombre_representante": nombre.strip(),
+            "whatsapp_numero": whatsapp.strip(),
+        }).eq("cliente_id", cliente_id).execute()
+
+        # Contar pagos previos aprobados
+        pagos_previos = db.table("transacciones_b2b").select(
+            "transaccion_id, pagos(estado_pago)"
+        ).eq("cliente_id", cliente_id).execute()
+
+        aprobados = 0
+        for txn in (pagos_previos.data or []):
+            for p in (txn.get("pagos") or []):
+                if p.get("estado_pago") == "aprobado":
+                    aprobados += 1
+                    break
+
+        es_recurrente = aprobados >= 1
+        return (cliente_id, es_recurrente)
+
+    # Crear cliente_guest nuevo
+    doc_completo = f"{tipo_documento} {num_documento.strip()}"
+    new_resp = db.table("clientes").insert({
+        "es_guest": True,
+        "activo": True,
+        "tipo_cliente": "otro",
+        "nombre_representante": nombre.strip(),
+        "nombre_empresa": f"Compra particular - {nombre.strip()}",
+        "email": email_norm,
+        "whatsapp_numero": whatsapp.strip(),
+        "notas_admin": f"Documento: {doc_completo}",
+    }).execute()
+
+    if not new_resp.data:
+        raise HTTPException(500, detail="No se pudo crear el cliente")
+
+    return (new_resp.data[0]["cliente_id"], False)
+
+
+@router.post("/create-order", response_model=CreateOrderResponse)
+async def create_order(req: CreateOrderRequest):
+    """Crea el pedido guest completo + payment intent ePayco.
+
+    Flujo:
+    1. Validar aceptaciones legales
+    2. Limpieza pasiva de reservas expiradas
+    3. Re-validar cart (guardrail contra cambios de stock/precio)
+    4. Calcular flete
+    5. Upsert cliente_guest
+    6. Marcar conversión si es recurrente (Fase 13)
+    7. Crear cotización (fecha_vencimiento = NOW + 15 min)
+    8. Reservar stock atómicamente por item
+    9. Crear transaccion_b2b + pago
+    10. Generar payload ePayco
+    11. Devolver todo al frontend
+    """
+    s = get_settings()
+    epayco = get_epayco()
+    if not epayco.is_configured:
+        raise HTTPException(503, detail="Servicio de pagos no configurado")
+
+    # 1. Aceptaciones legales
+    if not req.acepta_perecedero:
+        raise HTTPException(400, detail="Debés aceptar el aviso de producto perecedero")
+    if not req.acepta_habeas_data:
+        raise HTTPException(400, detail="Debés aceptar el tratamiento de datos personales")
+
+    db = admin()
+
+    # 2. Limpieza pasiva
+    liberadas = _liberar_reservas_expiradas(db)
+    if liberadas > 0:
+        logger.info(f"[Fase 10.3] Liberadas {liberadas} reservas guest expiradas")
+
+    # 3. Re-validar cart
+    validacion = _validar_y_calcular_carrito(db, req.items)
+    if not validacion["ok"]:
+        raise HTTPException(400, detail={
+            "error": "validacion_fallida",
+            "mensaje": "Algunos productos ya no están disponibles. Volvé al carrito.",
+            "errores": validacion["errores"],
+        })
+
+    items_validados = validacion["items"]
+    total_comprador = validacion["total_comprador"]
+    total_mayorista = validacion["total_mayorista"]
+    tier_logistico = validacion["tier_logistico"]
+
+    # 4. Calcular flete
+    ciudad_norm = req.ciudad.strip()
+    if not ciudad_norm:
+        raise HTTPException(400, detail="Ciudad requerida")
+    flete_cop = _calcular_flete_por_tarifa(db, ciudad_norm, tier_logistico)
+    monto_total_epayco = total_comprador + flete_cop
+
+    # 5. Upsert cliente
+    cliente_id, es_recurrente = _upsert_cliente_guest(
+        db,
+        nombre=req.nombre,
+        tipo_documento=req.tipo_documento,
+        num_documento=req.num_documento,
+        email=req.email,
+        whatsapp=req.whatsapp,
+    )
+
+    # 6. Marcar conversión si es 2da+ compra
+    if es_recurrente:
+        try:
+            db.table("clientes").update({
+                "necesita_conversion_b2b": True,
+            }).eq("cliente_id", cliente_id).execute()
+            logger.info(f"[Fase 10.3] Cliente {cliente_id} marcado para conversión B2B")
+        except Exception as e:
+            logger.warning(f"No se pudo marcar conversión de cliente {cliente_id}: {e}")
+
+    # 7. Preparar datos de entrega
+    contacto_nombre = req.nombre if req.mismo_receptor else (req.receptor_nombre or req.nombre)
+    contacto_telefono = req.whatsapp if req.mismo_receptor else (req.receptor_telefono or req.whatsapp)
+    direccion_completa = req.direccion.strip()
+    if req.referencia and req.referencia.strip():
+        direccion_completa += f" ({req.referencia.strip()})"
+
+    fecha_venc = datetime.now(timezone.utc) + timedelta(minutes=15)
+
+    # Guardar cotización
+    cot_data = {
+        "cliente_id": cliente_id,
+        "estado": "convertida",  # skip aprobación viverista (compra directa guest)
+        "items": items_validados,
+        "total_estimado": total_comprador,  # sin flete
+        "ciudad_entrega": ciudad_norm,
+        "direccion_entrega_exacta": direccion_completa,
+        "contacto_nombre": contacto_nombre,
+        "contacto_telefono": contacto_telefono,
+        "fecha_vencimiento": fecha_venc.isoformat(),
+        "notas_cliente": req.notas.strip() if req.notas else "",
+        "prompt_original": f"Compra B2C guest - {req.nombre}",
+        "generada_por_ia": False,
+    }
+    if req.fecha_entrega:
+        cot_data["fecha_entrega_deseada"] = req.fecha_entrega
+
+    cot_resp = db.table("cotizaciones").insert(cot_data).execute()
+    if not cot_resp.data:
+        raise HTTPException(500, detail="No se pudo crear la cotización")
+
+    cotizacion_id = cot_resp.data[0]["cotizacion_id"]
+    logger.info(f"[Fase 10.3] Cotización {cotizacion_id} creada para guest {cliente_id}")
+
+    # 8. Reservar stock atómicamente
+    stock_reservado = []  # para rollback si algo falla después
+    try:
+        for it in items_validados:
+            resp = db.rpc("reservar_stock_atomic", {
+                "p_inventario_id": it["inventario_id"],
+                "p_cantidad": it["cantidad"],
+            }).execute()
+
+            resultado_rpc = resp.data
+            if resultado_rpc == -1 or resultado_rpc is None:
+                # Rollback: liberar lo ya reservado + borrar cotización
+                for prev in stock_reservado:
+                    try:
+                        db.rpc("liberar_stock", {
+                            "p_inventario_id": prev["inventario_id"],
+                            "p_cantidad": prev["cantidad"],
+                        }).execute()
+                    except Exception:
+                        pass
+                db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
+                raise HTTPException(
+                    400,
+                    detail=f"Stock insuficiente para el producto {it['nombre']} en el último momento",
+                )
+
+            stock_reservado.append(it)
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Rollback
+        for prev in stock_reservado:
+            try:
+                db.rpc("liberar_stock", {
+                    "p_inventario_id": prev["inventario_id"],
+                    "p_cantidad": prev["cantidad"],
+                }).execute()
+            except Exception:
+                pass
+        db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
+        logger.exception(f"[Fase 10.3] Error reservando stock: {e}")
+        raise HTTPException(500, detail=f"Error reservando stock: {e}")
+
+    # 9. Crear transaccion_b2b (skip flete en precio_total para desglose limpio)
+    comision_plataforma = total_comprador - total_mayorista
+
+    try:
+        txn_resp = db.table("transacciones_b2b").insert({
+            "cliente_id": cliente_id,
+            "cotizacion_id": cotizacion_id,
+            "precio_total": total_comprador,  # SIN flete
+            "comision_plataforma": comision_plataforma,
+            "estado": "pendiente",
+        }).execute()
+        if not txn_resp.data:
+            raise Exception("No se pudo crear la transacción")
+        transaccion_id = txn_resp.data[0]["transaccion_id"]
+    except Exception as e:
+        # Rollback
+        for it in stock_reservado:
+            try:
+                db.rpc("liberar_stock", {
+                    "p_inventario_id": it["inventario_id"],
+                    "p_cantidad": it["cantidad"],
+                }).execute()
+            except Exception:
+                pass
+        db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
+        logger.exception(f"[Fase 10.3] Error creando transaccion: {e}")
+        raise HTTPException(500, detail=f"Error creando transacción: {e}")
+
+    # 10. Generar payload ePayco (mismo patrón que pagos.py B2B)
+    response_url = f"{s.app_base_url}/pagos/resultado"
+    confirmation_url = f"{s.app_base_url}/api/pagos/confirmacion"
+
+    try:
+        checkout_req = CheckoutRequest(
+            transaccion_id=transaccion_id,
+            monto_cop=monto_total_epayco,  # CON flete (lo que se cobra)
+            descripcion=f"viveroonline.com.co · Compra #{transaccion_id} ({validacion['total_plantas']} plantas)",
+            nombre_cliente=req.nombre.strip(),
+            telefono_cliente=req.whatsapp.strip(),
+        )
+        payload = epayco.build_checkout_payload(checkout_req, response_url, confirmation_url)
+        referencia = payload["invoice"]
+    except Exception as e:
+        # Rollback
+        db.table("transacciones_b2b").delete().eq("transaccion_id", transaccion_id).execute()
+        for it in stock_reservado:
+            try:
+                db.rpc("liberar_stock", {
+                    "p_inventario_id": it["inventario_id"],
+                    "p_cantidad": it["cantidad"],
+                }).execute()
+            except Exception:
+                pass
+        db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
+        logger.exception(f"[Fase 10.3] Error generando payload ePayco: {e}")
+        raise HTTPException(500, detail=f"Error preparando el pago: {e}")
+
+    # 11. Crear pago
+    try:
+        pago_resp = db.table("pagos").insert({
+            "transaccion_id": transaccion_id,
+            "monto_total": monto_total_epayco,  # CON flete (lo que cobra ePayco)
+            "moneda": "COP",
+            "estado_pago": "pendiente",
+            "metodo": "epayco",
+            "referencia_externa": referencia,
+            "monto_viverista": total_mayorista,  # solo lo que va al viverista (sin markup, sin flete)
+            "monto_plataforma": comision_plataforma,  # markup absorbido por VO (sin flete)
+        }).execute()
+        if not pago_resp.data:
+            raise Exception("No se pudo insertar el pago")
+        pago_id = pago_resp.data[0]["pago_id"]
+    except Exception as e:
+        # Rollback completo
+        db.table("transacciones_b2b").delete().eq("transaccion_id", transaccion_id).execute()
+        for it in stock_reservado:
+            try:
+                db.rpc("liberar_stock", {
+                    "p_inventario_id": it["inventario_id"],
+                    "p_cantidad": it["cantidad"],
+                }).execute()
+            except Exception:
+                pass
+        db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
+        logger.exception(f"[Fase 10.3] Error creando pago: {e}")
+        raise HTTPException(500, detail=f"Error registrando el pago: {e}")
+
+    logger.info(
+        f"[Fase 10.3] Pedido guest creado OK: "
+        f"cot={cotizacion_id}, txn={transaccion_id}, pago={pago_id}, "
+        f"monto={monto_total_epayco}, ref={referencia}"
+    )
+
+    return CreateOrderResponse(
+        ok=True,
+        cotizacion_id=cotizacion_id,
+        transaccion_id=transaccion_id,
+        pago_id=pago_id,
+        referencia=referencia,
+        monto_total=monto_total_epayco,
+        checkout_payload=payload,
+        expires_at=fecha_venc.isoformat(),
+    )
