@@ -1,163 +1,249 @@
-# 🚀 Fase 4 — Instrucciones de deploy
+# 🌱 viveroonline.com.co
 
-**Rama**: `b2b-b2c-v2` (NUNCA main hasta validar)
-**Fecha**: 21 julio 2026
+**B2B AgTech Marketplace** conectando viveros ornamentales con compradores institucionales (paisajistas, constructoras, conjuntos residenciales) — y ahora también con **compradores particulares B2C**.
 
-## 📦 Archivos incluidos
+Ubicado en la Sabana de Bogotá, Colombia. Desarrollado con FastAPI + Supabase + Vercel.
 
-| Path en el repo | Archivo entregado | Nuevo/Modificado |
-|-----------------|-------------------|-------------------|
-| `migrations/2026-07-21_categorias_matriz_comercial.sql` | `2026-07-21_categorias_matriz_comercial.sql` | 🆕 NUEVO |
-| `app/services/config_global.py` | `config_global.py` | ✏️ Extendido |
-| `app/services/precios.py` | `precios.py` | 🆕 NUEVO |
-| `app/services/fintech_stub.py` | `fintech_stub.py` | 🆕 NUEVO |
-| `app/routes/pedidos.py` | `pedidos.py` | ✏️ Refactor |
-| `app/routes/pagos.py` | `pagos.py` | ✏️ Fix hardcoded 0.05 |
-| `app/routes/fintech.py` | `fintech.py` | 🆕 NUEVO |
+---
 
-## ⚠️ Cambio adicional en `main.py`
+## 🎯 Estado del proyecto
 
-Registrar el nuevo router de fintech. Agregar estas 2 líneas junto a las de admin_config:
+| Canal | Estado | Fecha |
+|-------|--------|-------|
+| B2B (empresas registradas) | 🟢 En producción | Julio 2024 |
+| B2C Guest (compra particular) | 🟡 Testing final | Julio 2026 |
+| Split payment ePayco | 🔴 Pendiente | Agosto 2026 |
+| Integración Quick Última Milla | 🔴 Pendiente | Agosto 2026 |
 
-**1. En la sección de imports (junto a `admin_config_router`)**:
+**Primera venta B2C real proyectada**: ~10 agosto 2026
 
-```python
-from app.routes.admin_ops import router as admin_ops_router
-from app.routes.admin_config import router as admin_config_router
-from app.routes.fintech import router as fintech_router   # ← NUEVA
-from app.routes.pedidos import router as pedidos_router
+---
+
+## 🏗 Arquitectura
+
+### Stack
+- **Backend**: FastAPI (Python 3.11) sobre Vercel Serverless
+- **Base de datos**: Supabase (PostgreSQL 17.6, región sa-east-1)
+- **Auth**: Supabase Auth con OTP por WhatsApp
+- **Frontend**: HTML + Tailwind CSS + Vanilla JavaScript
+- **Pagos**: ePayco (checkout, webhooks, split payment próximo)
+- **Logística**: Quick Última Milla (white-label, en integración)
+- **IA**: OpenAI GPT + Gemini para identificación de plantas
+- **Notificaciones**: WhatsApp Business API vía Meta Cloud
+
+### Estructura del repo
+```
+app/
+├── routes/              # Endpoints FastAPI
+│   ├── auth.py         # Login, OTP, onboarding
+│   ├── marketplace.py  # Catálogo B2B + guest público
+│   ├── checkout_guest.py  # Flujo B2C completo
+│   ├── pedidos.py      # Cotizaciones B2B
+│   ├── pagos.py        # ePayco integration + webhook
+│   ├── admin_ops.py    # Panel admin
+│   └── pages.py        # Rutas HTML
+├── services/
+│   ├── precios.py      # Motor matricial de precios
+│   ├── config_global.py  # Config runtime (matriz comercial)
+│   ├── logistica.py    # Generación de entregas
+│   ├── epayco.py       # SDK ePayco
+│   └── supabase.py     # Cliente admin
+├── templates/          # HTML templates
+├── auth/               # Deps de autenticación
+└── main.py            # Entrypoint FastAPI
 ```
 
-**2. En la sección de includes (junto al de admin_config)**:
+---
 
-```python
-app.include_router(admin_ops_router)
-app.include_router(admin_config_router)
-app.include_router(fintech_router)   # ← NUEVA
-app.include_router(pedidos_router)
+## 💰 Modelo Comercial
+
+### Regla del Productor v2 (inmutable)
+El viverista SIEMPRE recibe el precio mayorista que publicó. ViveroOnline absorbe todos los descuentos comerciales y costos fintech. **El viverista NUNCA ve cuánto paga el comprador.**
+
+### Motor matricial por categoría de producto
+
+**Markups B2C** (aplicados al precio mayorista para obtener precio vitrina):
+
+| Categoría | Markup |
+|-----------|--------|
+| plantas ornamentales | 20% |
+| árboles | 20% |
+| materas | 25% |
+| sustrato / abonos | 17% |
+| accesorios | 25% |
+| otros (default) | 20% |
+
+**Descuentos B2B** aplicables a compras ≥ 5 SMLMV ($8.754.525 en 2026):
+
+| Categoría | Inmediato | 30d | 60d | 90d |
+|-----------|-----------|-----|-----|-----|
+| plantas / árboles | 12% | 9% | 6% | 3% |
+| materas | 10% | 7% | 4% | 1% |
+| sustrato | 9% | 6% | 3% | 0% |
+| accesorios | 14% | 11% | 8% | 5% |
+
+**Márgenes netos constantes**:
+- plantas / árboles / sustrato: 8% neto
+- accesorios: 11% neto
+- materas: 15% neto (categoría más rentable)
+
+**Costos fintech** (Kontempo, proyectados, inactivos): 30d=3%, 60d=6%, 90d=9%.
+
+---
+
+## 🌱 Reglas B2C Guest
+
+- Marketplace filtrado solo tier logístico **S y M** (excluye L y XL)
+- **Máximo 10 unidades** por producto
+- **Máximo 120 plantas** por compra total
+- Reserva stock 15 min al iniciar pago
+- Compra directa sin aprobación viverista (viverista notificado inmediato)
+- Datos mínimos legales: nombre, cédula/NIT, email, WhatsApp, dirección, ciudad
+- Aviso legal producto perecedero obligatorio (Ley 1480 art. 47)
+- Ventana reclamos: **2 horas** post-entrega (B2B: 12 horas)
+- Reembolso 100% o parcial 20% con evidencia
+- Guest recurrente detectado por email normalizado (LOWER + TRIM)
+- Conversión Guest → B2B automática tras 2 compras (Fase 13)
+
+---
+
+## 🚦 Rutas principales
+
+### Público (sin auth)
+```
+GET  /                              Landing
+GET  /marketplace                   Catálogo (guest ve filtrado S+M)
+GET  /marketplace/producto/{id}     Detalle producto
+GET  /carrito-guest                 Carrito (localStorage)
+GET  /checkout-guest                Formulario compra guest
+GET  /pagos/resultado               Post-pago (B2B y guest)
+GET  /habeas-data                   Política de privacidad
+GET  /terminos                      Términos y condiciones
+POST /api/public/marketplace        Endpoint catálogo (JSON)
+POST /api/public/checkout-guest/validate-cart
+POST /api/public/checkout-guest/calcular-flete
+POST /api/public/checkout-guest/create-order
+POST /api/pagos/confirmacion        Webhook ePayco
 ```
 
-## 📋 Orden de ejecución sugerido
-
-### 1️⃣ Correr la migration SQL en Supabase PRIMERO
-
-Antes de subir el código, correr la migration en el SQL Editor de Supabase.
-
-**Verificaciones post-migration** (descomentar al final del archivo SQL o correr aparte):
-
-```sql
--- Verificar categorías asignadas en plantas
-SELECT categoria_producto, COUNT(*) FROM plantas GROUP BY categoria_producto;
-
--- Verificar función helper
-SELECT get_categoria_producto(32);
-
--- Verificar matriz cargada
-SELECT valor::jsonb -> 'markup_b2c' -> 'materas' FROM configuracion_global WHERE clave='matriz_comercial';
--- → debería devolver 0.25
+### B2B (con auth)
+```
+GET  /comprador                     Dashboard comprador
+GET  /viverista                     Dashboard viverista
+GET  /admin                         Dashboard admin
+POST /api/marketplace/cotizacion    Crear/actualizar cotización
+POST /api/pedidos/{cot_id}/aprobar  Aprobar cotización
+POST /api/pagos/iniciar             Iniciar pago B2B
 ```
 
-### 2️⃣ Subir el código a la rama b2b-b2c-v2
+---
 
-Copiar los archivos a sus paths correspondientes y hacer commit:
+## 🔐 Variables de entorno
+
+Requeridas en Vercel:
 
 ```bash
-git checkout b2b-b2c-v2
+# Supabase
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
 
-# Copiar archivos:
-cp <descargado>/config_global.py app/services/config_global.py
-cp <descargado>/precios.py app/services/precios.py
-cp <descargado>/fintech_stub.py app/services/fintech_stub.py
-cp <descargado>/pedidos.py app/routes/pedidos.py
-cp <descargado>/pagos.py app/routes/pagos.py
-cp <descargado>/fintech.py app/routes/fintech.py
-mkdir -p migrations
-cp <descargado>/2026-07-21_categorias_matriz_comercial.sql migrations/
+# ePayco
+EPAYCO_P_CUST_ID=
+EPAYCO_P_KEY=
+EPAYCO_PRIVATE_KEY=
+EPAYCO_PUBLIC_KEY=
 
-# Editar main.py agregando las 2 líneas del router fintech (ver arriba)
+# WhatsApp Business API
+WA_TOKEN=
+WA_PHONE_NUMBER_ID=
+WA_VERIFY_TOKEN=
 
-# Commit atómico
-git add app/services/config_global.py \
-        app/services/precios.py \
-        app/services/fintech_stub.py \
-        app/routes/pedidos.py \
-        app/routes/pagos.py \
-        app/routes/fintech.py \
-        app/main.py \
-        migrations/2026-07-21_categorias_matriz_comercial.sql
+# Admin
+ADMIN_WHATSAPP_NOTIF=+573178543819
 
-git commit -m "feat(fase-4): motor comercial matricial por categoría
+# Cron
+CRON_SECRET=
 
-- Migration: categoria_producto en plantas + inventario + auto-clasificación
-- Nueva clave matriz_comercial (JSON) en configuracion_global
-- config_global.py extendido con get_matriz_comercial, get_markup_categoria,
-  get_descuento_b2b, get_costo_fintech, get_comision_bruta, get_comision_neta
-- precios.py NUEVO: motor calcular_precios_pedido con desglose item-por-item
-- pedidos.py: reemplazo MARKUP_PLATAFORMA=0.20 hardcoded, eliminado duplicado
-  confirmar_vivero_alternativo
-- pagos.py: reemplazo 0.05 hardcoded por desglose desde motor
-- fintech_stub.py NUEVO: stub genérico (verificar_linea_credito, solicitar_credito,
-  procesar_webhook_fintech)
-- fintech.py NUEVO: endpoint webhook + admin verify + status
-- main.py: registra fintech_router
-
-Regla del Productor v2: viverista siempre recibe precio mayorista publicado.
-Fintech inactiva (fintech_activa=false). Solo TC empresarial/ePayco activo."
-
-git push origin b2b-b2c-v2
+# App
+APP_BASE_URL=https://app.viveroonline.com.co
 ```
 
-### 3️⃣ Verificar en deploy preview de Vercel
+---
 
-Después de push, Vercel deploya el preview de `b2b-b2c-v2` en ~1-2 min.
+## 📦 Dependencias clave
 
-**Endpoints nuevos a probar**:
+Ver `requirements.txt` para la lista completa. Principales:
 
-```
-GET  /api/fintech/status
-     → {"activa": false, "partner": "", ...}
+- `fastapi` — framework web
+- `pydantic[email]` — validación de datos (incluye email-validator)
+- `email-validator>=2.0.0` — requerido por Pydantic EmailStr
+- `supabase-py` — cliente Supabase
+- `httpx` — cliente HTTP async
+- `python-jose` — JWT tokens
+- `openai` — GPT integration
+- `google-generativeai` — Gemini integration
 
-GET  /api/admin/config/matriz_comercial
-     → debería mostrar la matriz JSON completa
-```
+---
 
-**Smoke test del motor**: crear una cotización de prueba, mandarla a un vivero,
-aprobar y llegar a checkout. Los mensajes de WhatsApp deben mostrar el precio
-comprador calculado según la categoría de cada item.
+## 🚀 Deploy
 
-## 🔄 Ajuste manual pendiente para vos
+### Vercel (automático)
+Cada push a `main` deploya automáticamente a producción (`app.viveroonline.com.co`).
+Cada push a una rama `feat/*` deploya a preview URL.
 
-Después de correr la migration, vas a querer **reclasificar algunos productos
-manualmente** si tenés materas/sustrato/accesorios que quedaron mal categorizados:
+### Convención de trabajo
+Cada fase o fix va en rama separada con PR + merge. Nunca commits directos a `main`.
 
-```sql
--- Ejemplo: reclasificar productos específicos como materas
-UPDATE inventario SET categoria_producto = 'materas' WHERE inventario_id IN (32, 33, ...);
+Ramas activas:
+- `feat/fase-8-guest` — Marketplace guest B2C
+- `feat/fase-10-checkout` — Guest checkout completo
 
--- O directo por vivero (Chaparro materas = vivero 14)
-UPDATE inventario SET categoria_producto = 'materas' WHERE vivero_id = 14;
-```
+---
 
-Esto lo podés hacer desde el SQL Editor o esperar a Fase 6 (dashboard admin
-renovado) para tener UI.
+## 🗺 Roadmap (agosto 2026)
 
-## 🚨 Riesgos y rollback
+### 🔴 P1 — Bloquean launch
+- [ ] Fase 7 — Home renovada con 2 botones (COMPRAR YA / COTIZAR)
+- [ ] Fase 11 — Split payment ePayco (75% viverista / 20% ViveroOnline / flete → Quick)
+- [ ] Fase 9 — Integración Quick Última Milla (esperando credenciales)
+- [ ] WhatsApp Meta template aprobado para notificaciones
 
-- **Producción main no se toca** — deploy preview aislado
-- **Rollback**: si algo falla, `git revert` del commit + rerun migration inverso
-  (drop columns + delete clave configuracion_global)
-- **Fintech inactiva por default** — no habilita pagos a plazos hasta que Elena
-  explícitamente cambie `fintech_activa=true` desde admin
+### 🟡 P2 — Post-launch inmediato
+- [ ] Fase 12 — Sistema reembolsos (2h B2C / 12h B2B)
+- [ ] Fase 13 — Conversión Guest → B2B automática
+- [ ] Fase 6 — Dashboard admin renovado (8 pestañas)
+- [ ] Fase 14 — Cron alerta stock viveristas cada 15 días
 
-## 📊 Matemática esperada tras el deploy
+### 🟢 P3 — Legal y operativo
+- [ ] Templates email Supabase Auth en español
+- [ ] Política de Tratamiento de Datos en WordPress
+- [ ] Contrato Mandato v2.0 revisión abogado
+- [ ] Firma mandatos con Chaparro, Edgar, La Victoria
 
-Ejemplo real: viverista publica 1 matera a $10.000.
+---
 
-| Cliente | Cliente paga | Viverista recibe | ViveroOnline neto |
-|---------|-------------|------------------|-------------------|
-| B2C guest | $12.500 | $10.000 | $2.500 (25%) |
-| B2B <5 SMLMV | $12.500 | $10.000 | $2.500 (25%) |
-| B2B ≥5 SMLMV inmediato | $11.250 | $10.000 | $1.250 (15%) |
-| B2B ≥5 SMLMV 90d Kontempo | $12.375 | $10.000 | $1.500 neto (15%) |
+## 👥 Viveristas activos
 
-Viverista queda con $10.000 en TODOS los casos. ✓ Regla del Productor cumplida.
+| ID | Nombre | Productos | Mandato |
+|----|--------|-----------|---------|
+| 11 | Viveroonline SAS (Elena Obando) | 103 | ✅ Firmado |
+| 13 | Edgar Abonos los parches | 1 | ⏳ Pendiente |
+| 14 | Chaparro materas | 29 | ⏳ Pendiente |
+| 16 | La Victoria | 0 | ⏳ Pendiente |
+
+---
+
+## 📞 Contactos
+
+- **Elena Obando** (Founder & CEO): +573178543819
+- **WhatsApp bot institucional**: +573115557154
+- **Email operativo**: viveroonline.com.co@gmail.com
+- **Web**: https://viveroonline.com.co
+- **App**: https://app.viveroonline.com.co
+
+---
+
+## 📜 Licencia
+
+Proprietario — © 2026 viveroonline.com.co. Todos los derechos reservados.
