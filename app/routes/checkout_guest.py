@@ -408,10 +408,12 @@ def _upsert_cliente_guest(
     if existing.data:
         cliente_id = existing.data[0]["cliente_id"]
 
-        # Actualizar datos si cambiaron
+        # Actualizar datos si cambiaron (incluye documento por si el guest usó otro)
         db.table("clientes").update({
             "nombre_representante": nombre.strip(),
             "whatsapp_numero": whatsapp.strip(),
+            "tipo_documento": tipo_documento,
+            "numero_documento": num_documento.strip(),
         }).eq("cliente_id", cliente_id).execute()
 
         # Contar pagos previos aprobados
@@ -429,8 +431,7 @@ def _upsert_cliente_guest(
         es_recurrente = aprobados >= 1
         return (cliente_id, es_recurrente)
 
-    # Crear cliente_guest nuevo
-    doc_completo = f"{tipo_documento} {num_documento.strip()}"
+    # Crear cliente_guest nuevo con tipo_documento + numero_documento en columnas dedicadas
     new_resp = db.table("clientes").insert({
         "es_guest": True,
         "activo": True,
@@ -439,7 +440,8 @@ def _upsert_cliente_guest(
         "nombre_empresa": f"Compra particular - {nombre.strip()}",
         "email": email_norm,
         "whatsapp_numero": whatsapp.strip(),
-        "notas_admin": f"Documento: {doc_completo}",
+        "tipo_documento": tipo_documento,
+        "numero_documento": num_documento.strip(),
     }).execute()
 
     if not new_resp.data:
