@@ -431,17 +431,24 @@ def _upsert_cliente_guest(
         es_recurrente = aprobados >= 1
         return (cliente_id, es_recurrente)
 
-    # Crear cliente_guest nuevo con tipo_documento + numero_documento en columnas dedicadas
+    # Crear cliente_guest nuevo con documento en columnas dedicadas
+    # NOTA IMPORTANTE:
+    # - tipo_cliente="particular" es el valor válido para guest B2C según el CHECK
+    #   constraint clientes_tipo_cliente_check. Los otros valores válidos son:
+    #   paisajista | constructora | jardineria | empresa | particular
+    # - habeas_data=True porque el guest lo aceptó explícitamente en el checkout
+    #   (checkbox obligatorio validado en el endpoint create-order antes de acá)
     new_resp = db.table("clientes").insert({
         "es_guest": True,
         "activo": True,
-        "tipo_cliente": "otro",
+        "tipo_cliente": "particular",
         "nombre_representante": nombre.strip(),
         "nombre_empresa": f"Compra particular - {nombre.strip()}",
         "email": email_norm,
         "whatsapp_numero": whatsapp.strip(),
         "tipo_documento": tipo_documento,
         "numero_documento": num_documento.strip(),
+        "habeas_data": True,
     }).execute()
 
     if not new_resp.data:
