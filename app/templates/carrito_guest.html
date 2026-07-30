@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta content="width=device-width, initial-scale=1.0" name="viewport">
+<script>
+  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/insights/script.js"></script>
+<script>
+  window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
+</script>
+<script defer src="/_vercel/speed-insights/script.js"></script>
+<title>Mi carrito · viveroonline.com.co</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+<script id="tailwind-config">
+    tailwind.config = {
+        darkMode: "class",
+        theme: {
+            extend: {
+                colors: {
+                    "primary": "#325926",
+                    "background-light": "#f7f7f6",
+                    "background-dark": "#171d15",
+                },
+                fontFamily: {
+                    "display": ["Inter", "sans-serif"]
+                },
+                borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+            },
+        },
+    }
+</script>
+<style>
+    body { min-height: max(884px, 100dvh); font-family: 'Inter', sans-serif; }
+</style>
+</head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 pb-32">
+
+<!-- ═══════════ HEADER ═══════════ -->
+<header class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-primary/10">
+    <div class="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
+        <a href="/" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
+            <span class="material-symbols-outlined text-primary text-3xl">energy_savings_leaf</span>
+            <h2 class="text-base md:text-lg font-bold leading-tight tracking-tight">viveroonline.com.co</h2>
+        </a>
+        <a data-vo="header-action" href="/auth/ingresar" class="inline-flex items-center gap-1 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:text-primary transition-colors px-4 py-2 rounded-full whitespace-nowrap">
+            Iniciar Sesión
+        </a>
+    </div>
+    <div class="max-w-3xl mx-auto px-4 pb-3">
+        <a href="/marketplace" class="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-primary transition-colors">
+            <span class="material-symbols-outlined text-base">arrow_back</span>
+            Seguir comprando
+        </a>
+    </div>
+</header>
+
+<main class="max-w-3xl mx-auto px-4 py-6">
+
+    <!-- Título -->
+    <div class="mb-6 flex items-baseline justify-between gap-3">
+        <div>
+            <h1 class="text-2xl md:text-3xl font-black tracking-tight">Mi carrito</h1>
+            <p data-vo="items-count" class="text-slate-600 dark:text-slate-400 text-sm mt-1"></p>
+        </div>
+        <button data-vo="btn-vaciar" class="hidden text-xs text-red-500 hover:text-red-700 font-semibold inline-flex items-center gap-1">
+            <span class="material-symbols-outlined text-sm">delete_sweep</span>
+            Vaciar carrito
+        </button>
+    </div>
+
+    <!-- ═══════════ Estado A: VACÍO ═══════════ -->
+    <div data-vo="state-empty" class="hidden text-center py-16">
+        <span class="material-symbols-outlined text-7xl text-slate-300 dark:text-slate-700">shopping_cart</span>
+        <p class="text-slate-700 dark:text-slate-200 mt-4 text-xl font-bold">Tu carrito está vacío</p>
+        <p class="text-slate-500 text-sm mt-1 mb-6">Explorá el marketplace y encontrá plantas para tu casa u oficina.</p>
+        <a href="/marketplace" class="inline-flex items-center gap-2 px-6 py-3 bg-primary hover:bg-primary/90 text-white rounded-full font-bold shadow-lg shadow-primary/20 transition">
+            <span class="material-symbols-outlined">storefront</span>
+            Explorar marketplace
+        </a>
+    </div>
+
+    <!-- ═══════════ Estado B: CON ITEMS ═══════════ -->
+    <div data-vo="state-items" class="hidden space-y-4">
+
+        <!-- Banner límite total (aparece si total > 120 o cerca) -->
+        <div data-vo="banner-limite" class="hidden bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4">
+            <div class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-amber-600 text-xl mt-0.5">warning</span>
+                <div class="flex-1">
+                    <p class="text-sm font-bold text-amber-900 dark:text-amber-100">
+                        <span data-vo="banner-limite-msg">Excediste el límite de 120 plantas por compra</span>
+                    </p>
+                    <p class="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                        Ajustá las cantidades o
+                        <a href="/auth/registro?tipo=empresa" class="font-semibold hover:underline">
+                            registrate como empresa para pedidos más grandes →
+                        </a>
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lista de items renderizada por JS -->
+        <div data-vo="items-list" class="space-y-3"></div>
+
+        <!-- Resumen -->
+        <div class="bg-white dark:bg-slate-800 rounded-xl border border-primary/10 shadow-sm p-5 space-y-3">
+            <div class="flex justify-between text-sm text-slate-600 dark:text-slate-400">
+                <span>Subtotal plantas (<span data-vo="resumen-count"></span>)</span>
+                <span data-vo="resumen-subtotal" class="font-semibold text-slate-800 dark:text-slate-100"></span>
+            </div>
+            <div class="flex justify-between text-sm text-slate-500">
+                <span class="flex items-center gap-1">
+                    <span class="material-symbols-outlined text-base">local_shipping</span>
+                    Flete
+                </span>
+                <span class="italic">Se calcula en el siguiente paso</span>
+            </div>
+            <div class="pt-3 border-t border-slate-200 dark:border-slate-700 flex justify-between items-baseline">
+                <span class="font-bold text-lg">Total</span>
+                <span data-vo="resumen-total" class="text-2xl font-black text-primary"></span>
+            </div>
+        </div>
+
+        <!-- Aviso stock 15 min -->
+        <div class="bg-primary/5 border border-primary/10 rounded-xl p-4">
+            <div class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-primary text-lg mt-0.5">schedule</span>
+                <div class="flex-1">
+                    <p class="text-xs font-semibold text-primary">Reserva de stock 15 minutos</p>
+                    <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                        Cuando confirmes el pedido, reservamos tu stock por 15 minutos para que completes el pago tranquila. Si no pagás en ese tiempo, el stock vuelve a estar disponible.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Aviso empresa (siempre visible como upsell suave) -->
+        <p class="text-center text-xs text-slate-500 pt-2">
+            ¿Necesitás más de 10 unidades por producto o 120 en total?
+            <a href="/auth/registro?tipo=empresa" class="text-primary font-semibold hover:underline">Registrate como empresa →</a>
+        </p>
+
+    </div>
+
+    <!-- ═══════════ Estado: LOGUEADO (no debería estar acá) ═══════════ -->
+    <div data-vo="state-logged" class="hidden text-center py-16">
+        <span class="material-symbols-outlined text-6xl text-primary">dashboard</span>
+        <p class="text-slate-700 dark:text-slate-200 mt-4 text-lg font-bold">Ya tenés cuenta</p>
+        <p class="text-slate-500 text-sm mt-1 mb-4">Como empresa registrada, usá el flujo de cotización desde el marketplace.</p>
+        <a href="/marketplace" class="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-full font-bold text-sm">
+            <span class="material-symbols-outlined text-base">storefront</span>
+            Ir al marketplace
+        </a>
+    </div>
+
+</main>
+
+<!-- ═══════════ Sticky bottom CTA ═══════════ -->
+<div data-vo="cta-bar" class="hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 p-4 z-40">
+    <div class="max-w-3xl mx-auto">
+        <a data-vo="cta-pagar"
+           href="/checkout-guest"
+           class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-black text-lg py-4 rounded-full flex items-center justify-center gap-3 shadow-lg shadow-emerald-600/30 transition active:scale-95">
+            <span class="material-symbols-outlined text-2xl">credit_card</span>
+            Continuar al pago · <span data-vo="cta-total"></span>
+        </a>
+        <p class="text-center text-xs text-slate-400 mt-2">🔒 Datos protegidos · Producto perecedero — te lo explicamos en el siguiente paso</p>
+    </div>
+</div>
+
+<script src="/static/js/vivero.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════════════════
+// FASE 10.1 — Carrito guest editable con localStorage
+//
+// Sin backend — todos los cambios (add/edit/remove) suceden en localStorage.
+// El backend valida stock y crea el pedido en Fase 10.2 y 10.3.
+//
+// Comparte formato de carrito con marketplace.html y marketplace_detalle.html:
+//   localStorage.vivero_guest_cart = JSON.stringify([{
+//     inventario_id, cantidad, nombre, precio_comprador_unitario,
+//     foto_ia_url, nombre_vivero
+//   }])
+// ═══════════════════════════════════════════════════════════════════
+
+const CART_KEY = 'vivero_guest_cart';
+const LIMITE_UNIDADES_PRODUCTO = 10;
+const LIMITE_TOTAL_PLANTAS = 120;
+
+function cartRead() {
+    try {
+        const raw = localStorage.getItem(CART_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+}
+
+function cartWrite(items) {
+    try { localStorage.setItem(CART_KEY, JSON.stringify(items)); }
+    catch (e) { console.error('No se pudo guardar carrito:', e); }
+}
+
+function cartClear() {
+    try { localStorage.removeItem(CART_KEY); }
+    catch (e) { console.error('No se pudo vaciar carrito:', e); }
+}
+
+function cartTotalItems(items) {
+    return (items || cartRead()).reduce((sum, it) => sum + (it.cantidad || 0), 0);
+}
+
+function cartTotalCOP(items) {
+    return (items || cartRead()).reduce(
+        (sum, it) => sum + ((it.precio_comprador_unitario || 0) * (it.cantidad || 0)),
+        0
+    );
+}
+
+function escapeHTML(s) {
+    if (s === null || s === undefined) return '';
+    return String(s).replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[c]);
+}
+
+(async function init() {
+    const $ = (sel) => document.querySelector(sel);
+
+    // ─── Detectar sesión (si está logueada, redirigir a marketplace B2B) ───
+    let me = null;
+    if (VO.getToken && VO.getToken()) {
+        try { me = await VO.me(); } catch { me = null; }
+    }
+
+    // Si está logueado, mostrar estado especial
+    if (me) {
+        // Header apunta al panel
+        const panelPath = me.rol === 'viverista' ? '/viverista'
+                       : me.rol === 'comprador' ? '/comprador'
+                       : me.rol === 'admin' ? '/admin'
+                       : '/';
+        const headerAction = $('[data-vo="header-action"]');
+        headerAction.href = panelPath;
+        headerAction.innerHTML = '<span class="material-symbols-outlined text-base">dashboard</span> Mi panel';
+
+        $('[data-vo="state-logged"]').classList.remove('hidden');
+        $('[data-vo="items-count"]').textContent = '';
+        return;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // Estado del carrito guest
+    // ═══════════════════════════════════════════════════════════
+
+    function renderCarrito() {
+        const items = cartRead();
+        const totalItems = cartTotalItems(items);
+        const totalCOP = cartTotalCOP(items);
+
+        // ── Contador arriba ──
+        const countEl = $('[data-vo="items-count"]');
+        if (items.length === 0) {
+            countEl.textContent = '';
+        } else {
+            countEl.textContent = totalItems === 1
+                ? '1 planta'
+                : `${totalItems} plantas · ${items.length} producto${items.length === 1 ? '' : 's'}`;
+        }
+
+        // ── Botón "Vaciar carrito" ──
+        const btnVaciar = $('[data-vo="btn-vaciar"]');
+        if (items.length > 0) btnVaciar.classList.remove('hidden');
+        else btnVaciar.classList.add('hidden');
+
+        // ── Estados A o B ──
+        const stateEmpty = $('[data-vo="state-empty"]');
+        const stateItems = $('[data-vo="state-items"]');
+        const ctaBar = $('[data-vo="cta-bar"]');
+
+        if (items.length === 0) {
+            stateEmpty.classList.remove('hidden');
+            stateItems.classList.add('hidden');
+            ctaBar.classList.add('hidden');
+            return;
+        }
+
+        stateEmpty.classList.add('hidden');
+        stateItems.classList.remove('hidden');
+        ctaBar.classList.remove('hidden');
+
+        // ── Banner límite total ──
+        const banner = $('[data-vo="banner-limite"]');
+        if (totalItems > LIMITE_TOTAL_PLANTAS) {
+            $('[data-vo="banner-limite-msg"]').textContent =
+                `Excediste el límite de ${LIMITE_TOTAL_PLANTAS} plantas por compra (tenés ${totalItems})`;
+            banner.classList.remove('hidden');
+        } else {
+            banner.classList.add('hidden');
+        }
+
+        // ── Lista de items ──
+        const listEl = $('[data-vo="items-list"]');
+        listEl.innerHTML = items.map(it => renderItemCard(it)).join('');
+
+        // Wire eventos por item
+        listEl.querySelectorAll('[data-vo="item-card"]').forEach(card => {
+            const invId = parseInt(card.dataset.inventarioId, 10);
+            card.querySelector('[data-vo="item-menos"]').addEventListener('click', () => cambiarCantidad(invId, -1));
+            card.querySelector('[data-vo="item-mas"]').addEventListener('click', () => cambiarCantidad(invId, +1));
+            card.querySelector('[data-vo="item-cantidad"]').addEventListener('input', (e) => {
+                const nueva = parseInt(e.target.value, 10);
+                if (!isNaN(nueva)) actualizarCantidad(invId, nueva);
+            });
+            card.querySelector('[data-vo="item-eliminar"]').addEventListener('click', () => eliminarItem(invId));
+        });
+
+        // ── Resumen ──
+        $('[data-vo="resumen-count"]').textContent = totalItems === 1 ? '1 planta' : `${totalItems} plantas`;
+        $('[data-vo="resumen-subtotal"]').textContent = VO.formatCOPFull(totalCOP);
+        $('[data-vo="resumen-total"]').textContent = VO.formatCOPFull(totalCOP);
+
+        // ── CTA sticky ──
+        $('[data-vo="cta-total"]').textContent = VO.formatCOPFull(totalCOP);
+        const ctaBtn = $('[data-vo="cta-pagar"]');
+        if (totalItems > LIMITE_TOTAL_PLANTAS) {
+            ctaBtn.classList.add('opacity-50', 'pointer-events-none');
+            ctaBtn.setAttribute('aria-disabled', 'true');
+        } else {
+            ctaBtn.classList.remove('opacity-50', 'pointer-events-none');
+            ctaBtn.removeAttribute('aria-disabled');
+        }
+    }
+
+    function renderItemCard(it) {
+        const foto = it.foto_ia_url
+            ? `<img src="${escapeHTML(it.foto_ia_url)}" alt="${escapeHTML(it.nombre)}" class="w-full h-full object-cover" onerror="this.style.display='none'">`
+            : `<span class="material-symbols-outlined text-3xl text-primary/40">eco</span>`;
+        const subtotal = (it.precio_comprador_unitario || 0) * (it.cantidad || 0);
+
+        return `
+            <div data-vo="item-card" data-inventario-id="${it.inventario_id}"
+                 class="bg-white dark:bg-slate-800 rounded-xl border border-primary/10 shadow-sm p-4 flex gap-4">
+                <div class="w-20 h-20 rounded-lg bg-primary/5 flex items-center justify-center overflow-hidden flex-shrink-0">
+                    ${foto}
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex justify-between items-start gap-2">
+                        <div class="min-w-0 flex-1">
+                            <h3 class="font-bold text-sm truncate">${escapeHTML(it.nombre)}</h3>
+                            <p class="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+                                <span class="material-symbols-outlined text-sm">storefront</span>
+                                <span class="truncate">${escapeHTML(it.nombre_vivero || 'Vivero')}</span>
+                            </p>
+                            <p class="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                                ${VO.formatCOPFull(it.precio_comprador_unitario || 0)} c/u
+                            </p>
+                        </div>
+                        <button data-vo="item-eliminar" class="text-slate-400 hover:text-red-500 transition-colors p-1 flex-shrink-0" title="Quitar del carrito">
+                            <span class="material-symbols-outlined">close</span>
+                        </button>
+                    </div>
+                    <div class="flex items-center justify-between mt-3 gap-2">
+                        <div class="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-700 rounded-full p-1">
+                            <button data-vo="item-menos" class="w-7 h-7 rounded-full bg-white dark:bg-slate-600 flex items-center justify-center hover:bg-slate-50 shadow-sm">
+                                <span class="material-symbols-outlined text-base">remove</span>
+                            </button>
+                            <input data-vo="item-cantidad" type="number" min="1" max="${LIMITE_UNIDADES_PRODUCTO}"
+                                   value="${it.cantidad}"
+                                   class="w-12 text-center font-bold bg-transparent border-none focus:outline-none">
+                            <button data-vo="item-mas" class="w-7 h-7 rounded-full bg-white dark:bg-slate-600 flex items-center justify-center hover:bg-slate-50 shadow-sm">
+                                <span class="material-symbols-outlined text-base">add</span>
+                            </button>
+                        </div>
+                        <span class="font-black text-primary whitespace-nowrap">${VO.formatCOPFull(subtotal)}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    // ═══════════════════════════════════════════════════════════
+    // Acciones
+    // ═══════════════════════════════════════════════════════════
+
+    function cambiarCantidad(inventario_id, delta) {
+        const items = cartRead();
+        const idx = items.findIndex(x => x.inventario_id === inventario_id);
+        if (idx < 0) return;
+        const nueva = Math.max(1, (items[idx].cantidad || 0) + delta);
+        actualizarCantidad(inventario_id, nueva);
+    }
+
+    function actualizarCantidad(inventario_id, nuevaCantidad) {
+        if (nuevaCantidad < 1) nuevaCantidad = 1;
+        if (nuevaCantidad > LIMITE_UNIDADES_PRODUCTO) {
+            VO.showToast(`Máximo ${LIMITE_UNIDADES_PRODUCTO} unidades por producto`, 'warning');
+            nuevaCantidad = LIMITE_UNIDADES_PRODUCTO;
+        }
+        const items = cartRead();
+        const idx = items.findIndex(x => x.inventario_id === inventario_id);
+        if (idx < 0) return;
+        items[idx].cantidad = nuevaCantidad;
+        cartWrite(items);
+        renderCarrito();
+    }
+
+    function eliminarItem(inventario_id) {
+        if (!confirm('¿Quitar este producto del carrito?')) return;
+        const items = cartRead().filter(x => x.inventario_id !== inventario_id);
+        cartWrite(items);
+        VO.showToast('Producto quitado del carrito', 'success');
+        renderCarrito();
+    }
+
+    function vaciarCarrito() {
+        if (!confirm('¿Vaciar todo el carrito?\n\nEsta acción no se puede deshacer.')) return;
+        cartClear();
+        VO.showToast('Carrito vacío', 'success');
+        renderCarrito();
+    }
+
+    // ─── Wire eventos globales ───
+    $('[data-vo="btn-vaciar"]').addEventListener('click', vaciarCarrito);
+
+    // Bloquear el link "Continuar al pago" si supera el límite
+    $('[data-vo="cta-pagar"]').addEventListener('click', (e) => {
+        const totalItems = cartTotalItems();
+        if (totalItems > LIMITE_TOTAL_PLANTAS) {
+            e.preventDefault();
+            VO.showToast(`Ajustá las cantidades — máximo ${LIMITE_TOTAL_PLANTAS} plantas por compra`, 'warning');
+        }
+    });
+
+    // Escuchar cambios en localStorage (por si se modifica en otra pestaña)
+    window.addEventListener('storage', (e) => {
+        if (e.key === CART_KEY) renderCarrito();
+    });
+
+    renderCarrito();
+})();
+</script>
+</body>
+</html>

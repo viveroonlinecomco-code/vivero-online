@@ -26,6 +26,7 @@ from app.routes import pages as pages_routes
 from app.routes.admin_ops import router as admin_ops_router
 from app.routes.admin_config import router as admin_config_router
 from app.routes.fintech import router as fintech_router
+from app.routes.checkout_guest import router as checkout_guest_router
 from app.routes.pedidos import router as pedidos_router
 from app.routes.suscripcion import router as suscripciones_router
 from app.services.google_ads_middleware import GoogleAdsMiddleware
@@ -132,6 +133,7 @@ app.include_router(auth_routes.router)
 app.include_router(catalogo_routes.router)
 app.include_router(viveros_routes.router)
 app.include_router(marketplace_routes.router)
+app.include_router(marketplace_routes.public_router)
 app.include_router(transacciones_routes.router)
 app.include_router(chat_routes.router)
 app.include_router(kpis_routes.router)
@@ -145,6 +147,7 @@ app.include_router(admin_ops_router)
 app.include_router(admin_config_router)
 app.include_router(fintech_router)
 app.include_router(pedidos_router)
+app.include_router(checkout_guest_router)
 app.include_router(onboarding_routes.router)
 # HTML pages (deben ir al final para no capturar /api/*)
 app.include_router(pages_routes.router)

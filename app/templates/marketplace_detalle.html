@@ -37,14 +37,14 @@
     body { min-height: max(884px, 100dvh); }
 </style>
 </head>
-<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 pb-32">
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 pb-40">
 
 <!-- Header sticky -->
 <header class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-primary/10">
     <div class="max-w-3xl mx-auto px-4 h-16 flex items-center justify-between gap-3">
         <a href="/" class="flex items-center gap-2 hover:opacity-80 transition-opacity">
             <span class="material-symbols-outlined text-primary text-3xl">energy_savings_leaf</span>
-            <h2 class="text-base md:text-lg font-bold leading-tight tracking-tight">ViveroOnline.com.co</h2>
+            <h2 class="text-base md:text-lg font-bold leading-tight tracking-tight">viveroonline.com.co</h2>
         </a>
         <a data-vo="header-action" href="/auth/ingresar" class="inline-flex items-center gap-1 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:text-primary transition-colors px-4 py-2 rounded-full whitespace-nowrap">
             Iniciar Sesión
@@ -128,43 +128,45 @@
             </div>
 
             <!-- Ubicación: solo para suscriptores -->
-<div data-vo="contacto-suscriptor" class="hidden mt-4 space-y-3">
-    <p data-vo="vivero-dir-text" class="hidden text-sm text-slate-600 dark:text-slate-400 flex items-center gap-1">
-        <span class="material-symbols-outlined text-base text-primary">place</span>
-        <span data-vo="vivero-dir-label"></span>
-    </p>
-    <a data-vo="vivero-mapa" href="#" target="_blank" rel="noopener noreferrer"
-        class="hidden items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-semibold hover:bg-primary/20 transition-colors">
-        <span class="material-symbols-outlined text-base">map</span>
-        Ver ubicación en mapa
-    </a>
-</div>
+            <div data-vo="contacto-suscriptor" class="hidden mt-4 space-y-3">
+                <p data-vo="vivero-dir-text" class="hidden text-sm text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                    <span class="material-symbols-outlined text-base text-primary">place</span>
+                    <span data-vo="vivero-dir-label"></span>
+                </p>
+                <a data-vo="vivero-mapa" href="#" target="_blank" rel="noopener noreferrer"
+                    class="hidden items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-semibold hover:bg-primary/20 transition-colors">
+                    <span class="material-symbols-outlined text-base">map</span>
+                    Ver ubicación en mapa
+                </a>
+            </div>
 
-<!-- Bloqueado: logueado sin suscripción -->
-<div data-vo="contacto-sin-suscripcion" class="hidden bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 items-start gap-3 mt-4">
-    <span class="material-symbols-outlined text-amber-600 text-2xl">lock</span>
-    <div class="flex-1">
-        <p class="text-sm font-semibold text-amber-900 dark:text-amber-100">Ubicación disponible en el Plan Inteligencia</p>
-        <p class="text-xs text-amber-700 dark:text-amber-300 mt-1">Con tu suscripción accedés a la dirección exacta y la ubicación en mapa del vivero.</p>
-        <a href="/mi-cuenta/suscripcion" class="inline-flex items-center gap-1 text-amber-800 dark:text-amber-200 font-bold text-sm mt-2 hover:underline">
-            Ver planes
-            <span class="material-symbols-outlined text-base">arrow_forward</span>
-        </a>
-    </div>
-</div>
+            <!-- Bloqueado: logueado sin suscripción -->
+            <div data-vo="contacto-sin-suscripcion" class="hidden bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 items-start gap-3 mt-4">
+                <span class="material-symbols-outlined text-amber-600 text-2xl">lock</span>
+                <div class="flex-1">
+                    <p class="text-sm font-semibold text-amber-900 dark:text-amber-100">Ubicación disponible en el Plan Inteligencia</p>
+                    <p class="text-xs text-amber-700 dark:text-amber-300 mt-1">Con tu suscripción accedés a la dirección exacta y la ubicación en mapa del vivero.</p>
+                    <a href="/mi-cuenta/suscripcion" class="inline-flex items-center gap-1 text-amber-800 dark:text-amber-200 font-bold text-sm mt-2 hover:underline">
+                        Ver planes
+                        <span class="material-symbols-outlined text-base">arrow_forward</span>
+                    </a>
+                </div>
+            </div>
 
-<!-- Anon: no logueado -->
-<div data-vo="contacto-anonimo" class="hidden bg-primary/5 dark:bg-primary/10 rounded-lg p-4 items-start gap-3 mt-4">
-    <span class="material-symbols-outlined text-primary text-2xl">lock</span>
-    <div class="flex-1">
-        <p class="text-sm font-semibold">Iniciá sesión para acceder a la ubicación</p>
-        <p class="text-xs text-slate-500 mt-1">La ubicación del vivero requiere cuenta y suscripción al Plan Inteligencia.</p>
-        <a href="/auth/ingresar" class="inline-flex items-center gap-1 text-primary font-bold text-sm mt-2 hover:underline">
-            Iniciar Sesión
-            <span class="material-symbols-outlined text-base">arrow_forward</span>
-        </a>
-    </div>
-</div>
+            <!-- Anon: no logueado -->
+            <div data-vo="contacto-anonimo" class="hidden bg-primary/5 dark:bg-primary/10 rounded-lg p-4 items-start gap-3 mt-4">
+                <span class="material-symbols-outlined text-primary text-2xl">lock</span>
+                <div class="flex-1">
+                    <p class="text-sm font-semibold">Iniciá sesión para acceder a la ubicación</p>
+                    <p class="text-xs text-slate-500 mt-1">La ubicación exacta del vivero requiere cuenta y Plan Inteligencia.</p>
+                    <a href="/auth/ingresar" class="inline-flex items-center gap-1 text-primary font-bold text-sm mt-2 hover:underline">
+                        Iniciar Sesión
+                        <span class="material-symbols-outlined text-base">arrow_forward</span>
+                    </a>
+                </div>
+            </div>
+        </section>
+
         <!-- Información botánica -->
         <section data-vo="seccion-botanica" class="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
             <h3 class="font-bold text-sm text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-1">
@@ -222,27 +224,45 @@
 
 </main>
 
-<!-- Sticky bottom CTA -->
+<!-- ═══════════ Widget carrito guest (sticky arriba del CTA) ═══════════ -->
+<div data-vo="cart-widget" class="hidden fixed bottom-24 left-0 right-0 z-40 px-4 pointer-events-none">
+    <div class="max-w-3xl mx-auto pointer-events-auto">
+        <a href="/carrito-guest" class="flex items-center justify-between bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-3 rounded-full shadow-lg shadow-emerald-600/40 transition">
+            <span class="flex items-center gap-2 font-semibold text-sm">
+                <span class="material-symbols-outlined">shopping_cart</span>
+                <span>Ver carrito · <span data-vo="cart-widget-count"></span></span>
+            </span>
+            <span class="font-black text-base" data-vo="cart-widget-total"></span>
+        </a>
+    </div>
+</div>
+
+<!-- ═══════════ Sticky bottom CTA ═══════════ -->
 <div data-vo="cta-bar" class="hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-background-dark/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 p-4 z-40">
     <div class="max-w-3xl mx-auto">
+        <!-- B2B logueado: cotización -->
         <button data-vo="cta-cotizar" class="hidden w-full bg-primary text-white py-4 rounded-full font-bold text-lg items-center justify-center gap-2 hover:opacity-90 transition-opacity">
             <span class="material-symbols-outlined">request_quote</span>
             Solicitar Cotización
         </button>
-        <a data-vo="cta-login" href="/auth/onboarding?rol=comprador" class="hidden w-full bg-primary text-white py-4 rounded-full font-bold text-lg items-center justify-center gap-2 hover:opacity-90 transition-opacity">
-            <span class="material-symbols-outlined">request_quote</span>
-            Cotizar
-        </a>
+        <!-- Guest B2C: comprar ahora -->
+        <button data-vo="cta-comprar-guest" class="hidden w-full bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-full font-black text-lg items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition">
+            <span class="material-symbols-outlined text-2xl">shopping_bag</span>
+            Comprar ahora
+        </button>
         <div data-vo="cta-otro-rol" class="hidden w-full text-center py-3 text-sm text-slate-500">
             Solo los compradores pueden cotizar productos.
         </div>
+        <!-- Info B2B para guest -->
+        <p data-vo="cta-guest-empresa" class="hidden text-center text-xs text-slate-500 mt-2">
+            ¿Necesitás más de 10 unidades? <a href="/auth/registro?tipo=empresa" class="text-primary font-semibold hover:underline">Registrate como empresa</a>
+        </p>
     </div>
 </div>
 
-<!-- ═══════════ MODAL SELECTOR DE PROYECTO ═══════════ -->
+<!-- ═══════════ MODAL B2B: SELECTOR DE PROYECTO ═══════════ -->
 <div data-vo="modal-cotizar" class="hidden fixed inset-0 z-[60] bg-black/50 items-center justify-center p-4">
     <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden">
-        <!-- Header del modal -->
         <div class="p-5 border-b border-slate-100 dark:border-slate-700 flex items-start justify-between gap-2">
             <div class="min-w-0 flex-1">
                 <h3 class="font-bold text-lg text-slate-800 dark:text-slate-100">Agregar al carrito</h3>
@@ -252,28 +272,19 @@
                 <span class="material-symbols-outlined">close</span>
             </button>
         </div>
-
-        <!-- Body del modal -->
         <div class="p-5 flex-1 overflow-y-auto space-y-5">
-            <!-- Cantidad -->
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">Cantidad</label>
                 <input data-vo="modal-cantidad" type="number" min="1" value="1"
                        class="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-primary">
                 <p data-vo="modal-stock-info" class="text-xs text-slate-500 mt-1"></p>
             </div>
-
-            <!-- Selector de proyecto -->
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">¿A qué proyecto agregar?</label>
-
-                <!-- Loading skeleton -->
                 <div data-vo="modal-proyectos-loading" class="space-y-2">
                     <div class="h-14 bg-slate-100 dark:bg-slate-700 rounded-lg animate-pulse"></div>
                     <div class="h-14 bg-slate-100 dark:bg-slate-700 rounded-lg animate-pulse"></div>
                 </div>
-
-                <!-- Selector con proyectos -->
                 <div data-vo="modal-proyectos-selector" class="hidden space-y-2">
                     <div data-vo="modal-proyectos-list" class="space-y-2"></div>
                     <button data-vo="modal-opcion-nuevo"
@@ -282,8 +293,6 @@
                         Crear nuevo proyecto
                     </button>
                 </div>
-
-                <!-- Input nombre nuevo proyecto -->
                 <div data-vo="modal-nombre-nuevo-wrap" class="hidden mt-3 p-3 bg-primary/5 dark:bg-primary/10 rounded-lg">
                     <label class="block text-xs font-semibold text-primary mb-1">Nombre del proyecto</label>
                     <input data-vo="modal-nombre-nuevo" type="text" maxlength="200"
@@ -296,8 +305,6 @@
                 </div>
             </div>
         </div>
-
-        <!-- Footer del modal -->
         <div class="p-5 border-t border-slate-100 dark:border-slate-700">
             <button data-vo="modal-confirmar" disabled
                     class="w-full bg-primary hover:bg-primary/90 disabled:bg-slate-300 dark:disabled:bg-slate-600 disabled:cursor-not-allowed text-white font-bold py-3 rounded-full flex items-center justify-center gap-2 transition">
@@ -308,8 +315,127 @@
     </div>
 </div>
 
+<!-- ═══════════ MODAL GUEST: AGREGAR AL CARRITO B2C ═══════════ -->
+<div data-vo="modal-guest" class="hidden fixed inset-0 z-[60] bg-black/50 items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-md flex flex-col overflow-hidden">
+        <div class="p-5 border-b border-slate-100 dark:border-slate-700 flex items-start justify-between gap-2">
+            <div class="min-w-0 flex-1">
+                <h3 class="font-bold text-lg text-slate-800 dark:text-slate-100">Agregar al carrito</h3>
+                <p data-vo="modal-guest-planta" class="text-sm text-slate-500 mt-1 truncate"></p>
+            </div>
+            <button data-vo="modal-guest-cerrar" class="text-slate-400 hover:text-slate-600 p-1 flex-shrink-0">
+                <span class="material-symbols-outlined">close</span>
+            </button>
+        </div>
+        <div class="p-5 space-y-4">
+            <div>
+                <label class="block text-sm font-semibold text-slate-700 mb-1">Cantidad</label>
+                <div class="flex items-center gap-3">
+                    <button data-vo="modal-guest-menos" class="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
+                        <span class="material-symbols-outlined">remove</span>
+                    </button>
+                    <input data-vo="modal-guest-cantidad" type="number" min="1" max="10" value="1"
+                           class="flex-1 text-center text-xl font-bold px-3 py-2 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    <button data-vo="modal-guest-mas" class="w-10 h-10 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 flex items-center justify-center">
+                        <span class="material-symbols-outlined">add</span>
+                    </button>
+                </div>
+                <p data-vo="modal-guest-info" class="text-xs text-slate-500 mt-2">Máx 10 unidades por producto</p>
+            </div>
+            <!-- Resumen precio -->
+            <div class="bg-slate-50 dark:bg-slate-900/50 rounded-lg p-4 flex justify-between items-center">
+                <span class="text-sm font-semibold">Subtotal</span>
+                <span data-vo="modal-guest-subtotal" class="text-xl font-black text-emerald-600"></span>
+            </div>
+            <!-- Alerta límite -->
+            <div data-vo="modal-guest-alerta" class="hidden bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p class="text-xs font-semibold text-amber-900 flex items-start gap-2">
+                    <span class="material-symbols-outlined text-sm mt-0.5">info</span>
+                    <span data-vo="modal-guest-alerta-msg"></span>
+                </p>
+                <p class="text-xs text-amber-700 mt-2">
+                    <a href="/auth/registro?tipo=empresa" class="font-semibold hover:underline">
+                        Registrate como empresa para pedidos más grandes →
+                    </a>
+                </p>
+            </div>
+        </div>
+        <div class="p-5 border-t border-slate-100 dark:border-slate-700">
+            <button data-vo="modal-guest-confirmar"
+                    class="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-black py-3 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition">
+                <span class="material-symbols-outlined">shopping_cart</span>
+                Agregar al carrito
+            </button>
+        </div>
+    </div>
+</div>
+
 <script src="/static/js/vivero.js"></script>
 <script>
+// ═══════════════════════════════════════════════════════════════════
+// FASE 8 — Detalle marketplace con soporte guest B2C
+//
+// Cambios respecto al detalle B2B:
+// - Detecta si usuario está logueado o no (guest)
+// - Guest: fetch a /api/public/marketplace/item/{id}
+// - Guest: CTA "COMPRAR AHORA" + modal simple (cantidad + carrito localStorage)
+// - Guest: widget carrito flotante si hay items en localStorage
+// - Guest: validaciones límites 10 por producto, 120 total
+// - B2B: sin cambios (modal cotización sigue igual)
+//
+// FIX Fase 4: eliminado fallback "× 1.18" del precio_comprador
+// El backend siempre garantiza precio_comprador correcto vía motor matricial
+// ═══════════════════════════════════════════════════════════════════
+
+// ── Utilidades carrito guest ─────────────────────────────────────
+const CART_KEY = 'vivero_guest_cart';
+const LIMITE_UNIDADES_PRODUCTO = 10;
+const LIMITE_TOTAL_PLANTAS = 120;
+
+function cartRead() {
+    try {
+        const raw = localStorage.getItem(CART_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+}
+
+function cartWrite(items) {
+    try { localStorage.setItem(CART_KEY, JSON.stringify(items)); }
+    catch (e) { console.error('No se pudo guardar carrito:', e); }
+}
+
+function cartTotalItems() {
+    return cartRead().reduce((sum, it) => sum + (it.cantidad || 0), 0);
+}
+
+function cartTotalCOP() {
+    return cartRead().reduce((sum, it) => sum + ((it.precio_comprador_unitario || 0) * (it.cantidad || 0)), 0);
+}
+
+function cartAddOrUpdate(inv_id, cantidad, nombre, precio_comprador_unitario, foto_ia_url, nombre_vivero) {
+    const items = cartRead();
+    const idx = items.findIndex(it => it.inventario_id === inv_id);
+    if (idx >= 0) {
+        items[idx].cantidad = cantidad; // reemplaza (no suma) — el modal ya validó límite
+    } else {
+        items.push({
+            inventario_id: inv_id,
+            cantidad,
+            nombre,
+            precio_comprador_unitario,
+            foto_ia_url,
+            nombre_vivero,
+        });
+    }
+    cartWrite(items);
+}
+
+function cartGetCantidadItem(inv_id) {
+    const items = cartRead();
+    const it = items.find(x => x.inventario_id === inv_id);
+    return it ? (it.cantidad || 0) : 0;
+}
+
 (async function init() {
     const $ = (sel) => document.querySelector(sel);
 
@@ -320,7 +446,7 @@
         $('[data-vo="state-notfound"]').classList.remove('hidden');
         return;
     }
-    const inventarioId = match[1];
+    const inventarioId = parseInt(match[1], 10);
 
     // ─── Detectar sesión ───
     let me = null;
@@ -372,9 +498,21 @@
     }
     if (!item) { setState('notfound'); return; }
 
-    // ─── Render ───
-    const planta = item.plantas || {};
-    const vivero = item.viveros || {};
+    // ─── Normalización de datos según endpoint (B2B vs guest) ───
+    // B2B: item.plantas.* / item.viveros.*
+    // Guest: item.nombre_comun / item.nombre_vivero directamente (backend sanitiza)
+    const planta = item.plantas || {
+        nombre_comun: item.nombre_comun,
+        nombre_cientifico: item.nombre_cientifico,
+        familia_botanica: item.familia_botanica,
+        requerimientos_ia: item.requerimientos_ia,
+        clima_ideal: item.clima_ideal,
+    };
+    const vivero = item.viveros || {
+        nombre_vivero: item.nombre_vivero,
+        ciudad: item.municipio,
+        // Guest: latitud/longitud/dirección/historia/foto NO vienen
+    };
 
     // Foto de la planta
     if (item.foto_ia_url) {
@@ -392,9 +530,10 @@
         $('[data-vo="cientifico"]').classList.add('hidden');
     }
 
-    // Precio
-    const precioComprador = item.precio_comprador || Math.round((item.precio_mayorista || 0) * 1.18);
+    // ── FIX Fase 4: sin fallback × 1.18. Backend garantiza precio_comprador ──
+    const precioComprador = item.precio_comprador || 0;
     $('[data-vo="precio"]').textContent = VO.formatCOPFull(precioComprador);
+    // precio_detal solo aparece en B2B
     if (item.precio_detal) {
         const det = $('[data-vo="precio-detal"]');
         det.textContent = `Detal: ${VO.formatCOPFull(item.precio_detal)}`;
@@ -412,12 +551,12 @@
     $('[data-vo="vivero-nombre"]').textContent = vivero.nombre_vivero || 'Vivero';
     $('[data-vo="vivero-ciudad"]').textContent = vivero.ciudad ? `📍 ${vivero.ciudad}` : '';
 
+    // Foto vivero, galería, dirección, historia — solo B2B
     if (vivero.foto_url) {
         const fotoVivero = $('[data-vo="vivero-foto"]');
         fotoVivero.style.backgroundImage = `url(${JSON.stringify(vivero.foto_url)})`;
         fotoVivero.classList.remove('hidden');
     }
-
     if (vivero.fotos_galeria && Array.isArray(vivero.fotos_galeria) && vivero.fotos_galeria.length > 0) {
         const galeria = $('[data-vo="vivero-galeria"]');
         galeria.innerHTML = '';
@@ -429,47 +568,43 @@
         });
         galeria.classList.remove('hidden');
     }
-
     if (vivero.direccion) {
         $('[data-vo="vivero-direccion-text"]').textContent = vivero.direccion;
         const dir = $('[data-vo="vivero-direccion"]');
         dir.classList.remove('hidden');
         dir.classList.add('flex');
     }
-
     if (vivero.historia) {
         $('[data-vo="vivero-historia-row"]').classList.remove('hidden');
         $('[data-vo="vivero-historia"]').textContent = vivero.historia;
     }
 
-   // Contactos según sesión (teléfono/WhatsApp nunca se muestran)
-if (me) {
-    if (item.tiene_suscripcion) {
-        const box = $('[data-vo="contacto-suscriptor"]');
-        box.classList.remove('hidden');
-
-        if (vivero.direccion) {
-            const dirEl = $('[data-vo="vivero-dir-text"]');
-            $('[data-vo="vivero-dir-label"]').textContent = vivero.direccion;
-            dirEl.classList.remove('hidden');
-            dirEl.classList.add('flex');
-        }
-        if (vivero.latitud && vivero.longitud) {
-            const mapa = $('[data-vo="vivero-mapa"]');
-            mapa.href = `https://www.google.com/maps/search/?api=1&query=${vivero.latitud},${vivero.longitud}`;
-            mapa.classList.remove('hidden');
-            mapa.classList.add('inline-flex');
+    // Contactos según sesión (teléfono/WhatsApp nunca se muestran)
+    if (me) {
+        if (item.tiene_suscripcion) {
+            const box = $('[data-vo="contacto-suscriptor"]');
+            box.classList.remove('hidden');
+            if (vivero.direccion) {
+                const dirEl = $('[data-vo="vivero-dir-text"]');
+                $('[data-vo="vivero-dir-label"]').textContent = vivero.direccion;
+                dirEl.classList.remove('hidden');
+                dirEl.classList.add('flex');
+            }
+            if (vivero.latitud && vivero.longitud) {
+                const mapa = $('[data-vo="vivero-mapa"]');
+                mapa.href = `https://www.google.com/maps/search/?api=1&query=${vivero.latitud},${vivero.longitud}`;
+                mapa.classList.remove('hidden');
+                mapa.classList.add('inline-flex');
+            }
+        } else {
+            const lock = $('[data-vo="contacto-sin-suscripcion"]');
+            lock.classList.remove('hidden');
+            lock.classList.add('flex');
         }
     } else {
-        const lock = $('[data-vo="contacto-sin-suscripcion"]');
-        lock.classList.remove('hidden');
-        lock.classList.add('flex');
+        // Guest — NO mostrar sección de ubicación (evitar contacto directo)
+        // Se oculta completamente para no confundir al comprador B2C
     }
-} else {
-    const lock = $('[data-vo="contacto-anonimo"]');
-    lock.classList.remove('hidden');
-    lock.classList.add('flex');
-}
 
     // Botánica
     if (planta.familia_botanica) {
@@ -488,23 +623,34 @@ if (me) {
         $('[data-vo="seccion-botanica"]').classList.add('hidden');
     }
 
+    // Notas
     if (item.notas) {
         $('[data-vo="seccion-notas"]').classList.remove('hidden');
         $('[data-vo="notas"]').textContent = item.notas;
     }
 
     if (planta.nombre_comun) {
-        document.title = `${planta.nombre_comun} · ViveroOnline.com.co`;
+        document.title = `${planta.nombre_comun} · viveroonline.com.co`;
     }
 
     // ═══════════ CTA según rol ═══════════
     $('[data-vo="cta-bar"]').classList.remove('hidden');
 
     if (!me) {
-        const btn = $('[data-vo="cta-login"]');
+        // ── GUEST: botón COMPRAR AHORA (verde emerald) ──
+        const btn = $('[data-vo="cta-comprar-guest"]');
         btn.classList.remove('hidden');
         btn.classList.add('inline-flex');
+        btn.addEventListener('click', () => abrirModalGuest());
+        // Info empresa
+        $('[data-vo="cta-guest-empresa"]').classList.remove('hidden');
     } else if (me.rol === 'comprador') {
+        const btn = $('[data-vo="cta-cotizar"]');
+        btn.classList.remove('hidden');
+        btn.classList.add('inline-flex');
+        btn.addEventListener('click', () => abrirModalCotizar());
+    } else if (me.rol === 'admin') {
+        // Admin puede cotizar también
         const btn = $('[data-vo="cta-cotizar"]');
         btn.classList.remove('hidden');
         btn.classList.add('inline-flex');
@@ -515,19 +661,31 @@ if (me) {
 
     setState('content');
 
+    // ═══════════ Widget carrito (solo guest, si hay items) ═══════════
+    function actualizarCarritoWidget() {
+        if (me) return; // el widget solo aplica a guest
+        const items = cartRead();
+        const widget = $('[data-vo="cart-widget"]');
+        if (items.length === 0) {
+            widget.classList.add('hidden');
+            return;
+        }
+        const totalItems = cartTotalItems();
+        const totalCOP = cartTotalCOP();
+        $('[data-vo="cart-widget-count"]').textContent = totalItems === 1 ? '1 planta' : `${totalItems} plantas`;
+        $('[data-vo="cart-widget-total"]').textContent = VO.formatCOPFull(totalCOP);
+        widget.classList.remove('hidden');
+    }
+    actualizarCarritoWidget();
 
     // ═══════════════════════════════════════════════════════════
-    // MODAL: SELECTOR DE PROYECTO
+    // MODAL B2B: SELECTOR DE PROYECTO (sin cambios respecto al original)
     // ═══════════════════════════════════════════════════════════
 
-    // Estado: null | {cotizacion_id: int} | {nuevo: true}
     let selectedProyecto = null;
 
     async function abrirModalCotizar() {
-        // Header del modal: nombre de la planta
         $('[data-vo="modal-planta-nombre"]').textContent = planta.nombre_comun || 'Esta planta';
-
-        // Stock info + max
         const cantidadInput = $('[data-vo="modal-cantidad"]');
         cantidadInput.value = '1';
         if (stock > 0) {
@@ -537,24 +695,18 @@ if (me) {
             cantidadInput.disabled = true;
             $('[data-vo="modal-stock-info"]').textContent = 'Sin stock disponible';
         }
-
-        // Reset estado del modal
         selectedProyecto = null;
         $('[data-vo="modal-nombre-nuevo-wrap"]').classList.add('hidden');
         $('[data-vo="modal-nombre-nuevo"]').value = '';
         $('[data-vo="modal-confirmar-text"]').textContent = 'Agregar al proyecto';
         habilitarBotonConfirmar();
-
-        // Mostrar modal
         const modal = $('[data-vo="modal-cotizar"]');
         modal.classList.remove('hidden');
         modal.classList.add('flex');
-
-        // Cargar proyectos existentes
         await cargarProyectosModal();
     }
 
-    function cerrarModal() {
+    function cerrarModalB2B() {
         const modal = $('[data-vo="modal-cotizar"]');
         modal.classList.add('hidden');
         modal.classList.remove('flex');
@@ -564,14 +716,11 @@ if (me) {
         const loadingEl = $('[data-vo="modal-proyectos-loading"]');
         const selectorEl = $('[data-vo="modal-proyectos-selector"]');
         const listEl = $('[data-vo="modal-proyectos-list"]');
-
         loadingEl.classList.remove('hidden');
         selectorEl.classList.add('hidden');
-
         try {
             const data = await VO.api('/api/marketplace/cotizacion/proyectos');
             const borradores = (data.proyectos || []).filter(p => p.estado === 'borrador');
-
             if (borradores.length === 0) {
                 listEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-2">Aún no tenés proyectos. Creá el primero abajo.</p>';
             } else {
@@ -580,7 +729,6 @@ if (me) {
                     card.addEventListener('click', () => seleccionarProyecto(parseInt(card.dataset.cotizacionId, 10)));
                 });
             }
-
             loadingEl.classList.add('hidden');
             selectorEl.classList.remove('hidden');
         } catch (e) {
@@ -592,15 +740,15 @@ if (me) {
     }
 
     function renderProyectoCard(p) {
-        const nombre = p.nombre_proyecto
-            ? escapeHTML(p.nombre_proyecto)
+        const nombre = p.nombre_proyecto ? escapeHTML(p.nombre_proyecto)
             : '<span class="italic text-slate-400">Sin nombre</span>';
+        const total = p.total_comprador || p.total_estimado || 0;
         return `
             <button data-vo="modal-proyecto-card" data-cotizacion-id="${p.cotizacion_id}"
                     class="w-full text-left p-3 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-primary hover:bg-primary/5 transition flex justify-between items-center gap-2">
                 <div class="flex-1 min-w-0">
                     <p class="font-semibold text-sm text-slate-800 dark:text-slate-200 truncate">${nombre}</p>
-                    <p class="text-xs text-slate-500 mt-0.5">${p.num_items} unidades · ${VO.formatCOPFull(p.total_estimado)}</p>
+                    <p class="text-xs text-slate-500 mt-0.5">${p.num_items} unidades · ${VO.formatCOPFull(total)}</p>
                 </div>
                 <span class="material-symbols-outlined text-slate-400">chevron_right</span>
             </button>
@@ -609,12 +757,8 @@ if (me) {
 
     function seleccionarProyecto(cotizacion_id) {
         selectedProyecto = { cotizacion_id };
-
-        // Limpia el modo "crear nuevo" si estaba activo
         $('[data-vo="modal-nombre-nuevo-wrap"]').classList.add('hidden');
         $('[data-vo="modal-nombre-nuevo"]').value = '';
-
-        // Highlight visual de la card seleccionada
         document.querySelectorAll('[data-vo="modal-proyecto-card"]').forEach(card => {
             if (parseInt(card.dataset.cotizacionId, 10) === cotizacion_id) {
                 card.classList.add('border-primary', 'bg-primary/5', 'ring-2', 'ring-primary');
@@ -622,18 +766,14 @@ if (me) {
                 card.classList.remove('border-primary', 'bg-primary/5', 'ring-2', 'ring-primary');
             }
         });
-
         habilitarBotonConfirmar();
     }
 
     function activarModoNuevo() {
         selectedProyecto = { nuevo: true };
-
-        // Limpiar selección de cards
         document.querySelectorAll('[data-vo="modal-proyecto-card"]').forEach(card => {
             card.classList.remove('border-primary', 'bg-primary/5', 'ring-2', 'ring-primary');
         });
-
         $('[data-vo="modal-nombre-nuevo-wrap"]').classList.remove('hidden');
         $('[data-vo="modal-nombre-nuevo"]').focus();
         habilitarBotonConfirmar();
@@ -648,10 +788,7 @@ if (me) {
 
     function habilitarBotonConfirmar() {
         const btn = $('[data-vo="modal-confirmar"]');
-        if (!selectedProyecto) {
-            btn.disabled = true;
-            return;
-        }
+        if (!selectedProyecto) { btn.disabled = true; return; }
         if (selectedProyecto.nuevo) {
             const nombre = ($('[data-vo="modal-nombre-nuevo"]').value || '').trim();
             btn.disabled = !nombre;
@@ -660,50 +797,32 @@ if (me) {
         }
     }
 
-    async function confirmarAgregar() {
+    async function confirmarAgregarB2B() {
         const btn = $('[data-vo="modal-confirmar"]');
         const textEl = $('[data-vo="modal-confirmar-text"]');
         const cantidad = parseInt($('[data-vo="modal-cantidad"]').value, 10);
-
-        if (isNaN(cantidad) || cantidad < 1) {
-            VO.showToast('Cantidad inválida', 'error');
-            return;
-        }
-        if (stock > 0 && cantidad > stock) {
-            VO.showToast(`Solo hay ${stock} disponibles`, 'error');
-            return;
-        }
-
-        const payload = {
-            items: [{ inventario_id: parseInt(inventarioId, 10), cantidad }],
-        };
-
+        if (isNaN(cantidad) || cantidad < 1) { VO.showToast('Cantidad inválida', 'error'); return; }
+        if (stock > 0 && cantidad > stock) { VO.showToast(`Solo hay ${stock} disponibles`, 'error'); return; }
+        const payload = { items: [{ inventario_id: inventarioId, cantidad }] };
         if (selectedProyecto.nuevo) {
             const nombre = ($('[data-vo="modal-nombre-nuevo"]').value || '').trim();
             if (!nombre) { VO.showToast('Falta el nombre del proyecto', 'error'); return; }
             payload.nombre_proyecto = nombre;
         } else if (selectedProyecto.cotizacion_id) {
             payload.cotizacion_id = selectedProyecto.cotizacion_id;
-        } else {
-            VO.showToast('Elegí un proyecto o creá uno nuevo', 'error');
-            return;
-        }
-
+        } else { VO.showToast('Elegí un proyecto o creá uno nuevo', 'error'); return; }
         try {
             btn.disabled = true;
             textEl.textContent = 'Agregando...';
-
             const resp = await VO.api('/api/marketplace/cotizacion', {
                 method: 'POST',
                 body: JSON.stringify(payload),
             });
-
             const msgProyecto = selectedProyecto.nuevo
                 ? `Proyecto creado · Total ${VO.formatCOPFull(resp.total_cop)}`
                 : `Agregado al proyecto · Total ${VO.formatCOPFull(resp.total_cop)}`;
             VO.showToast(msgProyecto, 'success');
-
-            cerrarModal();
+            cerrarModalB2B();
             setTimeout(() => window.location.href = '/comprador', 1500);
         } catch (e) {
             VO.showToast(e.message || 'Error al agregar', 'error');
@@ -719,16 +838,134 @@ if (me) {
         })[c]);
     }
 
-    // ─── Wire events del modal ───
-    $('[data-vo="modal-cerrar"]').addEventListener('click', cerrarModal);
+    // ─── Wire events del modal B2B ───
+    $('[data-vo="modal-cerrar"]').addEventListener('click', cerrarModalB2B);
     $('[data-vo="modal-cotizar"]').addEventListener('click', (e) => {
-        // Click fuera de la card → cerrar
-        if (e.target === e.currentTarget) cerrarModal();
+        if (e.target === e.currentTarget) cerrarModalB2B();
     });
     $('[data-vo="modal-opcion-nuevo"]').addEventListener('click', activarModoNuevo);
     $('[data-vo="modal-cancelar-nuevo"]').addEventListener('click', cancelarModoNuevo);
     $('[data-vo="modal-nombre-nuevo"]').addEventListener('input', habilitarBotonConfirmar);
-    $('[data-vo="modal-confirmar"]').addEventListener('click', confirmarAgregar);
+    $('[data-vo="modal-confirmar"]').addEventListener('click', confirmarAgregarB2B);
+
+    // ═══════════════════════════════════════════════════════════
+    // MODAL GUEST: AGREGAR AL CARRITO B2C
+    // ═══════════════════════════════════════════════════════════
+
+    function abrirModalGuest() {
+        $('[data-vo="modal-guest-planta"]').textContent = planta.nombre_comun || 'Esta planta';
+        const cantidadInput = $('[data-vo="modal-guest-cantidad"]');
+
+        // Cantidad inicial: la que ya haya en carrito para este producto, o 1
+        const cantidadActual = cartGetCantidadItem(inventarioId);
+        const cantidadInicial = cantidadActual > 0 ? cantidadActual : 1;
+        cantidadInput.value = cantidadInicial;
+
+        // Máximo permitido = min(stock, LIMITE_UNIDADES_PRODUCTO)
+        const maxPorProducto = Math.min(stock || LIMITE_UNIDADES_PRODUCTO, LIMITE_UNIDADES_PRODUCTO);
+        cantidadInput.max = maxPorProducto;
+
+        // Info límites
+        let infoTxt = `Máx ${LIMITE_UNIDADES_PRODUCTO} unidades por producto`;
+        if (stock > 0 && stock < LIMITE_UNIDADES_PRODUCTO) {
+            infoTxt = `Máx ${stock} disponibles (stock limitado)`;
+        }
+        $('[data-vo="modal-guest-info"]').textContent = infoTxt;
+
+        actualizarSubtotalGuest();
+        validarLimitesGuest();
+
+        const modal = $('[data-vo="modal-guest"]');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    function cerrarModalGuest() {
+        const modal = $('[data-vo="modal-guest"]');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
+    function getCantidadGuest() {
+        return Math.max(1, parseInt($('[data-vo="modal-guest-cantidad"]').value, 10) || 1);
+    }
+
+    function actualizarSubtotalGuest() {
+        const cant = getCantidadGuest();
+        const sub = precioComprador * cant;
+        $('[data-vo="modal-guest-subtotal"]').textContent = VO.formatCOPFull(sub);
+    }
+
+    function validarLimitesGuest() {
+        const cant = getCantidadGuest();
+        const alerta = $('[data-vo="modal-guest-alerta"]');
+        const alertaMsg = $('[data-vo="modal-guest-alerta-msg"]');
+        const btn = $('[data-vo="modal-guest-confirmar"]');
+        const maxPorProducto = Math.min(stock || LIMITE_UNIDADES_PRODUCTO, LIMITE_UNIDADES_PRODUCTO);
+
+        // 1. Límite por producto
+        if (cant > maxPorProducto) {
+            alertaMsg.textContent = stock > 0 && stock < LIMITE_UNIDADES_PRODUCTO
+                ? `Solo hay ${stock} unidades en stock`
+                : `Máximo ${LIMITE_UNIDADES_PRODUCTO} unidades por producto`;
+            alerta.classList.remove('hidden');
+            btn.disabled = true;
+            return false;
+        }
+
+        // 2. Límite total del carrito (120 plantas)
+        const cantidadActualEnCarrito = cartGetCantidadItem(inventarioId);
+        const totalActualCarrito = cartTotalItems();
+        const totalTrasCambio = totalActualCarrito - cantidadActualEnCarrito + cant;
+        if (totalTrasCambio > LIMITE_TOTAL_PLANTAS) {
+            const disponibles = LIMITE_TOTAL_PLANTAS - (totalActualCarrito - cantidadActualEnCarrito);
+            alertaMsg.textContent = `Tu carrito ya tiene ${totalActualCarrito} plantas. Máximo ${LIMITE_TOTAL_PLANTAS} por compra (podés agregar ${Math.max(0, disponibles)} más de este producto)`;
+            alerta.classList.remove('hidden');
+            btn.disabled = true;
+            return false;
+        }
+
+        alerta.classList.add('hidden');
+        btn.disabled = false;
+        return true;
+    }
+
+    function cambiarCantidadGuest(delta) {
+        const input = $('[data-vo="modal-guest-cantidad"]');
+        const nuevo = Math.max(1, (parseInt(input.value, 10) || 1) + delta);
+        input.value = nuevo;
+        actualizarSubtotalGuest();
+        validarLimitesGuest();
+    }
+
+    async function confirmarAgregarGuest() {
+        if (!validarLimitesGuest()) return;
+        const cantidad = getCantidadGuest();
+        cartAddOrUpdate(
+            inventarioId,
+            cantidad,
+            planta.nombre_comun || 'Planta',
+            precioComprador,
+            item.foto_ia_url || null,
+            vivero.nombre_vivero || null
+        );
+        VO.showToast(`Agregado al carrito · ${VO.formatCOPFull(precioComprador * cantidad)}`, 'success');
+        cerrarModalGuest();
+        actualizarCarritoWidget();
+    }
+
+    // ─── Wire events modal guest ───
+    $('[data-vo="modal-guest-cerrar"]').addEventListener('click', cerrarModalGuest);
+    $('[data-vo="modal-guest"]').addEventListener('click', (e) => {
+        if (e.target === e.currentTarget) cerrarModalGuest();
+    });
+    $('[data-vo="modal-guest-menos"]').addEventListener('click', () => cambiarCantidadGuest(-1));
+    $('[data-vo="modal-guest-mas"]').addEventListener('click', () => cambiarCantidadGuest(+1));
+    $('[data-vo="modal-guest-cantidad"]').addEventListener('input', () => {
+        actualizarSubtotalGuest();
+        validarLimitesGuest();
+    });
+    $('[data-vo="modal-guest-confirmar"]').addEventListener('click', confirmarAgregarGuest);
 
 })();
 </script>
