@@ -265,12 +265,14 @@ async function cargarProductosLanding() {
         const items = (data.items || []).slice(0, 4);
         if (!items.length) return;
 
-        const MARKUP = 1.18;
+        // ── FIX 30 jul 2026: usar precio_comprador (ya calculado por motor matricial) ──
+        // Antes: MARKUP 1.18 hardcoded + precio_mayorista (sanitizado del endpoint público)
+        // Ahora: precio_comprador viene calculado por categoría con markups reales
         const grid = document.getElementById('landing-products');
         if (!grid) return;
 
         grid.innerHTML = items.map(item => {
-            const precio = '$' + Math.round((item.precio_mayorista || 0) * MARKUP).toLocaleString('es-CO');
+            const precio = '$' + Math.round(item.precio_comprador || 0).toLocaleString('es-CO');
             const nombre = (item.nombre_comun || 'Planta').substring(0, 24);
             const vivero = (item.nombre_vivero || 'Vivero').substring(0, 22);
             const foto = item.foto_ia_url || '';
