@@ -31,9 +31,15 @@ router = APIRouter(prefix="/api/catalogo", tags=["catalogo"])
 
 # ─────────────────── LISTAR CATÁLOGO ───────────────────
 
-@router.get("", response_model=CatalogoResponse)
+@router.get("")
 async def listar_catalogo(user: UserContext = Depends(require_viverista)):
-    """Lista el inventario del viverista actual."""
+    """Lista el inventario del viverista actual.
+
+    FIX 5 ago 2026: incluir logistics_tier y tier_manual en la respuesta.
+    Antes: el frontend recibía siempre 'M' como default porque el SELECT
+    no incluía esos campos. Ahora se devuelve dict flexible para no requerir
+    cambios en schemas/catalog.py.
+    """
     if not user.vivero_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un vivero")
 
@@ -41,27 +47,31 @@ async def listar_catalogo(user: UserContext = Depends(require_viverista)):
     resp = db.table("inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, precio_detal, "
         "stock, unidad_medida, estado_planta, foto_ia_url, "
+        "logistics_tier, tier_manual, "
         "plantas(nombre_comun, nombre_cientifico)"
     ).eq("vivero_id", user.vivero_id).order("fecha_actualizacion", desc=True).execute()
 
-    items: list[InventarioItem] = []
+    items: list[dict] = []
     for r in resp.data or []:
         planta = r.get("plantas") or {}
-        items.append(InventarioItem(
-            inventario_id=r["inventario_id"],
-            planta_id=r["planta_id"],
-            nombre_comun=planta.get("nombre_comun", "Sin nombre"),
-            nombre_cientifico=planta.get("nombre_cientifico"),
-            foto_ia_url=r.get("foto_ia_url"),
-            precio_mayorista=float(r.get("precio_mayorista") or 0),
-            precio_detal=float(r["precio_detal"]) if r.get("precio_detal") else None,
-            stock=r.get("stock") or 0,
-            altura_cm=r.get("altura_cm") or 0,
-            unidad_medida=r.get("unidad_medida") or "unidad",
-            estado_planta=r.get("estado_planta") or "disponible",
-        ))
+        items.append({
+            "inventario_id":     r["inventario_id"],
+            "planta_id":         r["planta_id"],
+            "nombre_comun":      planta.get("nombre_comun", "Sin nombre"),
+            "nombre_cientifico": planta.get("nombre_cientifico"),
+            "foto_ia_url":       r.get("foto_ia_url"),
+            "precio_mayorista":  float(r.get("precio_mayorista") or 0),
+            "precio_detal":      float(r["precio_detal"]) if r.get("precio_detal") else None,
+            "stock":             r.get("stock") or 0,
+            "altura_cm":         r.get("altura_cm") or 0,
+            "unidad_medida":     r.get("unidad_medida") or "unidad",
+            "estado_planta":     r.get("estado_planta") or "disponible",
+            # ── Fase editor de tier (5 ago 2026) ──
+            "logistics_tier":    r.get("logistics_tier"),  # tier efectivo (auto o manual)
+            "tier_manual":       r.get("tier_manual"),      # override manual (si existe)
+        })
 
-    return CatalogoResponse(ok=True, items=items, total=len(items))
+    return {"ok": True, "items": items, "total": len(items)}
 
 
 # ─────────────────── IDENTIFICAR CON IA ───────────────────
@@ -218,6 +228,10 @@ class ActualizarInventarioRequest(BaseModel):
     precio_detal: Optional[float] = Field(default=None, ge=0)
     estado_planta: Optional[str] = Field(default=None)
     notas: Optional[str] = Field(default=None, max_length=1000)
+    # ── Fase editor de tier (5 ago 2026) ──
+    # tier_manual acepta: "S", "M", "L", "XL", "" (vacío = restaurar automático)
+    # o None (no lo modifica).
+    tier_manual: Optional[str] = Field(default=None)
 
 
 @router.patch("/inventario/{inventario_id}")
@@ -279,6 +293,23 @@ async def actualizar_inventario(
         payload["estado_planta"] = req.estado_planta
     if req.notas is not None:
         payload["notas"] = req.notas.strip() or None
+
+    # ── Fase editor de tier (5 ago 2026) ──
+    # tier_manual: valida y setea override manual. El trigger auto_set_logistics_tier
+    # de la BD sincroniza logistics_tier automáticamente al UPDATE.
+    #   - "S", "M", "L", "XL" → override manual
+    #   - "" (string vacío) → restaurar automático (limpia el override)
+    #   - None → no lo tocamos (comportamiento anterior)
+    if req.tier_manual is not None:
+        if req.tier_manual == "":
+            payload["tier_manual"] = None  # limpia override → trigger recalcula por altura
+        elif req.tier_manual in ("S", "M", "L", "XL"):
+            payload["tier_manual"] = req.tier_manual
+        else:
+            raise HTTPException(
+                400,
+                detail="tier_manual debe ser S/M/L/XL o vacío para automático"
+            )
 
     if not payload and nombre_actualizado is None:
         raise HTTPException(400, detail="No hay campos para actualizar")
