@@ -368,7 +368,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                     </div>`;
             } else {
                 const tierLabel = { S: '🏍️S', M: '🚐M', L: '🚛L', XL: '🚚XL' };
-                list.innerHTML = (cat.items || []).slice(0, 20).map(i => {
+                // ── FIX 5 ago 2026: eliminar slice(0, 20) que limitaba
+                // artificialmente el listado a los primeros 20 productos.
+                // Elena tiene 103 productos y solo veía los primeros 20.
+                // El backend YA devuelve todos, era el frontend el que cortaba.
+                list.innerHTML = (cat.items || []).map(i => {
                     const estadoColors = {
                         'disponible': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
                         'agotado': 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
