@@ -168,3 +168,98 @@ def verify_signature(body_bytes: bytes, signature_header: str) -> bool:
     ).hexdigest()
 
     return hmac.compare_digest(expected, computed)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TEMPLATES FEATURE AUTO-TIMEOUT (5 ago 2026)
+# ═══════════════════════════════════════════════════════════════════════════
+# 3 templates aprobados por Meta el 5 ago 2026:
+#   1. notif_viverista_nueva_cotizacion  (6 vars body, 3 botones Quick Reply)
+#   2. recordatorio_viverista_pendiente  (5 vars body, 2 botones Quick Reply)
+#   3. notif_comprador_pedido_parcial    (4 vars body, 1 botón URL estática)
+#
+# Los botones son estáticos (Quick Reply o URL fija) — NO requieren parámetros
+# dinámicos, entonces send_template_message() con solo body vars alcanza.
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _format_cop(monto) -> str:
+    """Formato monto Colombia: 88410 -> '$88.410 COP'"""
+    return f"${int(monto):,} COP".replace(",", ".")
+
+
+def notify_viverista_nueva_cotizacion(
+    to: str,
+    nombre_viverista: str,
+    proyecto: str,
+    cliente: str,
+    tu_parte_cop,
+    ciudad_entrega: str,
+    horas_para_responder: int = 2,
+) -> Dict[str, Any]:
+    """Template 1 — notificación inicial al viverista con cotización nueva.
+    Se envía al crear una cotización que involucra a este vivero.
+    Botones (Quick Reply, estáticos): APROBAR, RECHAZAR, VER DETALLE
+    """
+    return send_template_message(
+        to=to,
+        template_name="notif_viverista_nueva_cotizacion",
+        variables=[
+            nombre_viverista,
+            proyecto,
+            cliente,
+            _format_cop(tu_parte_cop),
+            ciudad_entrega,
+            str(horas_para_responder),
+        ],
+    )
+
+
+def notify_viverista_recordatorio(
+    to: str,
+    nombre_viverista: str,
+    proyecto: str,
+    tu_parte_cop,
+    numero_recordatorio: int,
+    minutos_restantes: int,
+) -> Dict[str, Any]:
+    """Template 2 — recordatorio de cotización sin respuesta.
+    Enviado por auto_timeout.py según cadencia:
+      - Normal: 30 / 60 / 90 min desde creación
+      - Materas: 60 / 120 / 180 min (grace period)
+    Botones (Quick Reply): APROBAR, RECHAZAR
+    """
+    return send_template_message(
+        to=to,
+        template_name="recordatorio_viverista_pendiente",
+        variables=[
+            nombre_viverista,
+            proyecto,
+            _format_cop(tu_parte_cop),
+            str(numero_recordatorio),
+            str(minutos_restantes),
+        ],
+    )
+
+
+def notify_comprador_pedido_parcial(
+    to: str,
+    nombre_cliente: str,
+    proyecto: str,
+    monto_disponible_cop,
+    detalle_no_confirmado: str,
+) -> Dict[str, Any]:
+    """Template 3 — notificación al comprador con cotización parcial.
+    Se envía cuando auto_timeout marca una sub_cotización como rechazada
+    por sin respuesta del viverista dentro del plazo.
+    Botón (URL estática): Ver mi pedido → /comprador
+    """
+    return send_template_message(
+        to=to,
+        template_name="notif_comprador_pedido_parcial",
+        variables=[
+            nombre_cliente,
+            proyecto,
+            _format_cop(monto_disponible_cop),
+            detalle_no_confirmado,
+        ],
+    )
