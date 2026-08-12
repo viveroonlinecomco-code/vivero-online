@@ -222,7 +222,10 @@ function cartTotalCOP() {
         stateList.innerHTML = items.map(item => {
             const foto = item.foto_ia_url ? escapeHTML(item.foto_ia_url) : '';
             const nombre = escapeHTML(item.nombre_comun || 'Sin nombre');
-            const cientifico = escapeHTML(item.nombre_cientifico || '');
+            // ── FIX 30 jul 2026: ocultar nombre científico si es igual al común ──
+            const cientifico = (item.nombre_cientifico && item.nombre_cientifico !== item.nombre_comun)
+                ? escapeHTML(item.nombre_cientifico)
+                : '';
             const vivero = escapeHTML(item.nombre_vivero || 'Vivero');
             const municipio = escapeHTML(item.municipio || '');
             const distancia = item.distancia_km ? `${item.distancia_km.toFixed(1)} km` : '';

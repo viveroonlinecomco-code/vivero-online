@@ -522,9 +522,9 @@ function cartGetCantidadItem(inv_id) {
         $('[data-vo="foto-fallback"]').classList.add('flex');
     }
 
-    // Nombre + científico
+    // Nombre + científico (ocultar científico si es igual al común)
     $('[data-vo="nombre"]').textContent = planta.nombre_comun || 'Planta';
-    if (planta.nombre_cientifico) {
+    if (planta.nombre_cientifico && planta.nombre_cientifico !== planta.nombre_comun) {
         $('[data-vo="cientifico"]').textContent = planta.nombre_cientifico;
     } else {
         $('[data-vo="cientifico"]').classList.add('hidden');
