@@ -201,44 +201,64 @@ async def notify_viverista_nueva_cotizacion(
     ciudad_entrega: str,
     horas_para_responder: int = 2,
 ) -> Dict[str, Any]:
-    """Template 1 — notificación inicial al viverista con cotización nueva.
+    """Notificación inicial al viverista con cotización nueva.
     
-    Se envía al crear una cotización que involucra a este vivero.
-    Botones (Quick Reply, estáticos): APROBAR, RECHAZAR, VER DETALLE
+    ESTRATEGIA:
+    1. INTENTA template Meta (si falla, log pero continúa)
+    2. SIEMPRE envía texto libre como fallback (garantizado)
+    
+    Así recuperamos funcionalidad conocida (texto) + agregamos Meta.
     """
-    components = [
-        {
-            "type": "body",
-            "parameters": [
-                {"type": "text", "text": nombre_viverista},
-                {"type": "text", "text": proyecto},
-                {"type": "text", "text": cliente},
-                {"type": "text", "text": _format_cop(tu_parte_cop)},
-                {"type": "text", "text": ciudad_entrega},
-                {"type": "text", "text": str(horas_para_responder)},
-            ]
-        }
-    ]
-    
-    result = await send_template_message(
-        to=to,
-        template_name="notif_viverista_nueva_cotizacion",
-        language_code="es",
-        components=components,
+    # Construir mensaje de texto (BASE — GARANTIZADO)
+    msg_texto = (
+        f"🌿 *Nueva solicitud — ViveroOnline*\n\n"
+        f"Proyecto: *{proyecto}*\n"
+        f"Solicitante: *{cliente}*\n"
+        f"📦 {nombre_viverista}\n\n"
+        f"💰 Tu precio: {_format_cop(tu_parte_cop)} COP\n\n"
+        f"Zona: {ciudad_entrega}\n"
+        f"⏰ Responde en {horas_para_responder}h\n\n"
+        f"¿Confirmás disponibilidad?\n"
+        f"Respondé *APROBAR* o *RECHAZAR*"
     )
     
-    # Fallback a texto libre si falla
-    if not result:
-        msg_texto = (
-            f"🌿 *Nueva solicitud — ViveroOnline*\n\n"
-            f"Proyecto: *{proyecto}*\n"
-            f"Tu precio: {_format_cop(tu_parte_cop)} COP\n"
-            f"¿Confirmás disponibilidad?\n"
-            f"Respondé *APROBAR* o *RECHAZAR*"
+    # INTENTAR template Meta (best-effort)
+    template_result = False
+    try:
+        components = [
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": nombre_viverista},
+                    {"type": "text", "text": proyecto},
+                    {"type": "text", "text": cliente},
+                    {"type": "text", "text": _format_cop(tu_parte_cop)},
+                    {"type": "text", "text": ciudad_entrega},
+                    {"type": "text", "text": str(horas_para_responder)},
+                ]
+            }
+        ]
+        
+        template_result = await send_template_message(
+            to=to,
+            template_name="notif_viverista_nueva_cotizacion",
+            language_code="es",
+            components=components,
         )
-        await send_text_message(to, msg_texto)
+        if template_result:
+            logger.info(f"✅ Template Meta enviado a {to}")
+    except Exception as e:
+        logger.warning(f"⚠️ Template Meta falló (seguimos con texto): {e}")
     
-    return {"ok": result, "template": "notif_viverista_nueva_cotizacion"}
+    # SIEMPRE enviar texto (fallback garantizado)
+    text_result = await send_text_message(to, msg_texto)
+    
+    return {
+        "ok": text_result,
+        "template_meta": template_result,
+        "text": text_result,
+        "message": "Notificación enviada (texto garantizado)"
+    }
 
 
 async def notify_viverista_recordatorio(
@@ -249,34 +269,51 @@ async def notify_viverista_recordatorio(
     numero_recordatorio: int,
     minutos_restantes: int,
 ) -> Dict[str, Any]:
-    """Template 2 — recordatorio de cotización sin respuesta.
+    """Recordatorio de cotización sin respuesta.
     
-    Enviado por auto_timeout.py según cadencia:
-      - Normal: 30 / 60 / 90 min desde creación
-      - Materas: 60 / 120 / 180 min (grace period)
-    Botones (Quick Reply): APROBAR, RECHAZAR
+    Misma estrategia: TEXTO garantizado + template Meta best-effort
     """
-    components = [
-        {
-            "type": "body",
-            "parameters": [
-                {"type": "text", "text": nombre_viverista},
-                {"type": "text", "text": proyecto},
-                {"type": "text", "text": _format_cop(tu_parte_cop)},
-                {"type": "text", "text": str(numero_recordatorio)},
-                {"type": "text", "text": str(minutos_restantes)},
-            ]
-        }
-    ]
-    
-    result = await send_template_message(
-        to=to,
-        template_name="recordatorio_viverista_pendiente",
-        language_code="es",
-        components=components,
+    msg_texto = (
+        f"⏰ *RECORDATORIO — ViveroOnline*\n\n"
+        f"Proyecto: *{proyecto}*\n"
+        f"Tu precio: {_format_cop(tu_parte_cop)} COP\n\n"
+        f"Recordatorio {numero_recordatorio}/3\n"
+        f"⏱️ {minutos_restantes} minutos para responder\n\n"
+        f"¿Confirmás disponibilidad?\n"
+        f"Respondé *APROBAR* o *RECHAZAR*"
     )
     
-    return {"ok": result, "template": "recordatorio_viverista_pendiente"}
+    template_result = False
+    try:
+        components = [
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": nombre_viverista},
+                    {"type": "text", "text": proyecto},
+                    {"type": "text", "text": _format_cop(tu_parte_cop)},
+                    {"type": "text", "text": str(numero_recordatorio)},
+                    {"type": "text", "text": str(minutos_restantes)},
+                ]
+            }
+        ]
+        
+        template_result = await send_template_message(
+            to=to,
+            template_name="recordatorio_viverista_pendiente",
+            language_code="es",
+            components=components,
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ Template recordatorio falló: {e}")
+    
+    text_result = await send_text_message(to, msg_texto)
+    
+    return {
+        "ok": text_result,
+        "template_meta": template_result,
+        "text": text_result
+    }
 
 
 async def notify_comprador_pedido_parcial(
@@ -286,29 +323,50 @@ async def notify_comprador_pedido_parcial(
     monto_disponible_cop: int,
     detalle_no_confirmado: str,
 ) -> Dict[str, Any]:
-    """Template 3 — notificación al comprador con cotización parcial.
+    """Notificación al comprador con cotización parcial.
     
-    Se envía cuando auto_timeout marca una sub_cotización como rechazada
-    por sin respuesta del viverista dentro del plazo.
-    Botón (URL estática): Ver mi pedido → /comprador
+    Misma estrategia: TEXTO garantizado + template Meta best-effort
     """
-    components = [
-        {
-            "type": "body",
-            "parameters": [
-                {"type": "text", "text": nombre_cliente},
-                {"type": "text", "text": proyecto},
-                {"type": "text", "text": _format_cop(monto_disponible_cop)},
-                {"type": "text", "text": detalle_no_confirmado},
-            ]
-        }
-    ]
-    
-    result = await send_template_message(
-        to=to,
-        template_name="notif_comprador_pedido_parcial",
-        language_code="es",
-        components=components,
+    msg_texto = (
+        f"📋 *ACTUALIZACIÓN DE TU PEDIDO — ViveroOnline*\n\n"
+        f"Hola {nombre_cliente},\n\n"
+        f"Proyecto: *{proyecto}*\n\n"
+        f"✅ Disponible para procesar: {_format_cop(monto_disponible_cop)} COP\n"
+        f"❌ No confirmado por vivero: {detalle_no_confirmado}\n\n"
+        f"Ingresá al panel para:\n"
+        f"• Pagar lo disponible\n"
+        f"• Buscar vivero alternativo\n"
+        f"• Cancelar pedido\n\n"
+        f"Tu pedido está protegido. 🌿"
     )
     
-    return {"ok": result, "template": "notif_comprador_pedido_parcial"}
+    template_result = False
+    try:
+        components = [
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": nombre_cliente},
+                    {"type": "text", "text": proyecto},
+                    {"type": "text", "text": _format_cop(monto_disponible_cop)},
+                    {"type": "text", "text": detalle_no_confirmado},
+                ]
+            }
+        ]
+        
+        template_result = await send_template_message(
+            to=to,
+            template_name="notif_comprador_pedido_parcial",
+            language_code="es",
+            components=components,
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ Template comprador falló: {e}")
+    
+    text_result = await send_text_message(to, msg_texto)
+    
+    return {
+        "ok": text_result,
+        "template_meta": template_result,
+        "text": text_result
+    }
