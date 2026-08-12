@@ -10,7 +10,7 @@
   window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
 </script>
 <script defer src="/_vercel/speed-insights/script.js"></script>
-<title>Mi panel · ViveroOnline</title>
+<title>Mi panel · viveroonline.com.co</title>
 <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&display=swap" rel="stylesheet"/>
@@ -151,6 +151,10 @@ if (!VO.requireAuth()) throw new Error('auth');
 //   - cotizacion.total_comprador       = idem para detalle
 //   - cotizacion.items[].precio_comprador_unitario, subtotal_comprador
 // ═══════════════════════════════════════════════════════════════════
+// FASE 5 (7 ago 2026): Cotización parcial con auto-timeout
+// Nuevo estado "parcial" cuando algunos viveristas aprueban pero otros aún no responden.
+// 3 botones claros: Pagar disponible / Aceptar alternativa / Cancelar
+// ═══════════════════════════════════════════════════════════════════
 const TIPO_CLIENTE_LABEL = {
     paisajista: 'Paisajista', constructora: 'Constructora',
     conjunto: 'Conjunto residencial', empresa: 'Empresa', otro: 'Comprador',
@@ -159,6 +163,7 @@ const BADGE_STYLES = {
     borrador:     'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
     enviada:      'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
     aceptada:     'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+    parcial:      'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
     rechazada:    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     vencida:      'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
     convertida:   'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
@@ -170,6 +175,7 @@ const BADGE_LABELS = {
     borrador:     '✏️ Borrador',
     enviada:      '⏳ Enviado al vivero',
     aceptada:     '✅ Aprobado — listo para pagar',
+    parcial:      '📋 Aprobado parcial',
     rechazada:    '❌ Rechazado',
     vencida:      'Vencido',
     convertida:   '⚠️ Pago pendiente',
@@ -211,11 +217,13 @@ async function cargarProyectos() {
         listEl.classList.remove('hidden');
         metaEl.classList.remove('hidden');
         const numAprobados  = proyectos.filter(p => p.estado === 'aceptada').length;
+        const numParciales  = proyectos.filter(p => p.estado === 'parcial').length;
         const numPendientes = proyectos.filter(p => p.estado === 'convertida').length;
         const numEnviados   = proyectos.filter(p => p.estado === 'enviada').length;
         const numBorradores = proyectos.filter(p => p.estado === 'borrador').length;
         let metaTexto = `${proyectos.length} proyecto${proyectos.length !== 1 ? 's' : ''}`;
         if (numAprobados > 0)  metaTexto += ` · ${numAprobados} listo${numAprobados !== 1 ? 's' : ''} para pagar`;
+        else if (numParciales > 0) metaTexto += ` · ${numParciales} pago parcial`;
         else if (numPendientes > 0) metaTexto += ` · ${numPendientes} pago pendiente`;
         else if (numEnviados > 0)   metaTexto += ` · ${numEnviados} en revisión`;
         else if (numBorradores > 0) metaTexto += ` · ${numBorradores} borrador${numBorradores !== 1 ? 'es' : ''}`;
@@ -241,12 +249,13 @@ function renderProyectoCard(p) {
     const badgeStyle = BADGE_STYLES[estadoMostrar] || BADGE_STYLES.borrador;
     const badgeLabel = BADGE_LABELS[estadoMostrar] || estadoMostrar;
     const urgente = p.estado === 'aceptada';
+    const parcial = p.estado === 'parcial';
     const pagoPendiente = p.estado === 'convertida';
     const showVencimiento = p.estado === 'borrador' && p.fecha_vencimiento;
     // ── Fase 4: usar total_comprador que viene del backend ──
     const totalMostrar = formatCOP(p.total_comprador);
     return `
-        <article class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border ${urgente ? 'border-emerald-200 dark:border-emerald-800' : pagoPendiente ? 'border-amber-200 dark:border-amber-800' : 'border-slate-100 dark:border-slate-700'} overflow-hidden" data-proyecto-card="${p.cotizacion_id}">
+        <article class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border ${urgente || parcial ? 'border-emerald-200 dark:border-emerald-800' : pagoPendiente ? 'border-amber-200 dark:border-amber-800' : 'border-slate-100 dark:border-slate-700'} overflow-hidden" data-proyecto-card="${p.cotizacion_id}">
             <button data-toggle class="w-full text-left p-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition flex items-center gap-3">
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 mb-1 flex-wrap">
@@ -259,6 +268,7 @@ function renderProyectoCard(p) {
                     </p>
                 </div>
                 ${urgente ? '<span class="material-symbols-outlined text-emerald-500 text-xl">payments</span>' : ''}
+                ${parcial ? '<span class="material-symbols-outlined text-purple-500 text-xl">check_circle</span>' : ''}
                 ${pagoPendiente ? '<span class="material-symbols-outlined text-amber-500 text-xl">credit_card</span>' : ''}
                 <span class="material-symbols-outlined text-slate-400 transition-transform" data-chevron>expand_more</span>
             </button>
@@ -362,6 +372,40 @@ async function cargarItemsProyecto(cotizacion_id) {
                     ${countdownHtml}
                 </div>`;
             footerEl.querySelector('[data-pagar]')?.addEventListener('click', () => irACheckout(cotizacion_id));
+        } else if (c.estado === 'parcial') {
+            const totalAceptado = c.total_aceptado || 0;
+            const totalPendiente = totalComprador - totalAceptado;
+            footerEl.innerHTML = `
+                <div class="space-y-2">
+                    <div class="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-3">
+                        <p class="text-xs font-bold text-purple-700 dark:text-purple-400">📋 Aprobado parcialmente</p>
+                        <p class="text-xs text-slate-600 dark:text-slate-300 mt-1">Algunos viveros confirmaron su parte, otros aún están revisando.</p>
+                        <div class="mt-2 space-y-1 text-xs">
+                            <div class="flex justify-between">
+                                <span class="text-slate-600 dark:text-slate-400">✅ Aceptado:</span>
+                                <span class="font-bold text-emerald-600">${formatCOP(totalAceptado)}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-slate-600 dark:text-slate-400">⏳ Pendiente:</span>
+                                <span class="font-bold text-amber-600">${formatCOP(totalPendiente)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button data-pagar-parcial class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition text-sm">
+                        <span class="material-symbols-outlined">check_circle</span>
+                        Pagar lo disponible · ${formatCOP(totalAceptado)}
+                    </button>
+                    <button data-aceptar-alternativa class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition text-sm">
+                        <span class="material-symbols-outlined">swap_horiz</span>
+                        Aceptar vivero alternativo para lo pendiente
+                    </button>
+                    <button data-cancelar-pedido class="w-full bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-700 dark:text-red-400 font-bold py-2 rounded-full text-sm transition">
+                        Cancelar pedido
+                    </button>
+                </div>`;
+            footerEl.querySelector('[data-pagar-parcial]')?.addEventListener('click', () => aceptarParcial(cotizacion_id, totalAceptado));
+            footerEl.querySelector('[data-aceptar-alternativa]')?.addEventListener('click', () => confirmarAlternativa(cotizacion_id));
+            footerEl.querySelector('[data-cancelar-pedido]')?.addEventListener('click', () => cancelarPedido(cotizacion_id));
         } else if (c.estado === 'convertida') {
             footerEl.innerHTML = `
                 <div class="space-y-2">
@@ -505,6 +549,26 @@ async function solicitarAprobacion(cotizacion_id, total) {
 function irACheckout(cotizacion_id) {
     window.location.href = `/checkout/${cotizacion_id}`;
 }
+async function aceptarParcial(cotizacion_id, totalAceptado) {
+    if (!confirm(`¿Pagar solo lo que el vivero confirmó?\n\nTotal: ${formatCOP(totalAceptado)}\n\nPara la parte pendiente, podés buscar alternativa o cancelar.`)) return;
+    const token = localStorage.getItem('vivero_access_token');
+    try {
+        const resp = await fetch(`/api/pedidos/${cotizacion_id}/aceptar-parcial`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `Error ${resp.status}`);
+        }
+        if (typeof VO !== 'undefined' && VO.showToast) {
+            VO.showToast('✅ Confirmado. Iniciando pago de lo disponible...', 'success');
+        }
+        setTimeout(() => irACheckout(cotizacion_id), 1000);
+    } catch (e) {
+        alert('No se pudo procesar: ' + (e.message || e));
+    }
+}
 async function quitarItem(cotizacion_id, inventario_id) {
     if (!confirm('¿Quitar este item del proyecto?')) return;
     const token = localStorage.getItem('vivero_access_token');
@@ -547,6 +611,26 @@ async function confirmarAlternativa(cotizacion_id) {
         setTimeout(() => window.location.reload(), 1500);
     } catch (e) {
         alert('No se pudo confirmar: ' + (e.message || e));
+    }
+}
+async function cancelarPedido(cotizacion_id) {
+    if (!confirm('¿Cancelar este pedido por completo?\n\nNo se podrá recuperar. Los viveros serán notificados.')) return;
+    const token = localStorage.getItem('vivero_access_token');
+    try {
+        const resp = await fetch(`/api/marketplace/cotizacion/${cotizacion_id}`, {
+            method: 'DELETE',
+            headers: { 'Authorization': `Bearer ${token}` },
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            throw new Error(err.detail || `Error ${resp.status}`);
+        }
+        if (typeof VO !== 'undefined' && VO.showToast) {
+            VO.showToast('✅ Pedido cancelado.', 'success');
+        }
+        setTimeout(() => window.location.reload(), 1500);
+    } catch (e) {
+        alert('No se pudo cancelar: ' + (e.message || e));
     }
 }
 // ─── Helpers ─────────────────────────────────────────────────
