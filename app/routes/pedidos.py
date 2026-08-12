@@ -45,7 +45,7 @@ from pydantic import BaseModel
 from app.auth.deps import UserContext, require_comprador, require_viverista
 from app.config import get_settings
 from app.services.supabase import admin as db_admin
-from app.services.whatsapp_meta import send_text_message
+from app.services.whatsapp_meta import send_text_message, notify_viverista_nueva_cotizacion
 from app.services.onboarding_wa import marcar_primera_cotizacion
 from app.services.precios import calcular_precios_pedido
 from app.services.auto_timeout import procesar_recordatorios_y_timeouts
@@ -205,7 +205,17 @@ async def solicitar_aprobacion(
                     msg += f"\n📝 Notas: {notas}\n"
                 msg += f"\n¿Confirmás disponibilidad?\nRespondé *APROBAR* o *RECHAZAR*"
 
-                await send_text_message(v.data[0]["whatsapp_numero"], msg)
+                # ── CAMBIO 12 ago: usar template Meta en lugar de texto libre ──
+                # Esto permite que la notificación llegue INCLUSO sin ventana 24h abierta
+                await notify_viverista_nueva_cotizacion(
+                    to=v.data[0]["whatsapp_numero"],
+                    nombre_viverista=v.data[0].get("nombre_vivero", "Viverista"),
+                    proyecto=nombre_proyecto,
+                    cliente="Cliente ViveroOnline",
+                    tu_parte_cop=int(total_vivero),
+                    ciudad_entrega="Sabana de Bogotá",
+                    horas_para_responder=2
+                )
 
                 # Guardar acción pendiente en sesión del viverista
                 accion = {
