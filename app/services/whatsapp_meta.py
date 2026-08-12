@@ -5,6 +5,11 @@ Servicios disponibles:
 - send_template_message(to, template_name, language_code, components)
 - download_media_bytes(media_id)
 - verify_signature(body_bytes, signature_header)
+
+CORRECCIONES (7 ago 2026):
+- Funciones notify_viverista_* y notify_comprador_* son ahora ASYNC
+- send_template_message() acepta componentes en formato Meta correcto
+- Variables de template van en components[0]["parameters"]["body"]["text"]
 """
 from __future__ import annotations
 
@@ -12,6 +17,7 @@ import hashlib
 import hmac
 import logging
 import os
+from typing import Dict, Any
 
 import httpx
 
@@ -57,6 +63,7 @@ async def send_text_message(to: str, body: str) -> bool:
                 json=payload,
             )
         if resp.status_code == 200:
+            logger.info(f"✅ Mensaje texto enviado a {to_clean}")
             return True
         logger.error("Meta send_text error %d: %s", resp.status_code, resp.text[:300])
         return False
@@ -79,7 +86,7 @@ async def send_template_message(
         to: Número del destinatario
         template_name: Nombre exacto de la plantilla en Meta Business Manager
         language_code: 'es', 'en_US', etc.
-        components: Variables de la plantilla (header, body, buttons)
+        components: Componentes en formato Meta (body con variables, botones, etc)
     """
     to_clean = to.lstrip("+")
     payload = {
@@ -105,9 +112,11 @@ async def send_template_message(
                 json=payload,
             )
         if resp.status_code == 200:
+            logger.info(f"✅ Template {template_name} enviado a {to_clean}")
             return True
         logger.error(
-            "Meta send_template error %d: %s", resp.status_code, resp.text[:300]
+            "Meta send_template error %d template=%s: %s", 
+            resp.status_code, template_name, resp.text[:300]
         )
         return False
     except Exception as e:
@@ -171,23 +180,25 @@ def verify_signature(body_bytes: bytes, signature_header: str) -> bool:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# TEMPLATES FEATURE AUTO-TIMEOUT (5 ago 2026)
+# TEMPLATES FEATURE AUTO-TIMEOUT (5 ago 2026) — CORREGIDAS 7 ago
 # ═══════════════════════════════════════════════════════════════════════════
 # 3 templates aprobados por Meta el 5 ago 2026:
 #   1. notif_viverista_nueva_cotizacion  (6 vars body, 3 botones Quick Reply)
 #   2. recordatorio_viverista_pendiente  (5 vars body, 2 botones Quick Reply)
 #   3. notif_comprador_pedido_parcial    (4 vars body, 1 botón URL estática)
 #
-# Los botones son estáticos (Quick Reply o URL fija) — NO requieren parámetros
-# dinámicos, entonces send_template_message() con solo body vars alcanza.
+# Correcciones:
+# - Todas las funciones son ASYNC (await send_template_message)
+# - Variables van en format Meta: components[0]["parameters"]["body"]["text"]
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _format_cop(monto) -> str:
     """Formato monto Colombia: 88410 -> '$88.410 COP'"""
-    return f"${int(monto):,} COP".replace(",", ".")
+    monto = int(float(monto) if monto else 0)
+    return f"${monto:,} COP".replace(",", ".")
 
 
-def notify_viverista_nueva_cotizacion(
+async def notify_viverista_nueva_cotizacion(
     to: str,
     nombre_viverista: str,
     proyecto: str,
@@ -195,71 +206,95 @@ def notify_viverista_nueva_cotizacion(
     tu_parte_cop,
     ciudad_entrega: str,
     horas_para_responder: int = 2,
-) -> Dict[str, Any]:
+) -> bool:
     """Template 1 — notificación inicial al viverista con cotización nueva.
     Se envía al crear una cotización que involucra a este vivero.
     Botones (Quick Reply, estáticos): APROBAR, RECHAZAR, VER DETALLE
     """
-    return send_template_message(
+    components = [
+        {
+            "type": "body",
+            "parameters": {
+                "text": [
+                    nombre_viverista,
+                    proyecto,
+                    cliente,
+                    _format_cop(tu_parte_cop),
+                    ciudad_entrega,
+                    str(horas_para_responder),
+                ]
+            },
+        }
+    ]
+    return await send_template_message(
         to=to,
         template_name="notif_viverista_nueva_cotizacion",
-        variables=[
-            nombre_viverista,
-            proyecto,
-            cliente,
-            _format_cop(tu_parte_cop),
-            ciudad_entrega,
-            str(horas_para_responder),
-        ],
+        components=components,
     )
 
 
-def notify_viverista_recordatorio(
+async def notify_viverista_recordatorio(
     to: str,
     nombre_viverista: str,
     proyecto: str,
     tu_parte_cop,
     numero_recordatorio: int,
     minutos_restantes: int,
-) -> Dict[str, Any]:
+) -> bool:
     """Template 2 — recordatorio de cotización sin respuesta.
     Enviado por auto_timeout.py según cadencia:
       - Normal: 30 / 60 / 90 min desde creación
       - Materas: 60 / 120 / 180 min (grace period)
     Botones (Quick Reply): APROBAR, RECHAZAR
     """
-    return send_template_message(
+    components = [
+        {
+            "type": "body",
+            "parameters": {
+                "text": [
+                    nombre_viverista,
+                    proyecto,
+                    _format_cop(tu_parte_cop),
+                    str(numero_recordatorio),
+                    str(minutos_restantes),
+                ]
+            },
+        }
+    ]
+    return await send_template_message(
         to=to,
         template_name="recordatorio_viverista_pendiente",
-        variables=[
-            nombre_viverista,
-            proyecto,
-            _format_cop(tu_parte_cop),
-            str(numero_recordatorio),
-            str(minutos_restantes),
-        ],
+        components=components,
     )
 
 
-def notify_comprador_pedido_parcial(
+async def notify_comprador_pedido_parcial(
     to: str,
     nombre_cliente: str,
     proyecto: str,
     monto_disponible_cop,
     detalle_no_confirmado: str,
-) -> Dict[str, Any]:
+) -> bool:
     """Template 3 — notificación al comprador con cotización parcial.
     Se envía cuando auto_timeout marca una sub_cotización como rechazada
     por sin respuesta del viverista dentro del plazo.
     Botón (URL estática): Ver mi pedido → /comprador
     """
-    return send_template_message(
+    components = [
+        {
+            "type": "body",
+            "parameters": {
+                "text": [
+                    nombre_cliente,
+                    proyecto,
+                    _format_cop(monto_disponible_cop),
+                    detalle_no_confirmado,
+                ]
+            },
+        }
+    ]
+    return await send_template_message(
         to=to,
         template_name="notif_comprador_pedido_parcial",
-        variables=[
-            nombre_cliente,
-            proyecto,
-            _format_cop(monto_disponible_cop),
-            detalle_no_confirmado,
-        ],
+        components=components,
     )
