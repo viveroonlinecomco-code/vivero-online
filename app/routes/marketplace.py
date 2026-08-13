@@ -153,22 +153,6 @@ def _precios_comprador_batch(db, items_precio: list[tuple[int, float]]) -> dict[
 # 🆕 FASE 8 — ENDPOINTS PÚBLICOS GUEST
 # ═══════════════════════════════════════════════════════════
 
-def _calcular_estado_real_cotizacion(estado_cot: str, subs: list[dict]) -> str:
-    """Calcula estado real: 'parcial' si hay mix aprobadas+rechazadas."""
-    if not subs:
-        return estado_cot
-    estados = [s.get("estado") for s in subs]
-    aprobadas = sum(1 for e in estados if e == "aprobada")
-    rechazadas = sum(1 for e in estados if e == "rechazada")
-    if aprobadas > 0 and rechazadas > 0:
-        return "parcial"
-    if aprobadas == len(estados):
-        return "aceptada"
-    if rechazadas == len(estados):
-        return "rechazada"
-    return estado_cot
-
-
 @public_router.get("")
 async def listar_marketplace_guest(
     q: Optional[str] = None,
@@ -703,21 +687,24 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
     ).eq("cliente_id", user.cliente_id).order("fecha_creacion", desc=True).execute()
 
     # FIX 13 ago: Obtener estados de sub_cotizaciones para calcular estado real
+    subs_por_cot = {}
     if resp.data:
         cot_ids = [r["cotizacion_id"] for r in resp.data]
-        subs_resp = db.table("sub_cotizaciones").select(
-            "cotizacion_id, estado"
-        ).in_("cotizacion_id", cot_ids).execute()
-        
-        # Mapear: {cotizacion_id: [lista de estados]}
-        subs_por_cot = {}
-        for sub in subs_resp.data or []:
-            cot_id = sub["cotizacion_id"]
-            if cot_id not in subs_por_cot:
-                subs_por_cot[cot_id] = []
-            subs_por_cot[cot_id].append(sub["estado"])
-    else:
-        subs_por_cot = {}
+        if cot_ids:  # Solo si hay cotizaciones
+            try:
+                subs_resp = db.table("sub_cotizaciones").select(
+                    "cotizacion_id, estado"
+                ).in_("cotizacion_id", cot_ids).execute()
+                
+                # Mapear: {cotizacion_id: [lista de estados]}
+                for sub in subs_resp.data or []:
+                    cot_id = sub["cotizacion_id"]
+                    if cot_id not in subs_por_cot:
+                        subs_por_cot[cot_id] = []
+                    subs_por_cot[cot_id].append(sub["estado"])
+            except Exception:
+                # Fallback: si query falla, devolver cotizaciones sin estado real
+                pass
 
     cot_ids_pagados = [r["cotizacion_id"] for r in (resp.data or []) if r.get("estado") == "pagada"]
     entrega_map = {}
