@@ -357,11 +357,11 @@ async function cargarItemsProyecto(cotizacion_id) {
                         <p class="text-xs font-bold text-primary">${formatCOP(totalComprador)}</p>
                     </div>
                     <div class="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-600">
-                        <button data-reenviar-enviada class="w-full bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
+                        <button data-reenviar-enviada class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
                             <span class="material-symbols-outlined">refresh</span>
                             ↻ Reenviar notificación
                         </button>
-                        <button data-agregar-items-enviada class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
+                        <button data-agregar-items-enviada class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
                             <span class="material-symbols-outlined">add_circle</span>
                             + Agregar más productos
                         </button>
@@ -385,7 +385,7 @@ async function cargarItemsProyecto(cotizacion_id) {
                 // VENCIDA: No mostrar "APROBADO"
                 countdownHtml = `<p class="text-[11px] text-center text-red-500 font-semibold">⚠️ Esta cotización está vencida</p>`;
                 botonesSección = `
-                    <button data-reenviar class="w-full bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
+                    <button data-reenviar class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
                         <span class="material-symbols-outlined">refresh</span>
                         ↻ Reenviar al vivero
                     </button>
