@@ -361,7 +361,7 @@ async function cargarItemsProyecto(cotizacion_id) {
                             <span class="material-symbols-outlined">refresh</span>
                             ↻ Reenviar notificación
                         </button>
-                        <button data-agregar-items-enviada class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
+                        <button data-agregar-items-enviada class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
                             <span class="material-symbols-outlined">add_circle</span>
                             + Agregar más productos
                         </button>
