@@ -1187,3 +1187,76 @@ async def duplicar_y_reenviar(
         "total_estimado": float(c.get("total_estimado") or 0),
         "mensaje": f"Cotización duplicada con ID {nueva_cot_id}. Se reenviará a los viveristas.",
     }
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT: Agregar items a cotización existente
+# ═══════════════════════════════════════════════════════════
+
+@router.post("/cotizacion/{cotizacion_id}/agregar-items")
+async def agregar_items_a_cotizacion(
+    cotizacion_id: int,
+    items_nuevos: list[dict],
+    user: UserContext = Depends(require_comprador),
+):
+    """Agrega productos a una cotización ya enviada.
+    
+    Casos de uso:
+    - Comprador ve el marketplace y quiere agregar más productos
+    - Items nuevos se agregan a la cotización sin perder las subs existentes
+    - Se reenvía notificación a viveristas sobre items adicionales
+    """
+    if not user.cliente_id:
+        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
+    
+    db = admin()
+    
+    # Obtener cotización actual
+    resp = db.table("cotizaciones").select(
+        "cliente_id, estado, items, total_estimado, prompt_original"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+    
+    if not resp.data:
+        raise HTTPException(404, detail="Cotización no encontrada")
+    
+    c = resp.data[0]
+    if c["cliente_id"] != user.cliente_id:
+        raise HTTPException(404, detail="No autorizado")
+    
+    # Solo se puede agregar si está en estado "enviada" o "parcial"
+    if c["estado"] not in ("enviada", "parcial", "rechazada"):
+        raise HTTPException(400, detail=f"No se pueden agregar items a cotización en estado '{c['estado']}'")
+    
+    # Agregar items nuevos (evitando duplicados por SKU)
+    items_existentes = c.get("items") or []
+    skus_existentes = {it.get("inventario_id") for it in items_existentes}
+    
+    items_para_agregar = []
+    for it_nuevo in items_nuevos:
+        inv_id = it_nuevo.get("inventario_id")
+        if inv_id not in skus_existentes:
+            items_para_agregar.append(it_nuevo)
+            skus_existentes.add(inv_id)
+    
+    if not items_para_agregar:
+        return {
+            "ok": True,
+            "cotizacion_id": cotizacion_id,
+            "items_agregados": 0,
+            "mensaje": "Los productos ya estaban en la cotización",
+        }
+    
+    # Actualizar cotización con items nuevos
+    items_finales = items_existentes + items_para_agregar
+    
+    db.table("cotizaciones").update({
+        "items": items_finales,
+    }).eq("cotizacion_id", cotizacion_id).execute()
+    
+    return {
+        "ok": True,
+        "cotizacion_id": cotizacion_id,
+        "items_agregados": len(items_para_agregar),
+        "total_items_ahora": len(items_finales),
+        "mensaje": f"✅ Agregados {len(items_para_agregar)} producto(s) a la cotización",
+    }
