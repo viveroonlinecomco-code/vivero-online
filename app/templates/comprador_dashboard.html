@@ -243,19 +243,24 @@ function renderProyectoCard(p) {
     const nombre = p.nombre_proyecto
         ? escapeHTML(p.nombre_proyecto)
         : '<span class="italic text-slate-400">Sin nombre</span>';
+    
+    // FIX 13 ago: Usar estado real del backend (parcial, rechazada, etc)
     const estadoMostrar = (p.estado === 'pagada' && p.estado_entrega && p.estado_entrega !== 'pendiente')
         ? p.estado_entrega
         : p.estado;
+    
     const badgeStyle = BADGE_STYLES[estadoMostrar] || BADGE_STYLES.borrador;
     const badgeLabel = BADGE_LABELS[estadoMostrar] || estadoMostrar;
-    const urgente = p.estado === 'aceptada';
+    const urgente = p.estado === 'aceptada' && p.mostrar_aprobado;  // ← CAMBIO: solo urgente si NO vencida
     const parcial = p.estado === 'parcial';
+    const rechazada = p.estado === 'rechazada';
     const pagoPendiente = p.estado === 'convertida';
     const showVencimiento = p.estado === 'borrador' && p.fecha_vencimiento;
-    // ── Fase 4: usar total_comprador que viene del backend ──
+    
     const totalMostrar = formatCOP(p.total_comprador);
+    
     return `
-        <article class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border ${urgente || parcial ? 'border-emerald-200 dark:border-emerald-800' : pagoPendiente ? 'border-amber-200 dark:border-amber-800' : 'border-slate-100 dark:border-slate-700'} overflow-hidden" data-proyecto-card="${p.cotizacion_id}">
+        <article class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border ${urgente || parcial ? 'border-emerald-200 dark:border-emerald-800' : rechazada ? 'border-red-200 dark:border-red-800' : pagoPendiente ? 'border-amber-200 dark:border-amber-800' : 'border-slate-100 dark:border-slate-700'} overflow-hidden" data-proyecto-card="${p.cotizacion_id}">
             <button data-toggle class="w-full text-left p-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition flex items-center gap-3">
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2 mb-1 flex-wrap">
@@ -269,6 +274,7 @@ function renderProyectoCard(p) {
                 </div>
                 ${urgente ? '<span class="material-symbols-outlined text-emerald-500 text-xl">payments</span>' : ''}
                 ${parcial ? '<span class="material-symbols-outlined text-purple-500 text-xl">check_circle</span>' : ''}
+                ${rechazada ? '<span class="material-symbols-outlined text-red-500 text-xl">cancel</span>' : ''}
                 ${pagoPendiente ? '<span class="material-symbols-outlined text-amber-500 text-xl">credit_card</span>' : ''}
                 <span class="material-symbols-outlined text-slate-400 transition-transform" data-chevron>expand_more</span>
             </button>
@@ -343,35 +349,73 @@ async function cargarItemsProyecto(cotizacion_id) {
             footerEl.querySelector('[data-eliminar]')?.addEventListener('click', () => eliminarProyecto(cotizacion_id));
         } else if (c.estado === 'enviada') {
             footerEl.innerHTML = `
-                <div class="text-center py-2">
-                    <span class="material-symbols-outlined text-amber-400 text-3xl">schedule</span>
-                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200 mt-1">Esperando al vivero</p>
-                    <p class="text-xs text-slate-500 mt-1">Te notificamos por WhatsApp cuando confirmen.</p>
-                    <p class="text-xs font-bold text-primary mt-2">${formatCOP(totalComprador)}</p>
+                <div class="space-y-2">
+                    <div class="text-center py-2 space-y-2">
+                        <span class="material-symbols-outlined text-amber-400 text-3xl">schedule</span>
+                        <p class="text-sm font-bold text-slate-700 dark:text-slate-200">Esperando al vivero</p>
+                        <p class="text-xs text-slate-500">Te notificamos por WhatsApp cuando confirmen.</p>
+                        <p class="text-xs font-bold text-primary">${formatCOP(totalComprador)}</p>
+                    </div>
+                    <div class="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-600">
+                        <button data-reenviar-enviada class="w-full bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
+                            <span class="material-symbols-outlined">refresh</span>
+                            ↻ Reenviar notificación
+                        </button>
+                        <button data-agregar-items-enviada class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
+                            <span class="material-symbols-outlined">add_circle</span>
+                            + Agregar más productos
+                        </button>
+                    </div>
                 </div>`;
+            footerEl.querySelector('[data-reenviar-enviada]')?.addEventListener('click', () => reenviarCotizacion(cotizacion_id));
+            footerEl.querySelector('[data-agregar-items-enviada]')?.addEventListener('click', () => mostrarModalAgregarItems(cotizacion_id));
         } else if (c.estado === 'aceptada') {
             const fechaVenc = c.fecha_vencimiento ? new Date(c.fecha_vencimiento) : null;
+            const ahora = Date.now();
+            const estáVencida = fechaVenc && ahora > fechaVenc;
+            
             let countdownHtml = '';
-            if (fechaVenc && !isNaN(fechaVenc)) {
+            let botonesSección = '';
+            
+            if (estáVencida) {
+                // VENCIDA: No mostrar "APROBADO"
+                countdownHtml = `<p class="text-[11px] text-center text-red-500 font-semibold">⚠️ Esta cotización está vencida</p>`;
+                botonesSección = `
+                    <button data-reenviar class="w-full bg-slate-600 hover:bg-slate-700 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
+                        <span class="material-symbols-outlined">refresh</span>
+                        ↻ Reenviar al vivero
+                    </button>
+                    <button data-duplicar class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
+                        <span class="material-symbols-outlined">note_add</span>
+                        ⟳ Nueva propuesta
+                    </button>
+                `;
+            } else {
+                // NO VENCIDA: Mostrar "APROBADO" y botón pagar
                 const msRestantes = fechaVenc - Date.now();
                 if (msRestantes > 0) {
                     const horas = Math.floor(msRestantes / 3600000);
                     const minutos = Math.floor((msRestantes % 3600000) / 60000);
                     countdownHtml = `<p class="text-[11px] text-center text-amber-600 font-semibold">⏰ Expira en ${horas}h ${minutos}m — pagá antes de que venza</p>`;
-                } else {
-                    countdownHtml = `<p class="text-[11px] text-center text-red-500 font-semibold">⚠️ Esta cotización está por vencer</p>`;
                 }
-            }
-            footerEl.innerHTML = `
-                <div class="space-y-2">
+                botonesSección = `
                     <button data-pagar class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition">
                         <span class="material-symbols-outlined">credit_card</span>
                         Pagar ahora · ${formatCOP(totalComprador)}
                     </button>
-                    <p class="text-[11px] text-center text-emerald-600 font-semibold mt-1">✓ El vivero confirmó disponibilidad</p>
+                `;
+            }
+            
+            footerEl.innerHTML = `
+                <div class="space-y-2">
+                    ${!estáVencida ? '<p class="text-[11px] text-center text-emerald-600 font-semibold mt-1">✓ El vivero confirmó disponibilidad</p>' : ''}
+                    ${botonesSección}
                     ${countdownHtml}
                 </div>`;
+            
             footerEl.querySelector('[data-pagar]')?.addEventListener('click', () => irACheckout(cotizacion_id));
+            footerEl.querySelector('[data-reenviar]')?.addEventListener('click', () => reenviarCotizacion(cotizacion_id));
+            footerEl.querySelector('[data-duplicar]')?.addEventListener('click', () => duplicarYReenviar(cotizacion_id));
         } else if (c.estado === 'parcial') {
             const totalAceptado = c.total_aceptado || 0;
             const totalPendiente = totalComprador - totalAceptado;
@@ -422,11 +466,22 @@ async function cargarItemsProyecto(cotizacion_id) {
             const nombresAlt = hayAlternativa
                 ? [...new Set(c.alternativas_vivero.map(a => a.nombre_vivero).filter(Boolean))].join(', ')
                 : '';
+            
+            // NUEVO: Mostrar indicador de subs rechazadas
+            const subsRechazadas = (c.sub_cotizaciones || []).filter(s => s.estado === 'rechazada');
+            const htmlRechazoDesglose = subsRechazadas.length > 0 
+                ? `<div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-left my-2">
+                     <p class="text-xs font-bold text-red-700 dark:text-red-400">🚫 Rechazaron:</p>
+                     <p class="text-xs text-slate-600 dark:text-slate-300 mt-1">${subsRechazadas.map(s => s.nombre_vivero).join(', ')}</p>
+                   </div>`
+                : '';
+            
             footerEl.innerHTML = `
                 <div class="text-center py-2 space-y-3">
                     <span class="material-symbols-outlined text-red-400 text-3xl">cancel</span>
                     <p class="text-sm font-bold text-slate-700 dark:text-slate-200">El vivero no pudo surtir este pedido</p>
                     ${c.notas_agente ? `<p class="text-xs text-slate-500 italic">"${escapeHTML(c.notas_agente)}"</p>` : ''}
+                    ${htmlRechazoDesglose}
                     ${hayAlternativa ? `
                     <div class="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3 text-left">
                         <p class="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
@@ -439,7 +494,12 @@ async function cargarItemsProyecto(cotizacion_id) {
                         <span class="material-symbols-outlined">swap_horiz</span>
                         Confirmar vivero alternativo
                     </button>
-                    ` : ''}
+                    ` : `
+                    <button data-duplicar-rechazada class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
+                        <span class="material-symbols-outlined">note_add</span>
+                        ⟳ Crear nueva propuesta
+                    </button>
+                    `}
                     <a href="/marketplace" class="inline-flex items-center gap-1 text-primary text-xs font-semibold hover:underline">
                         <span class="material-symbols-outlined text-sm">explore</span>
                         ${hayAlternativa ? 'O buscar más opciones en el marketplace' : 'Buscar alternativas en el marketplace'}
@@ -448,6 +508,9 @@ async function cargarItemsProyecto(cotizacion_id) {
             if (hayAlternativa) {
                 footerEl.querySelector('[data-confirmar-alternativa]')
                     ?.addEventListener('click', () => confirmarAlternativa(cotizacion_id));
+            } else {
+                footerEl.querySelector('[data-duplicar-rechazada]')
+                    ?.addEventListener('click', () => duplicarYReenviar(cotizacion_id));
             }
         } else if (c.estado === 'pagada') {
             const estadoEntrega = c.estado_entrega || 'pendiente';
@@ -657,6 +720,54 @@ function escapeHTML(s) {
     return String(s).replace(/[&<>"']/g, c => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     })[c]);
+}
+
+// FIX 13 ago — Nuevas funciones para REENVIAR, DUPLICAR, AGREGAR ITEMS
+async function reenviarCotizacion(cotizacionId) {
+    if (!confirm('¿Reenviar notificación a los viveristas?')) return;
+    const token = localStorage.getItem('vivero_access_token');
+    try {
+        const res = await fetch(`/api/marketplace/cotizacion/${cotizacionId}/reenviar`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.ok) {
+            alert(`✓ Reenviado a ${data.num_viveristas_notificados} vivero(s)`);
+            location.reload();
+        } else {
+            alert('❌ ' + (data.detail || 'Error'));
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+}
+
+async function duplicarYReenviar(cotizacionId) {
+    if (!confirm('¿Crear nueva propuesta y reenviar a viveristas?')) return;
+    const token = localStorage.getItem('vivero_access_token');
+    try {
+        const res = await fetch(`/api/marketplace/cotizacion/${cotizacionId}/duplicar-y-reenviar`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        });
+        const data = await res.json();
+        if (data.ok) {
+            alert(`✓ Nueva propuesta creada: #${data.cotizacion_nueva}`);
+            location.reload();
+        } else {
+            alert('❌ ' + (data.detail || 'Error'));
+        }
+    } catch (err) {
+        alert('Error: ' + err.message);
+    }
+}
+
+function mostrarModalAgregarItems(cotizacionId) {
+    // Placeholder: Redirigir al marketplace para seleccionar items
+    const total = document.querySelector(`[data-proyecto-card="${cotizacionId}"] p.text-xs`)?.textContent || '';
+    alert(`📦 Ir a Marketplace para agregar productos a cotización #${cotizacionId}\n\n(Serás redirigido en la siguiente versión)`);
+    // TODO: Implementar modal con marketplace inline para seleccionar items
 }
 </script>
 </body></html>
