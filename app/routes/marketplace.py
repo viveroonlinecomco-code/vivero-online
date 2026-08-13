@@ -641,8 +641,9 @@ async def crear_o_agregar_a_borrador(
         b = existente.data[0]
         if b["cliente_id"] != user.cliente_id:
             raise HTTPException(404, detail="Proyecto no encontrado")
-        if b["estado"] != "borrador":
+        if b["estado"] not in ("borrador", "enviada", "parcial", "rechazada"):
             raise HTTPException(400, detail=f"No se pueden agregar items a un proyecto en estado '{b['estado']}'")
+
         return _merge_items_y_actualizar(db, b, items_nuevos)
     if req.nombre_proyecto is not None:
         cot_resp = db.table("cotizaciones").insert({
@@ -657,8 +658,8 @@ async def crear_o_agregar_a_borrador(
         cotizacion_id = cot_resp.data[0]["cotizacion_id"]
         return CotizacionResponse(ok=True, cotizacion_id=cotizacion_id, total_cop=total_nuevo, estado="borrador")
     existente = db.table("cotizaciones").select(
-        "cotizacion_id, items, total_estimado, notas_cliente, prompt_original"
-    ).eq("cliente_id", user.cliente_id).eq("estado", "borrador").order(
+        "cotizacion_id, items, total_estimado, notas_cliente, prompt_original, estado"
+    ).eq("cliente_id", user.cliente_id).in_("estado", ["borrador", "enviada", "parcial", "rechazada"]).order(
         "fecha_creacion", desc=True
     ).limit(1).execute()
     if existente.data:
