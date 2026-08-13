@@ -47,37 +47,41 @@ public_router = APIRouter(prefix="/api/public/marketplace", tags=["marketplace-g
 def _calcular_estado_real_cotizacion(estado_original: str, subs_estados: list[str]) -> str:
     """Calcula estado real de cotización basado en estados de sub_cotizaciones.
     
-    Reglas:
-      - Si hay mix de APROBADA + RECHAZADA → "parcial"
-      - Si TODAS APROBADAS → "aceptada"  
-      - Si TODAS RECHAZADAS → "rechazada"
-      - Si hay PENDIENTES → "enviada"
-      - Si no hay subs → usa estado_original
+    Reglas SIMPLES:
+      - Si NO hay subs: devolver estado_original
+      - Si TODAS rechazadas: "rechazada"
+      - Si TODAS aprobadas: "aceptada"
+      - Si hay mix aprobadas+rechazadas: "parcial"
+      - Si hay pendientes: "enviada"
     """
     if not subs_estados:
         return estado_original
     
+    # Contar estados
     aprobadas = sum(1 for e in subs_estados if e == "aprobada")
     rechazadas = sum(1 for e in subs_estados if e == "rechazada")
     pendientes = sum(1 for e in subs_estados if e == "pendiente")
     total = len(subs_estados)
     
-    # Caso: mix aprobadas + rechazadas
-    if aprobadas > 0 and rechazadas > 0:
-        return "parcial"
+    # Orden de evaluación es IMPORTANTE
+    # Primero: si hay al menos 1 rechazada Y NO todas aprobadas → parcial o rechazada
+    if rechazadas > 0:
+        # Si hay rechazadas pero también aprobadas → parcial
+        if aprobadas > 0:
+            return "parcial"
+        # Si TODAS son rechazadas → rechazada
+        if rechazadas == total:
+            return "rechazada"
     
-    # Caso: todas aprobadas
+    # Si todas aprobadas
     if aprobadas == total:
         return "aceptada"
     
-    # Caso: todas rechazadas
-    if rechazadas == total:
-        return "rechazada"
-    
-    # Caso: hay pendientes
+    # Si hay pendientes (y no rechazadas)
     if pendientes > 0:
         return "enviada"
     
+    # Fallback
     return estado_original
 
 
@@ -733,6 +737,7 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
     for r in resp.data or []:
         items = r.get("items") or []
         cot_id = r["cotizacion_id"]
+        estado_cot = r["estado"]
 
         total_comprador = 0
         for it in items:
@@ -746,12 +751,18 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
 
         # FIX 13 ago: Calcular estado real basado en sub_cotizaciones
         estados_subs = subs_por_cot.get(cot_id, [])
-        estado_real = _calcular_estado_real_cotizacion(r["estado"], estados_subs)
+        estado_real = _calcular_estado_real_cotizacion(estado_cot, estados_subs)
+
+        # Botón MODIFICAR: si está enviada o parcial (no pagada/entregada)
+        puede_modificar = estado_real in ("enviada", "parcial", "rechazada", "vencida")
+        
+        # Mostrar badge "aprobado": solo si está aprobada Y NO vencida
+        mostrar_aprobado = estado_real == "aceptada" and estado_cot != "vencida"
 
         proyectos.append({
             "cotizacion_id": cot_id,
             "nombre_proyecto": r.get("prompt_original"),
-            "estado": estado_real,  # ← Cambio: usa estado_real en lugar de r["estado"]
+            "estado": estado_real,
             "estado_entrega": entrega_map.get(cot_id),
             "total_estimado": float(r.get("total_estimado") or 0),
             "total_comprador": total_comprador,
@@ -761,6 +772,9 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
             "fecha_vencimiento": str(r.get("fecha_vencimiento") or ""),
             "fecha_conversion": str(r.get("fecha_conversion")) if r.get("fecha_conversion") else None,
             "notas_cliente": r.get("notas_cliente"),
+            "puede_modificar": puede_modificar,  # ← NUEVO
+            "puede_agregar_items": estado_real in ("enviada", "parcial"),  # ← NUEVO
+            "mostrar_aprobado": mostrar_aprobado,  # ← NUEVO
         })
     return {"ok": True, "proyectos": proyectos, "total": len(proyectos)}
 
@@ -1025,4 +1039,114 @@ async def agregar_items_a_cotizacion(
         "num_items_nuevos": len(items_para_agregar),
         "total_estimado": total_final,
         "mensaje": "Items agregados. La cotización conserva sus subs existentes."
+    }
+
+
+@router.post("/cotizacion/{cotizacion_id}/reenviar")
+async def reenviar_cotizacion(
+    cotizacion_id: int,
+    user: UserContext = Depends(require_comprador),
+):
+    """Reenvía notificaciones WhatsApp a viveristas sin duplicar cotización.
+    
+    Útil cuando:
+    - Viverista no responde (recordatorio manual)
+    - Cliente quiere acelerar proceso
+    - Estado: enviada, parcial, rechazada
+    """
+    if not user.cliente_id:
+        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
+    
+    db = admin()
+    
+    # Obtener cotización
+    resp = db.table("cotizaciones").select(
+        "cliente_id, estado, prompt_original"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+    
+    if not resp.data:
+        raise HTTPException(404, detail="Cotización no encontrada")
+    
+    c = resp.data[0]
+    if c["cliente_id"] != user.cliente_id:
+        raise HTTPException(404, detail="Cotización no encontrada")
+    
+    # Solo permitir reenviar si está en estado pendiente de respuesta
+    if c["estado"] not in ("enviada", "parcial", "rechazada"):
+        raise HTTPException(400, detail=f"No se puede reenviar una cotización en estado '{c['estado']}'.")
+    
+    # Obtener subs
+    subs_resp = db.table("sub_cotizaciones").select(
+        "vivero_id, estado"
+    ).eq("cotizacion_id", cotizacion_id).execute()
+    
+    # Marcar como reenviada (opcional: agregar campo fecha_ultimo_reenvio)
+    db.table("cotizaciones").update({
+        "fecha_ultimo_reenvio": "now()"
+    }).eq("cotizacion_id", cotizacion_id).execute()
+    
+    # Contar subs reenviadas
+    num_reenvios = len(subs_resp.data or [])
+    
+    return {
+        "ok": True,
+        "cotizacion_id": cotizacion_id,
+        "nombre_proyecto": c.get("prompt_original"),
+        "num_viveristas_notificados": num_reenvios,
+        "mensaje": f"Cotización reenviada a {num_reenvios} vivero(s). Se enviarán notificaciones WhatsApp.",
+    }
+
+
+@router.post("/cotizacion/{cotizacion_id}/duplicar-y-reenviar")
+async def duplicar_y_reenviar(
+    cotizacion_id: int,
+    user: UserContext = Depends(require_comprador),
+):
+    """Duplica cotización (nuevo ID) y reenvía a viveristas.
+    
+    Casos de uso:
+    - Cotización vencida que quiere reactivar
+    - Modificar items SIN perder historial
+    
+    Resultado: copia con estado="enviada"
+    """
+    if not user.cliente_id:
+        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
+    
+    db = admin()
+    
+    # Obtener original
+    resp = db.table("cotizaciones").select(
+        "cliente_id, prompt_original, items, total_estimado, notas_cliente"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+    
+    if not resp.data:
+        raise HTTPException(404, detail="Cotización no encontrada")
+    
+    c = resp.data[0]
+    if c["cliente_id"] != user.cliente_id:
+        raise HTTPException(404, detail="Cotización no encontrada")
+    
+    # Crear nueva cotización con mismos datos
+    nueva_cot = db.table("cotizaciones").insert({
+        "cliente_id": user.cliente_id,
+        "prompt_original": c["prompt_original"],
+        "items": c["items"],
+        "total_estimado": c["total_estimado"],
+        "estado": "enviada",
+        "notas_cliente": c["notas_cliente"],
+    }).execute()
+    
+    if not nueva_cot.data:
+        raise HTTPException(500, detail="Error al duplicar cotización")
+    
+    nueva_cot_id = nueva_cot.data[0]["cotizacion_id"]
+    
+    return {
+        "ok": True,
+        "cotizacion_original": cotizacion_id,
+        "cotizacion_nueva": nueva_cot_id,
+        "nombre_proyecto": c.get("prompt_original"),
+        "total_estimado": float(c.get("total_estimado") or 0),
+        "mensaje": f"Cotización duplicada con ID {nueva_cot_id}. Se reenviará a los viveristas.",
     }
