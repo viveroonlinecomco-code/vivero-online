@@ -773,11 +773,24 @@ async function duplicarYReenviar(cotizacionId) {
 }
 
 function mostrarModalAgregarItems(cotizacionId) {
-    // Placeholder: Redirigir al marketplace para seleccionar items
-    const total = document.querySelector(`[data-proyecto-card="${cotizacionId}"] p.text-xs`)?.textContent || '';
-    alert(`📦 Ir a Marketplace para agregar productos a cotización #${cotizacionId}\n\n(Serás redirigido en la siguiente versión)`);
-    // TODO: Implementar modal con marketplace inline para seleccionar items
+    // Guardar que venimos de agregar a cotización
+    sessionStorage.setItem('agregar_a_cotizacion', cotizacionId);
+    // Ir al marketplace con parámetro
+    window.location.href = `/marketplace?agregar_a_cotizacion=${cotizacionId}`;
 }
+
+// 🔄 Auto-refrescar cuando vuelve del marketplace
+window.addEventListener('focus', () => {
+    const cotizacionId = sessionStorage.getItem('agregar_a_cotizacion');
+    if (cotizacionId) {
+        // Limpiar la flag
+        sessionStorage.removeItem('agregar_a_cotizacion');
+        // Recargar en ~2 segundos (tiempo para que vuelva del marketplace)
+        setTimeout(() => {
+            window.location.reload();
+        }, 2000);
+    }
+});
 
 async function cancelarCotizacion(cotizacionId) {
     if (!confirm('⚠️ ¿Cancelar esta cotización? No se puede deshacer.')) return;
