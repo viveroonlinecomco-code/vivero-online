@@ -27,6 +27,7 @@ Impacto: panel comprador 3-5× más rápido en cotizaciones grandes.
 """
 from __future__ import annotations
 from typing import Optional
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
 from app.auth.deps import UserContext, require_comprador, require_user
 from app.schemas.catalog import InventarioItem
@@ -688,7 +689,7 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
     resp = db.table("cotizaciones").select(
         "cotizacion_id, prompt_original, estado, total_estimado, items, "
         "fecha_creacion, fecha_vencimiento, fecha_conversion, notas_cliente"
-    ).eq("cliente_id", user.cliente_id).order("fecha_creacion", desc=True).execute()
+    ).eq("cliente_id", user.cliente_id).not_.in_("estado", ["cancelada", "entregado"]).order("fecha_creacion", desc=True).execute()
 
     # FIX 13 ago: Obtener estados de sub_cotizaciones para calcular estado real
     subs_por_cot = {}
@@ -734,10 +735,26 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
     markups_b2c = matriz.get("markup_b2c", {})
 
     proyectos = []
+    ahora = datetime.now(timezone.utc)
     for r in resp.data or []:
         items = r.get("items") or []
         cot_id = r["cotizacion_id"]
         estado_cot = r["estado"]
+        
+        # FILTRO: Excluir cotizaciones canceladas (no mostrar basura)
+        if estado_cot == "cancelada":
+            continue
+        
+        # FILTRO: Excluir cotizaciones vencidas (no mostrar en panel)
+        fecha_venc = r.get("fecha_vencimiento")
+        if fecha_venc:
+            try:
+                fecha_venc_dt = datetime.fromisoformat(fecha_venc.replace('Z', '+00:00'))
+                if ahora > fecha_venc_dt:
+                    # Cotización vencida → no mostrar
+                    continue
+            except:
+                pass
 
         total_comprador = 0
         for it in items:
