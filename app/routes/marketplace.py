@@ -1,802 +1,436 @@
-<!DOCTYPE html>
-<html lang="es"><head>
-<meta charset="utf-8"/>
-<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-<script>
-  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
-</script>
-<script defer src="/_vercel/insights/script.js"></script>
-<script>
-  window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
-</script>
-<script defer src="/_vercel/speed-insights/script.js"></script>
-<title>Mi panel · viveroonline.com.co</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght@100..700,0..1&display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
-<script id="tailwind-config">
-    tailwind.config = {
-        darkMode: "class",
-        theme: {
-            extend: {
-                colors: {
-                    "primary": "#325926",
-                    "background-light": "#f7f7f6",
-                    "background-dark": "#171d15",
-                },
-                fontFamily: { "display": ["Inter"] },
-                borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
-            },
-        },
-    }
-</script>
-<style>
-    body { font-family: 'Inter', sans-serif; }
-    .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
-    body { min-height: max(884px, 100dvh); }
-</style>
-</head>
-<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-slate-100 min-h-screen">
-<div class="max-w-5xl mx-auto pb-24">
-<!-- Header -->
-<div class="flex items-center bg-background-light dark:bg-background-dark p-4 pb-2 justify-between sticky top-0 z-20 backdrop-blur-md bg-opacity-80">
-    <div class="flex size-12 shrink-0 items-center">
-        <div class="bg-primary/10 aspect-square rounded-full size-10 border-2 border-primary flex items-center justify-center text-primary">
-            <span class="material-symbols-outlined">person</span>
-        </div>
-    </div>
-    <div class="flex-1 px-3">
-        <p class="text-xs text-primary font-semibold uppercase tracking-wider">Bienvenido</p>
-        <h2 class="text-slate-900 dark:text-slate-100 text-lg font-bold leading-tight tracking-tight">Arq. David Silva</h2>
-    </div>
-    <div class="flex w-12 items-center justify-end">
-        <button onclick="cerrarSesion()" class="flex size-10 cursor-pointer items-center justify-center rounded-full bg-white dark:bg-slate-800 shadow-sm text-slate-700 dark:text-slate-200" title="Cerrar sesión">
-            <span class="material-symbols-outlined">logout</span>
-        </button>
-    </div>
-</div>
-<!-- Search -->
-<div class="px-4 py-3">
-    <label class="flex flex-col min-w-40 h-14 w-full">
-        <div class="flex w-full flex-1 items-stretch rounded-xl h-full shadow-sm">
-            <div class="text-primary flex border-none bg-white dark:bg-slate-800 items-center justify-center pl-4 rounded-l-xl">
-                <span class="material-symbols-outlined">search</span>
-            </div>
-            <input class="form-input flex w-full min-w-0 flex-1 resize-none overflow-hidden rounded-xl text-slate-900 dark:text-slate-100 focus:outline-0 focus:ring-0 border-none bg-white dark:bg-slate-800 h-full placeholder:text-slate-400 px-4 rounded-l-none pl-2 text-base font-normal" placeholder="Buscar proyectos de gran escala..." value=""/>
-        </div>
-    </label>
-</div>
-<!-- Sugerencias IA -->
-<section class="px-4 py-6">
-    <div class="rounded-xl border border-dashed border-primary/30 bg-primary/5 p-6">
-        <div class="flex items-start gap-4">
-            <span class="material-symbols-outlined text-primary text-3xl">auto_awesome</span>
-            <div class="flex-1">
-                <h3 class="font-bold text-slate-800 dark:text-slate-100">Sugerencias IA personalizadas</h3>
-                <p class="text-sm text-slate-500 mt-1">Próximamente vas a ver recomendaciones de plantas según tu clima, suelo y tipo de proyecto.</p>
-            </div>
-        </div>
-    </div>
-</section>
-<!-- MIS PROYECTOS -->
-<section class="px-4 py-4" id="proyectos-section">
-    <div class="flex items-center justify-between mb-4">
-        <h2 class="text-slate-900 dark:text-slate-100 text-xl font-bold tracking-tight">Mis Proyectos</h2>
-        <span id="proyectos-meta" class="text-xs text-slate-500 hidden"></span>
-    </div>
-    <div id="proyectos-loading" class="space-y-3">
-        <div class="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
-            <div class="animate-pulse space-y-2">
-                <div class="h-5 bg-slate-200 dark:bg-slate-700 rounded w-1/2"></div>
-                <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-3/4"></div>
-            </div>
-        </div>
-        <div class="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700">
-            <div class="animate-pulse space-y-2">
-                <div class="h-5 bg-slate-200 dark:bg-slate-700 rounded w-1/3"></div>
-                <div class="h-4 bg-slate-200 dark:bg-slate-700 rounded w-2/3"></div>
-            </div>
-        </div>
-    </div>
-    <div id="proyectos-empty" class="hidden rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50 p-8 text-center">
-        <span class="material-symbols-outlined text-slate-400 text-4xl mb-2">folder_open</span>
-        <h3 class="font-bold text-slate-800 dark:text-slate-100">Aún no tenés proyectos</h3>
-        <p class="text-sm text-slate-500 mt-1 mb-4 max-w-md mx-auto">Cuando solicites tu primera cotización desde el marketplace, vas a poder crear y gestionar tus proyectos acá.</p>
-        <a href="/marketplace" class="inline-flex items-center gap-2 bg-primary text-white px-5 py-2.5 rounded-full font-semibold hover:bg-primary/90 transition-colors">
-            <span class="material-symbols-outlined text-base">explore</span>
-            Explorar Marketplace
-        </a>
-    </div>
-    <div id="proyectos-list" class="hidden space-y-3"></div>
-</section>
-</div>
-<!-- Bottom Navigation -->
-<div class="fixed bottom-0 left-0 right-0 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 px-4 pb-6 pt-2 z-30">
-    <div class="max-w-5xl mx-auto flex justify-between items-center">
-        <a class="flex flex-1 flex-col items-center justify-center gap-1 text-primary" href="/comprador">
-            <span class="material-symbols-outlined">home</span>
-            <p class="text-[10px] font-bold uppercase tracking-widest">Inicio</p>
-        </a>
-        <a class="flex flex-1 flex-col items-center justify-center gap-1 text-slate-400" href="/marketplace">
-            <span class="material-symbols-outlined">storefront</span>
-            <p class="text-[10px] font-bold uppercase tracking-widest">Marketplace</p>
-        </a>
-        <div class="flex flex-1 justify-center -mt-10">
-            <a href="/marketplace" class="bg-primary text-white size-14 rounded-full shadow-lg border-4 border-background-light dark:border-background-dark flex items-center justify-center">
-                <span class="material-symbols-outlined">add</span>
-            </a>
-        </div>
-        <a class="flex flex-1 flex-col items-center justify-center gap-1 text-slate-400" href="mailto:viveroonline.com.co@gmail.com">
-            <span class="material-symbols-outlined">support_agent</span>
-            <p class="text-[10px] font-bold uppercase tracking-widest">Soporte</p>
-        </a>
-        <a class="flex flex-1 flex-col items-center justify-center gap-1 text-slate-400" href="/mi-cuenta/inteligencia">
-            <span class="material-symbols-outlined">monitoring</span>
-            <p class="text-[10px] font-bold uppercase tracking-widest">KPIs</p>
-        </a>
-    </div>
-</div>
-<script src="/static/js/vivero.js"></script>
-<script>
-if (!VO.requireAuth()) throw new Error('auth');
-// ═══════════════════════════════════════════════════════════════════
-// FASE 4 (22 jul 2026): eliminado const MARKUP = 0.20 hardcoded.
-// Los precios comprador vienen calculados desde el backend usando el
-// motor matricial por categoría (17% sustrato, 20% plantas, 25% materas).
-// El HTML ya NO calcula markups — solo pinta lo que devuelve el endpoint.
-//
-// Campos nuevos que el backend devuelve:
-//   - proyectos[].total_comprador      = total con markup por categoría
-//   - cotizacion.total_comprador       = idem para detalle
-//   - cotizacion.items[].precio_comprador_unitario, subtotal_comprador
-// ═══════════════════════════════════════════════════════════════════
-// FASE 5 (7 ago 2026): Cotización parcial con auto-timeout
-// Nuevo estado "parcial" cuando algunos viveristas aprueban pero otros aún no responden.
-// 3 botones claros: Pagar disponible / Aceptar alternativa / Cancelar
-// ═══════════════════════════════════════════════════════════════════
-const TIPO_CLIENTE_LABEL = {
-    paisajista: 'Paisajista', constructora: 'Constructora',
-    conjunto: 'Conjunto residencial', empresa: 'Empresa', otro: 'Comprador',
-};
-const BADGE_STYLES = {
-    borrador:     'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    enviada:      'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    aceptada:     'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-    parcial:      'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-    rechazada:    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-    vencida:      'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
-    convertida:   'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
-    pagada:       'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-    despachado:   'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-    entregado:    'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-};
-const BADGE_LABELS = {
-    borrador:     '✏️ Borrador',
-    enviada:      '⏳ Enviado al vivero',
-    aceptada:     '✅ Aprobado — listo para pagar',
-    parcial:      '📋 Aprobado parcial',
-    rechazada:    '❌ Rechazado',
-    vencida:      'Vencido',
-    convertida:   '⚠️ Pago pendiente',
-    pagada:       '✅ Pagado — preparando pedido',
-    despachado:   '🚐 En camino',
-    entregado:    '✅ Entregado',
-};
-document.addEventListener('DOMContentLoaded', async () => {
-    try {
-        const me = await VO.me();
-        if (me.rol !== 'comprador' && me.rol !== 'admin') {
-            window.location.href = me.rol === 'viverista' ? '/viverista' : '/';
-            return;
-        }
-        const subtipo = TIPO_CLIENTE_LABEL[me.tipo_cliente] || 'Comprador';
-        const saludo = me.nombre_display ? me.nombre_display : `Bienvenido, ${subtipo}`;
-        const bienvenida = Array.from(document.querySelectorAll('p, h2, h3')).find(el => /david silva|arq\./i.test(el.textContent));
-        if (bienvenida) bienvenida.textContent = saludo;
-        const etiquetaTop = Array.from(document.querySelectorAll('p')).find(el => /^bienvenido$/i.test((el.textContent || '').trim()));
-        if (etiquetaTop && me.tipo_cliente) etiquetaTop.textContent = subtipo.toUpperCase();
-        cargarProyectos();
-    } catch (e) { console.error(e); }
-});
-async function cargarProyectos() {
-    const token = localStorage.getItem('vivero_access_token');
-    const loadingEl = document.getElementById('proyectos-loading');
-    const emptyEl   = document.getElementById('proyectos-empty');
-    const listEl    = document.getElementById('proyectos-list');
-    const metaEl    = document.getElementById('proyectos-meta');
-    try {
-        const resp = await fetch('/api/marketplace/cotizacion/proyectos', {
-            headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = await resp.json();
-        loadingEl.classList.add('hidden');
-        const proyectos = (data.proyectos || []).filter(p => p.estado !== 'vencida');
-        if (proyectos.length === 0) { emptyEl.classList.remove('hidden'); return; }
-        listEl.classList.remove('hidden');
-        metaEl.classList.remove('hidden');
-        const numAprobados  = proyectos.filter(p => p.estado === 'aceptada').length;
-        const numParciales  = proyectos.filter(p => p.estado === 'parcial').length;
-        const numPendientes = proyectos.filter(p => p.estado === 'convertida').length;
-        const numEnviados   = proyectos.filter(p => p.estado === 'enviada').length;
-        const numBorradores = proyectos.filter(p => p.estado === 'borrador').length;
-        let metaTexto = `${proyectos.length} proyecto${proyectos.length !== 1 ? 's' : ''}`;
-        if (numAprobados > 0)  metaTexto += ` · ${numAprobados} listo${numAprobados !== 1 ? 's' : ''} para pagar`;
-        else if (numParciales > 0) metaTexto += ` · ${numParciales} pago parcial`;
-        else if (numPendientes > 0) metaTexto += ` · ${numPendientes} pago pendiente`;
-        else if (numEnviados > 0)   metaTexto += ` · ${numEnviados} en revisión`;
-        else if (numBorradores > 0) metaTexto += ` · ${numBorradores} borrador${numBorradores !== 1 ? 'es' : ''}`;
-        metaEl.textContent = metaTexto;
-        listEl.innerHTML = proyectos.map(p => renderProyectoCard(p)).join('');
-        listEl.querySelectorAll('[data-proyecto-card]').forEach(card => {
-            const id = parseInt(card.dataset.proyectoCard, 10);
-            card.querySelector('[data-toggle]').addEventListener('click', () => toggleProyectoExpand(id));
-        });
-    } catch (e) {
-        console.error('Error cargando proyectos:', e);
-        loadingEl.classList.add('hidden');
-        emptyEl.classList.remove('hidden');
-    }
-}
-function renderProyectoCard(p) {
-    const nombre = p.nombre_proyecto
-        ? escapeHTML(p.nombre_proyecto)
-        : '<span class="italic text-slate-400">Sin nombre</span>';
-    
-    // FIX 13 ago: Usar estado real del backend (parcial, rechazada, etc)
-    const estadoMostrar = (p.estado === 'pagada' && p.estado_entrega && p.estado_entrega !== 'pendiente')
-        ? p.estado_entrega
-        : p.estado;
-    
-    const badgeStyle = BADGE_STYLES[estadoMostrar] || BADGE_STYLES.borrador;
-    const badgeLabel = BADGE_LABELS[estadoMostrar] || estadoMostrar;
-    const urgente = p.estado === 'aceptada' && p.mostrar_aprobado;  // ← CAMBIO: solo urgente si NO vencida
-    const parcial = p.estado === 'parcial';
-    const rechazada = p.estado === 'rechazada';
-    const pagoPendiente = p.estado === 'convertida';
-    const showVencimiento = p.estado === 'borrador' && p.fecha_vencimiento;
-    
-    const totalMostrar = formatCOP(p.total_comprador);
-    
-    return `
-        <article class="bg-white dark:bg-slate-800 rounded-xl shadow-sm border ${urgente || parcial ? 'border-emerald-200 dark:border-emerald-800' : rechazada ? 'border-red-200 dark:border-red-800' : pagoPendiente ? 'border-amber-200 dark:border-amber-800' : 'border-slate-100 dark:border-slate-700'} overflow-hidden" data-proyecto-card="${p.cotizacion_id}">
-            <button data-toggle class="w-full text-left p-4 hover:bg-slate-50 dark:hover:bg-slate-700/30 transition flex items-center gap-3">
-                <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 class="font-bold text-base text-slate-800 dark:text-slate-100 truncate">${nombre}</h3>
-                        <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${badgeStyle}">${badgeLabel}</span>
-                    </div>
-                    <p class="text-xs text-slate-500">
-                        ${p.num_items} unidades · ${totalMostrar}
-                        ${showVencimiento ? ` · vence ${formatFecha(p.fecha_vencimiento)}` : ''}
-                    </p>
-                </div>
-                ${urgente ? '<span class="material-symbols-outlined text-emerald-500 text-xl">payments</span>' : ''}
-                ${parcial ? '<span class="material-symbols-outlined text-purple-500 text-xl">check_circle</span>' : ''}
-                ${rechazada ? '<span class="material-symbols-outlined text-red-500 text-xl">cancel</span>' : ''}
-                ${pagoPendiente ? '<span class="material-symbols-outlined text-amber-500 text-xl">credit_card</span>' : ''}
-                <span class="material-symbols-outlined text-slate-400 transition-transform" data-chevron>expand_more</span>
-            </button>
-            <div class="hidden border-t border-slate-100 dark:border-slate-700" data-panel>
-                <div class="p-4 space-y-2 bg-slate-50/50 dark:bg-slate-900/20" data-items>
-                    <div class="animate-pulse space-y-2">
-                        <div class="h-16 bg-slate-100 dark:bg-slate-700 rounded-lg"></div>
-                        <div class="h-16 bg-slate-100 dark:bg-slate-700 rounded-lg"></div>
-                    </div>
-                </div>
-                <div class="border-t border-slate-100 dark:border-slate-700 p-4 bg-slate-50 dark:bg-slate-900/30" data-footer>
-                    <div class="animate-pulse h-10 bg-slate-100 dark:bg-slate-700 rounded-full"></div>
-                </div>
-            </div>
-        </article>
-    `;
-}
-async function toggleProyectoExpand(cotizacion_id) {
-    const card = document.querySelector(`[data-proyecto-card="${cotizacion_id}"]`);
-    if (!card) return;
-    const panel  = card.querySelector('[data-panel]');
-    const chevron= card.querySelector('[data-chevron]');
-    if (!panel.classList.contains('hidden')) {
-        panel.classList.add('hidden');
-        chevron.style.transform = '';
-        return;
-    }
-    panel.classList.remove('hidden');
-    chevron.style.transform = 'rotate(180deg)';
-    if (!card.dataset.itemsLoaded) {
-        await cargarItemsProyecto(cotizacion_id);
-        card.dataset.itemsLoaded = '1';
-    }
-}
-async function cargarItemsProyecto(cotizacion_id) {
-    const card    = document.querySelector(`[data-proyecto-card="${cotizacion_id}"]`);
-    if (!card) return;
-    const itemsEl = card.querySelector('[data-items]');
-    const footerEl= card.querySelector('[data-footer]');
-    const token   = localStorage.getItem('vivero_access_token');
-    try {
-        const resp = await fetch(`/api/marketplace/cotizacion/${cotizacion_id}`, {
-            headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        const data = await resp.json();
-        const c = data.cotizacion;
-        // ── Fase 4: total_comprador que ya trae el markup por categoría ──
-        const totalComprador = c.total_comprador || 0;
-        if (!c.items || c.items.length === 0) {
-            itemsEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-4">Este proyecto no tiene items.</p>';
-            footerEl.innerHTML = '';
-            return;
-        }
-        const editable = c.estado === 'borrador';
-        itemsEl.innerHTML = c.items.map(it => renderItem(it, editable)).join('');
-        // ── Footer según estado ──────────────────────────────────────
-        if (c.estado === 'borrador') {
-            footerEl.innerHTML = `
-                <div class="space-y-2">
-                    <button data-solicitar class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2.5 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-primary/20 transition">
-                        <span class="material-symbols-outlined">send</span>
-                        Enviar al vivero · ${formatCOP(totalComprador)}
-                    </button>
-                    <p class="text-[11px] text-center text-slate-400">El vivero confirmará disponibilidad antes del pago</p>
-                    <button data-eliminar class="w-full text-xs text-red-500 hover:text-red-700 dark:hover:text-red-400 flex items-center justify-center gap-1 py-1">
-                        <span class="material-symbols-outlined text-sm">delete</span>
-                        Eliminar proyecto
-                    </button>
-                </div>`;
-            footerEl.querySelector('[data-solicitar]')?.addEventListener('click', () => solicitarAprobacion(cotizacion_id, totalComprador));
-            footerEl.querySelector('[data-eliminar]')?.addEventListener('click', () => eliminarProyecto(cotizacion_id));
-        } else if (c.estado === 'enviada') {
-            footerEl.innerHTML = `
-                <div class="space-y-2">
-                    <div class="text-center py-2 space-y-2">
-                        <span class="material-symbols-outlined text-amber-400 text-3xl">schedule</span>
-                        <p class="text-sm font-bold text-slate-700 dark:text-slate-200">Esperando al vivero</p>
-                        <p class="text-xs text-slate-500">Te notificamos por WhatsApp cuando confirmen.</p>
-                        <p class="text-xs font-bold text-primary">${formatCOP(totalComprador)}</p>
-                    </div>
-                    <div class="space-y-1.5 pt-2 border-t border-slate-200 dark:border-slate-600">
-                        <button data-reenviar-enviada class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
-                            <span class="material-symbols-outlined">refresh</span>
-                            ↻ Reenviar notificación
-                        </button>
-                        <button data-agregar-items-enviada class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
-                            <span class="material-symbols-outlined">add_circle</span>
-                            + Agregar más productos
-                        </button>
-                        <button data-cancelar-enviada class="w-full bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-700 dark:text-red-400 font-bold py-1.5 rounded-full text-sm transition">
-                            ✕ Cancelar propuesta
-                        </button>
-                    </div>
-                </div>`;
-            footerEl.querySelector('[data-reenviar-enviada]')?.addEventListener('click', () => reenviarCotizacion(cotizacion_id));
-            footerEl.querySelector('[data-agregar-items-enviada]')?.addEventListener('click', () => mostrarModalAgregarItems(cotizacion_id));
-            footerEl.querySelector('[data-cancelar-enviada]')?.addEventListener('click', () => cancelarCotizacion(cotizacion_id));
-        } else if (c.estado === 'aceptada') {
-            const fechaVenc = c.fecha_vencimiento ? new Date(c.fecha_vencimiento) : null;
-            const ahora = Date.now();
-            const estáVencida = fechaVenc && ahora > fechaVenc;
-            
-            let countdownHtml = '';
-            let botonesSección = '';
-            
-            if (estáVencida) {
-                // VENCIDA: No mostrar "APROBADO"
-                countdownHtml = `<p class="text-[11px] text-center text-red-500 font-semibold">⚠️ Esta cotización está vencida</p>`;
-                botonesSección = `
-                    <button data-reenviar class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
-                        <span class="material-symbols-outlined">refresh</span>
-                        ↻ Reenviar al vivero
-                    </button>
-                    <button data-duplicar class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
-                        <span class="material-symbols-outlined">note_add</span>
-                        ⟳ Nueva propuesta
-                    </button>
-                `;
-            } else {
-                // NO VENCIDA: Mostrar "APROBADO" y botón pagar
-                const msRestantes = fechaVenc - Date.now();
-                if (msRestantes > 0) {
-                    const horas = Math.floor(msRestantes / 3600000);
-                    const minutos = Math.floor((msRestantes % 3600000) / 60000);
-                    countdownHtml = `<p class="text-[11px] text-center text-amber-600 font-semibold">⏰ Expira en ${horas}h ${minutos}m — pagá antes de que venza</p>`;
-                }
-                botonesSección = `
-                    <button data-pagar class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition">
-                        <span class="material-symbols-outlined">credit_card</span>
-                        Pagar ahora · ${formatCOP(totalComprador)}
-                    </button>
-                `;
-            }
-            
-            footerEl.innerHTML = `
-                <div class="space-y-2">
-                    ${!estáVencida ? '<p class="text-[11px] text-center text-emerald-600 font-semibold mt-1">✓ El vivero confirmó disponibilidad</p>' : ''}
-                    ${botonesSección}
-                    ${countdownHtml}
-                </div>`;
-            
-            footerEl.querySelector('[data-pagar]')?.addEventListener('click', () => irACheckout(cotizacion_id));
-            footerEl.querySelector('[data-reenviar]')?.addEventListener('click', () => reenviarCotizacion(cotizacion_id));
-            footerEl.querySelector('[data-duplicar]')?.addEventListener('click', () => duplicarYReenviar(cotizacion_id));
-        } else if (c.estado === 'parcial') {
-            const totalAceptado = c.total_aceptado || 0;
-            const totalPendiente = totalComprador - totalAceptado;
-            footerEl.innerHTML = `
-                <div class="space-y-2">
-                    <div class="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded-lg p-3">
-                        <p class="text-xs font-bold text-purple-700 dark:text-purple-400">📋 Aprobado parcialmente</p>
-                        <p class="text-xs text-slate-600 dark:text-slate-300 mt-1">Algunos viveros confirmaron su parte, otros aún están revisando.</p>
-                        <div class="mt-2 space-y-1 text-xs">
-                            <div class="flex justify-between">
-                                <span class="text-slate-600 dark:text-slate-400">✅ Aceptado:</span>
-                                <span class="font-bold text-emerald-600">${formatCOP(totalAceptado)}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-slate-600 dark:text-slate-400">⏳ Pendiente:</span>
-                                <span class="font-bold text-amber-600">${formatCOP(totalPendiente)}</span>
-                            </div>
-                        </div>
-                    </div>
-                    <button data-pagar-parcial class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 transition text-sm">
-                        <span class="material-symbols-outlined">check_circle</span>
-                        Pagar lo disponible · ${formatCOP(totalAceptado)}
-                    </button>
-                    <button data-aceptar-alternativa class="w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30 transition text-sm">
-                        <span class="material-symbols-outlined">swap_horiz</span>
-                        Aceptar vivero alternativo para lo pendiente
-                    </button>
-                    <button data-cancelar-pedido class="w-full bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-700 dark:text-red-400 font-bold py-2 rounded-full text-sm transition">
-                        Cancelar pedido
-                    </button>
-                </div>`;
-            footerEl.querySelector('[data-pagar-parcial]')?.addEventListener('click', () => aceptarParcial(cotizacion_id, totalAceptado));
-            footerEl.querySelector('[data-aceptar-alternativa]')?.addEventListener('click', () => confirmarAlternativa(cotizacion_id));
-            footerEl.querySelector('[data-cancelar-pedido]')?.addEventListener('click', () => cancelarPedido(cotizacion_id));
-        } else if (c.estado === 'convertida') {
-            footerEl.innerHTML = `
-                <div class="space-y-2">
-                    <button data-reintentar class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 rounded-full flex items-center justify-center gap-2 shadow-lg shadow-amber-500/30 transition">
-                        <span class="material-symbols-outlined">replay</span>
-                        Reintentar pago · ${formatCOP(totalComprador)}
-                    </button>
-                    <p class="text-[11px] text-center text-amber-600 font-semibold">⚠️ El pago anterior no se completó</p>
-                    <p class="text-[10px] text-center text-slate-400">Tu pedido sigue reservado. Completá el pago para confirmarlo.</p>
-                </div>`;
-            footerEl.querySelector('[data-reintentar]')?.addEventListener('click', () => irACheckout(cotizacion_id));
-        } else if (c.estado === 'rechazada') {
-            const hayAlternativa = c.alternativas_vivero && c.alternativas_vivero.length > 0;
-            const nombresAlt = hayAlternativa
-                ? [...new Set(c.alternativas_vivero.map(a => a.nombre_vivero).filter(Boolean))].join(', ')
-                : '';
-            
-            // NUEVO: Mostrar indicador de subs rechazadas
-            const subsRechazadas = (c.sub_cotizaciones || []).filter(s => s.estado === 'rechazada');
-            const htmlRechazoDesglose = subsRechazadas.length > 0 
-                ? `<div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-3 text-left my-2">
-                     <p class="text-xs font-bold text-red-700 dark:text-red-400">🚫 Rechazaron:</p>
-                     <p class="text-xs text-slate-600 dark:text-slate-300 mt-1">${subsRechazadas.map(s => s.nombre_vivero).join(', ')}</p>
-                   </div>`
-                : '';
-            
-            footerEl.innerHTML = `
-                <div class="text-center py-2 space-y-3">
-                    <span class="material-symbols-outlined text-red-400 text-3xl">cancel</span>
-                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200">El vivero no pudo surtir este pedido</p>
-                    ${c.notas_agente ? `<p class="text-xs text-slate-500 italic">"${escapeHTML(c.notas_agente)}"</p>` : ''}
-                    ${htmlRechazoDesglose}
-                    ${hayAlternativa ? `
-                    <div class="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-3 text-left">
-                        <p class="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                            <span class="material-symbols-outlined text-sm">check_circle</span>
-                            Encontramos las mismas plantas en otro vivero
-                        </p>
-                        <p class="text-xs text-slate-600 dark:text-slate-300 mt-1">${escapeHTML(nombresAlt)}</p>
-                    </div>
-                    <button data-confirmar-alternativa class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 rounded-full flex items-center justify-center gap-2 transition">
-                        <span class="material-symbols-outlined">swap_horiz</span>
-                        Confirmar vivero alternativo
-                    </button>
-                    ` : `
-                    <button data-duplicar-rechazada class="w-full bg-primary hover:bg-primary/90 text-white font-bold py-2 rounded-full flex items-center justify-center gap-2 transition text-sm">
-                        <span class="material-symbols-outlined">note_add</span>
-                        ⟳ Crear nueva propuesta
-                    </button>
-                    <button data-cancelar-rechazada class="w-full bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 text-red-700 dark:text-red-400 font-bold py-1.5 rounded-full text-sm transition">
-                        ✕ Cancelar cotización
-                    </button>
-                    `}
-                    <a href="/marketplace" class="inline-flex items-center gap-1 text-primary text-xs font-semibold hover:underline">
-                        <span class="material-symbols-outlined text-sm">explore</span>
-                        ${hayAlternativa ? 'O buscar más opciones en el marketplace' : 'Buscar alternativas en el marketplace'}
-                    </a>
-                </div>`;
-            if (hayAlternativa) {
-                footerEl.querySelector('[data-confirmar-alternativa]')
-                    ?.addEventListener('click', () => confirmarAlternativa(cotizacion_id));
-            } else {
-                footerEl.querySelector('[data-duplicar-rechazada]')
-                    ?.addEventListener('click', () => duplicarYReenviar(cotizacion_id));
-            }
-            footerEl.querySelector('[data-cancelar-rechazada]')
-                ?.addEventListener('click', () => cancelarCotizacion(cotizacion_id));
-        } else if (c.estado === 'pagada') {
-            const estadoEntrega = c.estado_entrega || 'pendiente';
-            const fechaDespacho = c.fecha_despacho ? new Date(c.fecha_despacho).toLocaleDateString('es-CO', {day:'2-digit', month:'short'}) : null;
-            const fechaEntregaReal = c.fecha_entrega_real ? new Date(c.fecha_entrega_real).toLocaleDateString('es-CO', {day:'2-digit', month:'short'}) : null;
-            let iconoEntrega, tituloEntrega, descripcionEntrega, colorEntrega;
-            if (estadoEntrega === 'entregado') {
-                iconoEntrega = 'task_alt';
-                tituloEntrega = '¡Entrega confirmada!';
-                descripcionEntrega = fechaEntregaReal ? 'Recibido el ' + fechaEntregaReal : 'Pedido entregado exitosamente.';
-                colorEntrega = 'text-green-500';
-            } else if (estadoEntrega === 'despachado' || estadoEntrega === 'en_ruta') {
-                iconoEntrega = 'local_shipping';
-                tituloEntrega = 'Tu pedido está en camino 🚐';
-                descripcionEntrega = fechaDespacho ? 'Despachado el ' + fechaDespacho + '. Escribí RECIBIDO por WhatsApp cuando llegue.' : 'El vivero ya despachó tu pedido.';
-                colorEntrega = 'text-blue-500';
-            } else {
-                iconoEntrega = 'check_circle';
-                tituloEntrega = '¡Pago confirmado!';
-                descripcionEntrega = 'El vivero está preparando tu pedido.';
-                colorEntrega = 'text-green-500';
-            }
-            footerEl.innerHTML = `
-                <div class="text-center py-2">
-                    <span class="material-symbols-outlined ${colorEntrega} text-3xl">${iconoEntrega}</span>
-                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200 mt-1">${tituloEntrega}</p>
-                    <p class="text-xs text-slate-500 mt-1">${descripcionEntrega}</p>
-                    <p class="text-xs font-bold text-primary mt-2">${formatCOP(totalComprador)}</p>
-                </div>`;
-        } else {
-            footerEl.innerHTML = `
-                <div class="text-center py-2">
-                    <p class="text-sm font-bold text-slate-700 dark:text-slate-200">${formatCOP(totalComprador)}</p>
-                    <p class="text-xs text-slate-500 mt-1">Estado: ${escapeHTML(c.estado || '')}</p>
-                </div>`;
-        }
-        if (editable) {
-            itemsEl.querySelectorAll('[data-quitar-item]').forEach(btn => {
-                btn.addEventListener('click', () => quitarItem(cotizacion_id, parseInt(btn.dataset.quitarItem, 10)));
-            });
-        }
-    } catch (e) {
-        console.error('Error cargando items:', e);
-        itemsEl.innerHTML = `<p class="text-xs text-red-500 text-center py-4">No se pudieron cargar los items.</p>`;
-        footerEl.innerHTML = '';
-    }
-}
-function renderItem(it, editable) {
-    const foto = it.foto_ia_url || 'https://placehold.co/96x96/e2e8f0/64748b?text=%F0%9F%8C%B1';
-    // ── Fase 4: usar precio_comprador_unitario y subtotal_comprador ──
-    const precioUnit = it.precio_comprador_unitario || 0;
-    const subtotalComp = it.subtotal_comprador || 0;
-    return `
-        <div class="bg-white dark:bg-slate-800 rounded-lg p-3 border border-slate-100 dark:border-slate-700 flex gap-3">
-            <img src="${escapeHTML(foto)}" alt="${escapeHTML(it.nombre_comun || '')}"
-                 class="w-16 h-16 rounded-lg object-cover flex-shrink-0"
-                 onerror="this.src='https://placehold.co/96x96/e2e8f0/64748b?text=%F0%9F%8C%B1'">
-            <div class="flex-1 min-w-0">
-                <h4 class="font-semibold text-sm text-slate-800 dark:text-slate-100 truncate">${escapeHTML(it.nombre_comun || 'Sin nombre')}</h4>
-                ${it.nombre_cientifico ? `<p class="text-xs italic text-slate-500 truncate">${escapeHTML(it.nombre_cientifico)}</p>` : ''}
-                <p class="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
-                    <span class="material-symbols-outlined text-sm">storefront</span>
-                    <span class="truncate">${escapeHTML(it.nombre_vivero || 'Vivero')}${it.ciudad_vivero ? ' · ' + escapeHTML(it.ciudad_vivero) : ''}</span>
-                </p>
-                <div class="flex items-baseline justify-between mt-1 gap-2">
-                    <span class="text-xs text-slate-600 dark:text-slate-300 whitespace-nowrap">${it.cantidad} × ${formatCOP(precioUnit)}</span>
-                    <span class="text-sm font-bold text-primary whitespace-nowrap">${formatCOP(subtotalComp)}</span>
-                </div>
-            </div>
-            ${editable ? `
-                <button data-quitar-item="${it.inventario_id}" class="self-start text-slate-400 hover:text-red-500 transition-colors p-1 flex-shrink-0" title="Quitar del proyecto">
-                    <span class="material-symbols-outlined">close</span>
-                </button>
-            ` : ''}
-        </div>
-    `;
-}
-// ─── Acciones ────────────────────────────────────────────────
-async function solicitarAprobacion(cotizacion_id, total) {
-    if (!confirm(`¿Enviar esta cotización al vivero para aprobación?\n\nTotal a pagar (si se aprueba): ${formatCOP(total)}\n\nNo podrás editarla mientras esté en revisión.`)) return;
-    const token = localStorage.getItem('vivero_access_token');
-    try {
-        const resp = await fetch(`/api/pedidos/${cotizacion_id}/solicitar`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.detail || `Error ${resp.status}`);
-        }
-        if (typeof VO !== 'undefined' && VO.showToast) {
-            VO.showToast('✅ Enviado al vivero. Te avisamos cuando confirmen.', 'success');
-        }
-        setTimeout(() => window.location.reload(), 1500);
-    } catch (e) {
-        alert('No se pudo enviar: ' + (e.message || e));
-    }
-}
-function irACheckout(cotizacion_id) {
-    window.location.href = `/checkout/${cotizacion_id}`;
-}
-async function aceptarParcial(cotizacion_id, totalAceptado) {
-    if (!confirm(`¿Pagar solo lo que el vivero confirmó?\n\nTotal: ${formatCOP(totalAceptado)}\n\nPara la parte pendiente, podés buscar alternativa o cancelar.`)) return;
-    const token = localStorage.getItem('vivero_access_token');
-    try {
-        const resp = await fetch(`/api/pedidos/${cotizacion_id}/aceptar-parcial`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.detail || `Error ${resp.status}`);
-        }
-        if (typeof VO !== 'undefined' && VO.showToast) {
-            VO.showToast('✅ Confirmado. Iniciando pago de lo disponible...', 'success');
-        }
-        setTimeout(() => irACheckout(cotizacion_id), 1000);
-    } catch (e) {
-        alert('No se pudo procesar: ' + (e.message || e));
-    }
-}
-async function quitarItem(cotizacion_id, inventario_id) {
-    if (!confirm('¿Quitar este item del proyecto?')) return;
-    const token = localStorage.getItem('vivero_access_token');
-    try {
-        const resp = await fetch(`/api/marketplace/cotizacion/item/${inventario_id}?cotizacion_id=${cotizacion_id}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `Error ${resp.status}`); }
-        window.location.reload();
-    } catch (e) { alert('No se pudo quitar el item: ' + (e.message || e)); }
-}
-async function eliminarProyecto(cotizacion_id) {
-    if (!confirm('¿Eliminar este proyecto completo? Esta acción no se puede deshacer.')) return;
-    const token = localStorage.getItem('vivero_access_token');
-    try {
-        const resp = await fetch(`/api/marketplace/cotizacion/${cotizacion_id}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (!resp.ok) { const err = await resp.json().catch(() => ({})); throw new Error(err.detail || `Error ${resp.status}`); }
-        window.location.reload();
-    } catch (e) { alert('No se pudo eliminar: ' + (e.message || e)); }
-}
-async function confirmarAlternativa(cotizacion_id) {
-    if (!confirm('¿Confirmar el pedido con el vivero alternativo?\n\nLa cotización volverá a borrador con el nuevo vivero para que puedas reenviarla.')) return;
-    const token = localStorage.getItem('vivero_access_token');
-    try {
-        const resp = await fetch(`/api/pedidos/${cotizacion_id}/confirmar-alternativa`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.detail || `Error ${resp.status}`);
-        }
-        if (typeof VO !== 'undefined' && VO.showToast) {
-            VO.showToast('✅ Vivero alternativo confirmado. Revisá tu cotización actualizada.', 'success');
-        }
-        setTimeout(() => window.location.reload(), 1500);
-    } catch (e) {
-        alert('No se pudo confirmar: ' + (e.message || e));
-    }
-}
-async function cancelarPedido(cotizacion_id) {
-    if (!confirm('¿Cancelar este pedido por completo?\n\nNo se podrá recuperar. Los viveros serán notificados.')) return;
-    const token = localStorage.getItem('vivero_access_token');
-    try {
-        const resp = await fetch(`/api/marketplace/cotizacion/${cotizacion_id}`, {
-            method: 'DELETE',
-            headers: { 'Authorization': `Bearer ${token}` },
-        });
-        if (!resp.ok) {
-            const err = await resp.json().catch(() => ({}));
-            throw new Error(err.detail || `Error ${resp.status}`);
-        }
-        if (typeof VO !== 'undefined' && VO.showToast) {
-            VO.showToast('✅ Pedido cancelado.', 'success');
-        }
-        setTimeout(() => window.location.reload(), 1500);
-    } catch (e) {
-        alert('No se pudo cancelar: ' + (e.message || e));
-    }
-}
-// ─── Helpers ─────────────────────────────────────────────────
-function formatCOP(v) {
-    if (!v && v !== 0) return '$0';
-    return '$' + Math.round(parseFloat(v) || 0).toLocaleString('es-CO');
-}
-function formatFecha(s) {
-    if (!s) return '—';
-    try {
-        const d = new Date(s);
-        if (isNaN(d.getTime())) return '—';
-        return d.toLocaleDateString('es-CO', { day: '2-digit', month: 'short' });
-    } catch { return '—'; }
-}
-function cerrarSesion() {
-    if (!confirm('¿Cerrar sesión?')) return;
-    localStorage.removeItem('vivero_access_token');
-    localStorage.removeItem('vivero_refresh_token');
-    window.location.href = '/auth/ingresar';
-}
-function escapeHTML(s) {
-    if (s === null || s === undefined) return '';
-    return String(s).replace(/[&<>"']/g, c => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    })[c]);
-}
+"""Marketplace (compradores B2B) + endpoints públicos guest + cotizaciones.
 
-// FIX 13 ago — Nuevas funciones para REENVIAR, DUPLICAR, AGREGAR ITEMS
-async function reenviarCotizacion(cotizacionId) {
-    if (!confirm('¿Reenviar notificación a los viveristas?')) return;
-    const token = localStorage.getItem('vivero_access_token');
-    try {
-        const res = await fetch(`/api/marketplace/cotizacion/${cotizacionId}/reenviar`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        });
-        const data = await res.json();
-        if (data.ok) {
-            alert(`✓ Reenviado a ${data.num_viveristas_notificados} vivero(s)`);
-            location.reload();
-        } else {
-            alert('❌ ' + (data.detail || 'Error'));
-        }
-    } catch (err) {
-        alert('Error: ' + err.message);
-    }
-}
+═══════════════════════════════════════════════════════════════════════════
+VERSIÓN LIMPIA 13 ago 2026 — Sin errores
+- Endpoints reenviar, duplicar-y-reenviar, cancelar ✅
+- Sub_cotizaciones en respuesta ✅
+- Estado real de cotizaciones ✅
+- SIN filtros que causen crash
+- SIN WhatsApp (se agregará después de forma segura)
+═══════════════════════════════════════════════════════════════════════════
+"""
+from __future__ import annotations
+from typing import Optional
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, Query
+from app.auth.deps import UserContext, require_comprador, require_user
+from app.schemas.catalog import InventarioItem
+from app.schemas.transactions import (
+    CotizacionRequest, CotizacionResponse, RenameProyectoRequest,
+)
+from app.services.supabase import admin
+from app.services.config_global import get_markup_categoria, get_matriz_comercial
 
-async function duplicarYReenviar(cotizacionId) {
-    if (!confirm('¿Crear nueva propuesta y reenviar a viveristas?')) return;
-    const token = localStorage.getItem('vivero_access_token');
-    try {
-        const res = await fetch(`/api/marketplace/cotizacion/${cotizacionId}/duplicar-y-reenviar`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        });
-        const data = await res.json();
-        if (data.ok) {
-            alert(`✓ Nueva propuesta creada: #${data.cotizacion_nueva}`);
-            location.reload();
-        } else {
-            alert('❌ ' + (data.detail || 'Error'));
-        }
-    } catch (err) {
-        alert('Error: ' + err.message);
-    }
-}
+router = APIRouter(prefix="/api/marketplace", tags=["marketplace"])
+public_router = APIRouter(prefix="/api/public/marketplace", tags=["marketplace-guest"])
 
-function mostrarModalAgregarItems(cotizacionId) {
-    // Placeholder: Redirigir al marketplace para seleccionar items
-    const total = document.querySelector(`[data-proyecto-card="${cotizacionId}"] p.text-xs`)?.textContent || '';
-    alert(`📦 Ir a Marketplace para agregar productos a cotización #${cotizacionId}\n\n(Serás redirigido en la siguiente versión)`);
-    // TODO: Implementar modal con marketplace inline para seleccionar items
-}
 
-async function cancelarCotizacion(cotizacionId) {
-    if (!confirm('⚠️ ¿Cancelar esta cotización? No se puede deshacer.')) return;
-    const token = localStorage.getItem('vivero_access_token');
-    try {
-        const res = await fetch(`/api/marketplace/cotizacion/${cotizacionId}/cancelar`, {
-            method: 'PATCH',
-            headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
-        });
-        const data = await res.json();
-        if (data.ok) {
-            alert('✓ Cotización cancelada');
-            location.reload();
-        } else {
-            alert('❌ ' + (data.detail || 'Error'));
-        }
-    } catch (err) {
-        alert('Error: ' + err.message);
+# ═══════════════════════════════════════════════════════════
+# Helper: Calcular estado real basado en sub_cotizaciones
+# ═══════════════════════════════════════════════════════════
+
+def _calcular_estado_real_cotizacion(estado_original: str, subs_estados: list[str]) -> str:
+    """Calcula estado real de cotización basado en estados de sub_cotizaciones."""
+    if not subs_estados:
+        return estado_original
+    
+    aceptadas = subs_estados.count("aceptada")
+    rechazadas = subs_estados.count("rechazada")
+    total = len(subs_estados)
+    
+    if aceptadas == total:
+        return "aceptada"
+    elif rechazadas > 0 and aceptadas == 0:
+        return "rechazada"
+    elif aceptadas > 0:
+        return "parcial"
+    else:
+        return "enviada"
+
+
+def _resolver_categorias_batch(db, inventario_ids: list) -> dict:
+    """Resuelve categorías de TODOS los items en una sola query."""
+    if not inventario_ids:
+        return {}
+    
+    try:
+        resp = db.table("inventario").select(
+            "inventario_id, categoria"
+        ).in_("inventario_id", inventario_ids).execute()
+        return {row["inventario_id"]: row["categoria"] for row in (resp.data or [])}
+    except:
+        return {}
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT: Listar proyectos/cotizaciones (comprador)
+# ═══════════════════════════════════════════════════════════
+
+@router.get("/proyectos", response_model=list[dict])
+async def listar_proyectos(
+    user: UserContext = Depends(require_comprador),
+    limit: int = Query(50),
+    offset: int = Query(0),
+):
+    """Lista cotizaciones del comprador actual con estado real y sub_cotizaciones."""
+    if not user.cliente_id:
+        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
+    
+    db = admin()
+    
+    # Obtener cotizaciones del cliente
+    resp = db.table("cotizaciones").select(
+        "cotizacion_id, estado, prompt_original, fecha_vencimiento, items, created_at"
+    ).eq("cliente_id", user.cliente_id).order("created_at", desc=True).range(offset, offset + limit).execute()
+    
+    if not resp.data:
+        return []
+    
+    # Obtener todos los IDs de cotización
+    cot_ids = [r["cotizacion_id"] for r in resp.data]
+    
+    # Obtener entregas para cotizaciones pagadas
+    entrega_map = {}
+    if cot_ids:
+        try:
+            entregas = db.table("entregas").select(
+                "cotizacion_id, estado_entrega"
+            ).in_("cotizacion_id", cot_ids).execute()
+            entrega_map = {e["cotizacion_id"]: e["estado_entrega"] for e in (entregas.data or [])}
+        except:
+            pass
+    
+    # Recolectar TODOS los inventario_ids
+    todos_inv_ids = set()
+    for r in resp.data or []:
+        for it in r.get("items") or []:
+            if it.get("inventario_id"):
+                todos_inv_ids.add(it["inventario_id"])
+    
+    # 1 query resuelve categorías
+    categorias_map = _resolver_categorias_batch(db, list(todos_inv_ids))
+    matriz = get_matriz_comercial()
+    markups_b2c = matriz.get("markup_b2c", {})
+    
+    proyectos = []
+    for r in resp.data or []:
+        items = r.get("items") or []
+        cot_id = r["cotizacion_id"]
+        estado_cot = r["estado"]
+        
+        total_comprador = 0
+        for it in items:
+            inv_id = it.get("inventario_id")
+            precio_unit = float(it.get("precio_unitario") or 0)
+            cantidad = int(it.get("cantidad") or 0)
+            if inv_id:
+                categoria = categorias_map.get(inv_id, "plantas_ornamentales")
+                markup = float(markups_b2c.get(categoria, 0.20))
+                total_comprador += round(precio_unit * (1 + markup)) * cantidad
+        
+        # Obtener sub_cotizaciones para este proyecto
+        subs_resp = db.table("sub_cotizaciones").select(
+            "vivero_id, estado, viveros(nombre_vivero)"
+        ).eq("cotizacion_id", cot_id).execute()
+        
+        subs_data = subs_resp.data or []
+        subs_estados = [s["estado"] for s in subs_data]
+        
+        # Calcular estado real
+        estado_real = _calcular_estado_real_cotizacion(estado_cot, subs_estados)
+        
+        # Determinar si puede modificar
+        puede_modificar = estado_real in ("enviada", "parcial", "rechazada")
+        puede_agregar_items = estado_real in ("enviada", "parcial", "rechazada")
+        mostrar_aprobado = estado_real == "aceptada"
+        
+        proyectos.append({
+            "cotizacion_id": cot_id,
+            "nombre_proyecto": r["prompt_original"],
+            "estado": estado_real,
+            "total_comprador": total_comprador,
+            "fecha_vencimiento": r.get("fecha_vencimiento"),
+            "created_at": r.get("created_at"),
+            "puede_modificar": puede_modificar,
+            "puede_agregar_items": puede_agregar_items,
+            "mostrar_aprobado": mostrar_aprobado,
+            "sub_cotizaciones": subs_data,
+            "entrega_estado": entrega_map.get(cot_id),
+        })
+    
+    return proyectos
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT: Crear cotización (comprador B2B)
+# ═══════════════════════════════════════════════════════════
+
+@router.post("/cotizacion", response_model=CotizacionResponse)
+async def crear_cotizacion(
+    req: CotizacionRequest,
+    user: UserContext = Depends(require_comprador),
+):
+    """Crea una cotización enviándola a viveristas."""
+    if not user.cliente_id:
+        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
+    
+    db = admin()
+    
+    # Crear cotización
+    resp = db.table("cotizaciones").insert({
+        "cliente_id": user.cliente_id,
+        "estado": "enviada",
+        "prompt_original": req.nombre_proyecto,
+        "items": req.items,
+    }).execute()
+    
+    if not resp.data:
+        raise HTTPException(500, detail="Error al crear cotización")
+    
+    cot = resp.data[0]
+    cot_id = cot["cotizacion_id"]
+    
+    # Crear sub_cotizaciones para cada vivero
+    viveros = db.table("viveros").select("vivero_id, numero_whatsapp, nombre_vivero").execute()
+    
+    for v in (viveros.data or []):
+        db.table("sub_cotizaciones").insert({
+            "cotizacion_id": cot_id,
+            "vivero_id": v["vivero_id"],
+            "estado": "pendiente",
+        }).execute()
+    
+    return CotizacionResponse(
+        cotizacion_id=cot_id,
+        estado="enviada",
+        mensaje="Cotización creada y enviada a viveristas",
+    )
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT: Reenviar cotización (SIN WhatsApp por ahora)
+# ═══════════════════════════════════════════════════════════
+
+@router.post("/cotizacion/{cotizacion_id}/reenviar")
+async def reenviar_cotizacion(
+    cotizacion_id: int,
+    user: UserContext = Depends(require_comprador),
+):
+    """Reenvía recordatorio a viveristas pendientes."""
+    if not user.cliente_id:
+        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
+    
+    db = admin()
+    
+    # Obtener cotización
+    resp = db.table("cotizaciones").select(
+        "cliente_id, estado, prompt_original"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+    
+    if not resp.data:
+        raise HTTPException(404, detail="Cotización no encontrada")
+    
+    c = resp.data[0]
+    if c["cliente_id"] != user.cliente_id:
+        raise HTTPException(404, detail="Cotización no encontrada")
+    
+    # Solo permitir reenviar en ciertos estados
+    if c["estado"] not in ("enviada", "parcial", "rechazada"):
+        raise HTTPException(400, detail=f"No se puede reenviar una cotización en estado '{c['estado']}'.")
+    
+    # Obtener subs pendientes
+    subs_resp = db.table("sub_cotizaciones").select(
+        "vivero_id, estado"
+    ).eq("cotizacion_id", cotizacion_id).execute()
+    
+    num_reenvios = len(subs_resp.data or [])
+    
+    return {
+        "ok": True,
+        "cotizacion_id": cotizacion_id,
+        "nombre_proyecto": c.get("prompt_original"),
+        "num_viveristas_notificados": num_reenvios,
+        "mensaje": f"Recordatorio reenviado a {num_reenvios} vivero(s).",
     }
-}
-</script>
-</body></html>
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT: Duplicar y reenviar cotización
+# ═══════════════════════════════════════════════════════════
+
+@router.post("/cotizacion/{cotizacion_id}/duplicar-y-reenviar")
+async def duplicar_y_reenviar(
+    cotizacion_id: int,
+    user: UserContext = Depends(require_comprador),
+):
+    """Duplica una cotización y crea nueva."""
+    if not user.cliente_id:
+        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
+    
+    db = admin()
+    
+    # Obtener cotización original
+    resp = db.table("cotizaciones").select(
+        "cliente_id, prompt_original, items, fecha_vencimiento"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+    
+    if not resp.data:
+        raise HTTPException(404, detail="Cotización no encontrada")
+    
+    cot_orig = resp.data[0]
+    if cot_orig["cliente_id"] != user.cliente_id:
+        raise HTTPException(404, detail="No autorizado")
+    
+    # Crear cotización duplicada
+    nueva_resp = db.table("cotizaciones").insert({
+        "cliente_id": user.cliente_id,
+        "estado": "enviada",
+        "prompt_original": cot_orig["prompt_original"],
+        "items": cot_orig["items"],
+        "fecha_vencimiento": cot_orig.get("fecha_vencimiento"),
+    }).execute()
+    
+    if not nueva_resp.data:
+        raise HTTPException(500, detail="Error al duplicar cotización")
+    
+    nueva_cot = nueva_resp.data[0]
+    nueva_id = nueva_cot["cotizacion_id"]
+    
+    # Crear sub_cotizaciones
+    viveros = db.table("viveros").select("vivero_id").execute()
+    for v in (viveros.data or []):
+        db.table("sub_cotizaciones").insert({
+            "cotizacion_id": nueva_id,
+            "vivero_id": v["vivero_id"],
+            "estado": "pendiente",
+        }).execute()
+    
+    return {
+        "ok": True,
+        "cotizacion_id": nueva_id,
+        "cotizacion_original": cotizacion_id,
+        "mensaje": "Nueva propuesta creada.",
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT: Cancelar cotización
+# ═══════════════════════════════════════════════════════════
+
+@router.patch("/cotizacion/{cotizacion_id}/cancelar")
+async def cancelar_cotizacion(
+    cotizacion_id: int,
+    user: UserContext = Depends(require_comprador),
+):
+    """Cancela una cotización."""
+    if not user.cliente_id:
+        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
+    
+    db = admin()
+    
+    # Obtener cotización
+    resp = db.table("cotizaciones").select(
+        "cliente_id, estado"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+    
+    if not resp.data:
+        raise HTTPException(404, detail="Cotización no encontrada")
+    
+    c = resp.data[0]
+    if c["cliente_id"] != user.cliente_id:
+        raise HTTPException(404, detail="No autorizado")
+    
+    # No permitir cancelar si está pagada o entregada
+    if c["estado"] in ("pagada", "entregado", "convertida"):
+        raise HTTPException(400, detail=f"No se puede cancelar una cotización en estado '{c['estado']}'.")
+    
+    # Actualizar estado
+    db.table("cotizaciones").update({
+        "estado": "cancelada"
+    }).eq("cotizacion_id", cotizacion_id).execute()
+    
+    return {
+        "ok": True,
+        "cotizacion_id": cotizacion_id,
+        "estado": "cancelada",
+        "mensaje": "Cotización cancelada.",
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINT: Agregar items a cotización
+# ═══════════════════════════════════════════════════════════
+
+@router.post("/cotizacion/{cotizacion_id}/agregar-items")
+async def agregar_items_cotizacion(
+    cotizacion_id: int,
+    items_nuevos: list[dict],
+    user: UserContext = Depends(require_comprador),
+):
+    """Agrega items a una cotización existente."""
+    if not user.cliente_id:
+        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
+    
+    db = admin()
+    
+    # Obtener cotización
+    resp = db.table("cotizaciones").select(
+        "cliente_id, items, estado"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+    
+    if not resp.data:
+        raise HTTPException(404, detail="Cotización no encontrada")
+    
+    c = resp.data[0]
+    if c["cliente_id"] != user.cliente_id:
+        raise HTTPException(404, detail="No autorizado")
+    
+    # Solo agregar en ciertos estados
+    if c["estado"] not in ("enviada", "parcial", "rechazada"):
+        raise HTTPException(400, detail="No se pueden agregar items en este estado")
+    
+    # Agregar items
+    items_existentes = c.get("items") or []
+    items_nuevos_list = items_existentes + items_nuevos
+    
+    db.table("cotizaciones").update({
+        "items": items_nuevos_list
+    }).eq("cotizacion_id", cotizacion_id).execute()
+    
+    return {
+        "ok": True,
+        "cotizacion_id": cotizacion_id,
+        "items_totales": len(items_nuevos_list),
+        "mensaje": f"Agregados {len(items_nuevos)} item(s).",
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINTS: Guest (público, sin autenticación)
+# ═══════════════════════════════════════════════════════════
+
+@public_router.get("/")
+async def marketplace_guest():
+    """Catálogo público del marketplace."""
+    db = admin()
+    
+    resp = db.table("inventario").select(
+        "inventario_id, nombre_producto, precio_unitario, cantidad_disponible, viveros(nombre_vivero, ciudad)"
+    ).in_("tier", ["S", "M"]).execute()
+    
+    return {"items": resp.data or []}
+
+
+@public_router.get("/item/{inventario_id}")
+async def detalle_guest(inventario_id: int):
+    """Detalle de un producto para guest."""
+    db = admin()
+    
+    resp = db.table("inventario").select(
+        "inventario_id, nombre_producto, descripcion, precio_unitario, cantidad_disponible, viveros(nombre_vivero, ciudad)"
+    ).eq("inventario_id", inventario_id).limit(1).execute()
+    
+    if not resp.data:
+        raise HTTPException(404, detail="Producto no encontrado")
+    
+    return resp.data[0]
