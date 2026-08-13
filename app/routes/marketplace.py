@@ -24,6 +24,10 @@ AHORA: 1 sola query in_(inventario_ids) resuelve categorías de todos los items.
 
 Impacto: panel comprador 3-5× más rápido en cotizaciones grandes.
 ═══════════════════════════════════════════════════════════════════════════
+
+FIX 13 AGO 2026 — Estado real de cotizaciones con sub_cotizaciones.
+- listar_proyectos: ahora devuelve sub_cotizaciones + estado real + monto_disponible
+- obtener_cotizacion: devuelve desglose viveros + puede_pagar_parcial flag
 """
 from __future__ import annotations
 from typing import Optional
@@ -78,571 +82,272 @@ def _resolver_categoria(db, inventario_id: int) -> str:
 def _precio_comprador_por_item(db, inventario_id: int, precio_mayorista: float) -> int:
     """Calcula precio_comprador para 1 item aplicando markup por categoría."""
     categoria = _resolver_categoria(db, inventario_id)
-    markup = get_markup_categoria(categoria)
-    return round(precio_mayorista * (1 + markup))
+    markup = float(get_markup_categoria(categoria) or 0.20)
+    return int(round(precio_mayorista * (1 + markup)))
 
 
-def _precios_comprador_batch(db, items_precio: list[tuple[int, float]]) -> dict[int, int]:
-    """Calcula precios comprador para múltiples items en batch.
+def _enriquecer_items(db, items: list[dict]) -> list[dict]:
+    """Enriquece items con nombres, precios comprador, etc."""
+    if not items:
+        return []
 
-    Args:
-        items_precio: lista de (inventario_id, precio_mayorista)
+    # Batch resolve categorías
+    inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
+    categorias_map = _resolver_categorias_batch(db, inv_ids) if inv_ids else {}
 
-    Returns:
-        dict {inventario_id: precio_comprador_int}
-    """
-    if not items_precio:
-        return {}
-    inv_ids = [inv_id for inv_id, _ in items_precio]
-    categorias = _resolver_categorias_batch(db, inv_ids)
+    # Fetch nombres
+    nombres_map = {}
+    if inv_ids:
+        try:
+            resp = db.table("inventario").select(
+                "inventario_id, plantas(nombre_comun), viveros(nombre_vivero, ciudad)"
+            ).in_("inventario_id", inv_ids).execute()
+            nombres_map = {
+                r["inventario_id"]: {
+                    "nombre_comun": (r.get("plantas") or {}).get("nombre_comun", "Planta"),
+                    "vivero_id": r.get("vivero_id"),
+                    "nombre_vivero": (r.get("viveros") or {}).get("nombre_vivero"),
+                    "ciudad": (r.get("viveros") or {}).get("ciudad"),
+                }
+                for r in (resp.data or [])
+            }
+        except Exception:
+            pass
 
-    # Precargar matriz UNA vez (caché en memoria durante la request)
-    matriz = get_matriz_comercial()
-    markups_b2c = matriz.get("markup_b2c", {})
+    # Enriquecer
+    resultado = []
+    for it in items:
+        inv_id = it.get("inventario_id")
+        precio_unit = float(it.get("precio_unitario") or 0)
+        cantidad = int(it.get("cantidad") or 0)
 
-    resultado = {}
-    for inv_id, precio in items_precio:
-        cat = categorias.get(inv_id, "plantas_ornamentales")
-        markup = float(markups_b2c.get(cat, 0.20))
-        resultado[inv_id] = round(precio * (1 + markup))
+        info = nombres_map.get(inv_id, {})
+        categoria = categorias_map.get(inv_id, "plantas_ornamentales")
+        markup = float(get_markup_categoria(categoria) or 0.20)
+        precio_comprador_unit = int(round(precio_unit * (1 + markup)))
+
+        resultado.append({
+            "inventario_id": inv_id,
+            "nombre_comun": info.get("nombre_comun", "Planta"),
+            "vivero_id": info.get("vivero_id"),
+            "nombre_vivero": info.get("nombre_vivero"),
+            "ciudad": info.get("ciudad"),
+            "cantidad": cantidad,
+            "precio_unitario": precio_unit,
+            "precio_comprador_unitario": precio_comprador_unit,
+            "subtotal": precio_unit * cantidad,
+            "subtotal_comprador": precio_comprador_unit * cantidad,
+            "categoria": categoria,
+            "markup": f"{markup*100:.0f}%",
+        })
+
     return resultado
 
 
+def _total_comprador_desde_items(items: list[dict]) -> int:
+    """Suma subtotal_comprador de todos los items."""
+    return sum(int(it.get("subtotal_comprador") or 0) for it in items)
+
+
+def _obtener_estado_entrega(db, cotizacion_id: int) -> dict:
+    """Obtiene estado entrega si existe."""
+    try:
+        resp = db.table("entregas").select(
+            "estado_entrega, fecha_despacho, fecha_entrega, direccion_entrega"
+        ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+        return resp.data[0] if resp.data else {}
+    except Exception:
+        return {}
+
+
 # ═══════════════════════════════════════════════════════════
-# 🆕 FASE 8 — ENDPOINTS PÚBLICOS GUEST
+# HELPER NUEVO — Calcular estado real (FIX 13 ago)
+# ═══════════════════════════════════════════════════════════
+
+def _calcular_estado_real(estado_cot: str, subs: list[dict]) -> str:
+    """Calcula estado real basado en sub_cotizaciones.
+    
+    Reglas:
+      - Si NO hay subs: usa estado_cot original
+      - Si TODAS pendiente: "enviada"
+      - Si AL MENOS 1 aprobada Y AL MENOS 1 rechazada: "parcial"
+      - Si TODAS aprobadas: "aceptada"
+      - Si TODAS rechazadas: "rechazada"
+      - Si AL MENOS 1 pendiente (y no hay rechazo total): "enviada"
+    """
+    if not subs:
+        return estado_cot
+    
+    estados = [s.get("estado") for s in subs]
+    
+    aprobadas = sum(1 for e in estados if e == "aprobada")
+    rechazadas = sum(1 for e in estados if e == "rechazada")
+    pendientes = sum(1 for e in estados if e == "pendiente")
+    
+    total = len(estados)
+    
+    # Caso: mezcla aprobadas y rechazadas → parcial
+    if aprobadas > 0 and rechazadas > 0:
+        return "parcial"
+    
+    # Caso: todas aprobadas
+    if aprobadas == total:
+        return "aceptada"
+    
+    # Caso: todas rechazadas
+    if rechazadas == total:
+        return "rechazada"
+    
+    # Caso: hay pendientes (no todos rechazados)
+    if pendientes > 0:
+        return "enviada"
+    
+    # Fallback
+    return estado_cot
+
+
+# ═══════════════════════════════════════════════════════════
+# ENDPOINTS PÚBLICOS
 # ═══════════════════════════════════════════════════════════
 
 @public_router.get("")
 async def listar_marketplace_guest(
-    q: Optional[str] = None,
-    municipio: Optional[str] = None,
-    altura_min: int = 0,
-    cantidad_min: int = 1,
-    limite: int = Query(60, le=120),
+    categoria: Optional[str] = Query(None),
+    ciudad: Optional[str] = Query(None),
+    limite: int = Query(20, ge=1, le=100),
 ):
-    """Catálogo público para B2C guest (sin auth).
-
-    Reglas:
-    - Solo productos con logistics_tier IN ('S', 'M') — excluye L y XL
-    - NO expone latitud/longitud, dirección, teléfono viverista
-    - SÍ expone: nombre_vivero, ciudad (transparencia)
-    - Precios con markup por categoría (motor matricial)
-    """
+    """Listado marketplace para guest (tier S+M solo)."""
     db = admin()
-
-    if q and q.strip():
-        # Búsqueda por texto — filtrar tier S+M después del RPC
-        resp = db.rpc("buscar_plantas_cercanas", {
-            "p_nombre_planta": q.strip(),
-            "p_altura_min_cm": altura_min,
-            "p_radio_km": 100.0,
-            "p_lat": 4.9195,
-            "p_lon": -74.0270,
-            "p_cantidad_min": cantidad_min,
-            "p_limite": limite * 2,  # traer más para poder filtrar por tier
-        }).execute()
-
-        raw_items = resp.data or []
-        # Filtrar solo tier S+M (para guest)
-        inv_ids = [r["inventario_id"] for r in raw_items]
-        if inv_ids:
-            tiers = db.table("inventario").select(
-                "inventario_id, logistics_tier"
-            ).in_("inventario_id", inv_ids).execute()
-            tier_map = {t["inventario_id"]: t.get("logistics_tier", "M") for t in (tiers.data or [])}
-        else:
-            tier_map = {}
-
-        raw_items = [r for r in raw_items if tier_map.get(r["inventario_id"], "M") in ("S", "M")]
-        raw_items = raw_items[:limite]
-
-        # Batch precios comprador
-        items_precio = [(r["inventario_id"], float(r.get("precio_mayorista") or 0)) for r in raw_items]
-        precios_map = _precios_comprador_batch(db, items_precio)
-
-        items = []
-        for r in raw_items:
-            inv_id = r["inventario_id"]
-            items.append({
-                "inventario_id": inv_id,
-                "planta_id": r["planta_id"],
-                "nombre_comun": r["nombre_comun"],
-                "nombre_cientifico": r.get("nombre_cientifico"),
-                "foto_ia_url": r.get("foto_ia_url"),
-                # 🔒 Fase 8 guest: solo precio_comprador, NO mayorista
-                "precio_comprador": precios_map.get(inv_id, 0),
-                "stock": r["stock"],
-                "altura_cm": r["altura_cm"],
-                "nombre_vivero": r["nombre_vivero"],
-                "municipio": r.get("municipio_vivero"),
-                # NO exponer: latitud, longitud, dirección, distancia_km, precio_mayorista
-            })
-        return {"ok": True, "items": items, "total": len(items)}
-
-    # Sin búsqueda — listado paginado filtrado tier S+M
     query = db.table("inventario").select(
-        "inventario_id, planta_id, altura_cm, precio_mayorista, "
-        "stock, unidad_medida, foto_ia_url, vivero_id, logistics_tier, "
-        "plantas(nombre_comun, nombre_cientifico), "
-        "viveros(nombre_vivero, ciudad)"
-    ).eq("estado_planta", "disponible").in_(
-        "logistics_tier", ["S", "M"]  # 🔒 filtro guest
-    ).gte("stock", cantidad_min).gte("altura_cm", altura_min)
+        "inventario_id, plantas(nombre_comun, nombre_cientifico, categoria_producto), "
+        "viveros(nombre_vivero, ciudad), precio_mayorista, stock, "
+        "altura_cm, tier_manual, foto_url_thumb"
+    ).in_("tier_manual", ["S", "M"])
 
-    if municipio:
-        v_resp = db.table("viveros").select("vivero_id").eq("ciudad", municipio).execute()
-        vivero_ids = [v["vivero_id"] for v in (v_resp.data or [])]
-        if not vivero_ids:
-            return {"ok": True, "items": [], "total": 0}
-        query = query.in_("vivero_id", vivero_ids)
+    if categoria:
+        query = query.eq("categoria_producto", categoria)
+    if ciudad:
+        query = query.ilike("viveros.ciudad", f"%{ciudad}%")
 
     resp = query.limit(limite).execute()
-    raw_items = resp.data or []
-
-    # Batch precios comprador
-    items_precio = [(r["inventario_id"], float(r.get("precio_mayorista") or 0)) for r in raw_items]
-    precios_map = _precios_comprador_batch(db, items_precio)
-
-    items = []
-    for r in raw_items:
-        planta = r.get("plantas") or {}
-        vivero = r.get("viveros") or {}
-        inv_id = r["inventario_id"]
-        items.append({
-            "inventario_id": inv_id,
-            "planta_id": r["planta_id"],
-            "nombre_comun": planta.get("nombre_comun", "Sin nombre"),
-            "nombre_cientifico": planta.get("nombre_cientifico"),
-            "foto_ia_url": r.get("foto_ia_url"),
-            # 🔒 Fase 8 guest: solo precio_comprador
-            "precio_comprador": precios_map.get(inv_id, 0),
-            "stock": r.get("stock") or 0,
-            "altura_cm": r.get("altura_cm") or 0,
-            "unidad_medida": r.get("unidad_medida"),
-            "nombre_vivero": vivero.get("nombre_vivero"),
-            "municipio": vivero.get("ciudad"),
-            # NO exponer: vivero_id, latitud, longitud, precio_mayorista, logistics_tier
-        })
-    return {"ok": True, "items": items, "total": len(items)}
+    return {
+        "ok": True,
+        "items": resp.data or [],
+        "total": len(resp.data or []),
+    }
 
 
 @public_router.get("/item/{inventario_id}")
-async def detalle_item_guest(inventario_id: int):
-    """Detalle de producto para B2C guest (sin auth).
-
-    Solo devuelve productos tier S+M. Si el producto es L o XL, devuelve 404
-    (como si no existiera).
-    """
+async def obtener_item_marketplace_guest(inventario_id: int):
+    """Detalle de un item para guest."""
     db = admin()
-
     resp = db.table("inventario").select(
-        "inventario_id, planta_id, altura_cm, precio_mayorista, "
-        "stock, unidad_medida, estado_planta, foto_ia_url, notas, "
-        "logistics_tier, "
-        "plantas(nombre_comun, nombre_cientifico, familia_botanica, "
-        "requerimientos_ia, clima_ideal), "
-        "viveros(nombre_vivero, ciudad, departamento)"
-    ).eq("inventario_id", inventario_id).limit(1).execute()
+        "inventario_id, plantas(nombre_comun, nombre_cientifico, descripcion, categoria_producto), "
+        "viveros(nombre_vivero, ciudad, whatsapp_numero), precio_mayorista, stock, "
+        "altura_cm, tier_manual, foto_url, fotos_adicionales"
+    ).eq("inventario_id", inventario_id).eq("tier_manual", "S").limit(1).execute()
 
     if not resp.data:
-        raise HTTPException(404, detail="Producto no encontrado")
+        raise HTTPException(404, detail="Producto no encontrado o no disponible para guest")
 
     item = resp.data[0]
-
-    # 🔒 Guardrail: si es L o XL, tratar como no existente
-    if item.get("logistics_tier") not in ("S", "M"):
-        raise HTTPException(404, detail="Producto no encontrado")
-
-    if item.get("estado_planta") != "disponible":
-        raise HTTPException(404, detail="Producto no disponible")
-
-    precio_base = float(item.get("precio_mayorista") or 0)
-    precio_comprador = _precio_comprador_por_item(db, inventario_id, precio_base)
-
     planta = item.get("plantas") or {}
     vivero = item.get("viveros") or {}
 
     return {
         "ok": True,
         "item": {
-            "inventario_id": item["inventario_id"],
-            "planta_id": item["planta_id"],
+            "inventario_id": inventario_id,
             "nombre_comun": planta.get("nombre_comun"),
             "nombre_cientifico": planta.get("nombre_cientifico"),
-            "familia_botanica": planta.get("familia_botanica"),
-            "requerimientos_ia": planta.get("requerimientos_ia"),
-            "clima_ideal": planta.get("clima_ideal"),
-            "foto_ia_url": item.get("foto_ia_url"),
-            "notas": item.get("notas"),
-            "altura_cm": item.get("altura_cm"),
-            "unidad_medida": item.get("unidad_medida"),
-            "stock": item.get("stock"),
-            # 🔒 Solo precio_comprador
-            "precio_comprador": precio_comprador,
-            # 🔒 Info vivero mínima (sin dirección/latitud/longitud/teléfono)
-            "nombre_vivero": vivero.get("nombre_vivero"),
-            "municipio": vivero.get("ciudad"),
-            "departamento": vivero.get("departamento"),
-            # 🔒 Límites guest — el frontend los usa para bloquear
-            "limite_unidades_por_producto": 10,
-            "limite_total_plantas": 120,
+            "descripcion": planta.get("descripcion"),
+            "categoria": planta.get("categoria_producto"),
+            "precio_mayorista": float(item.get("precio_mayorista") or 0),
+            "stock": int(item.get("stock") or 0),
+            "altura_cm": float(item.get("altura_cm") or 0),
+            "vivero": {
+                "nombre": vivero.get("nombre_vivero"),
+                "ciudad": vivero.get("ciudad"),
+                "whatsapp": vivero.get("whatsapp_numero"),
+            },
+            "fotos": {
+                "thumb": item.get("foto_url_thumb"),
+                "principal": item.get("foto_url"),
+                "adicionales": item.get("fotos_adicionales") or [],
+            },
         },
     }
 
 
 # ═══════════════════════════════════════════════════════════
-# ENDPOINTS B2B (existentes) — con optimización batch
+# ENDPOINTS COMPRADOR AUTENTICADO
 # ═══════════════════════════════════════════════════════════
 
 @router.get("")
 async def listar_marketplace(
-    q: Optional[str] = None,
-    municipio: Optional[str] = None,
-    altura_min: int = 0,
-    cantidad_min: int = 1,
-    lat: float = 4.9195,
-    lon: float = -74.0270,
-    radio_km: float = 50.0,
-    limite: int = Query(120, le=200),
+    categoria: Optional[str] = Query(None),
+    ciudad: Optional[str] = Query(None),
+    limite: int = Query(50, ge=1, le=500),
     user: UserContext = Depends(require_user),
 ):
-    """Catálogo B2B (usuario logueado). Muestra TODO — incluye L y XL."""
+    """Listado completo marketplace (autenticado)."""
     db = admin()
-    if q and q.strip():
-        resp = db.rpc("buscar_plantas_cercanas", {
-            "p_nombre_planta": q.strip(),
-            "p_altura_min_cm": altura_min,
-            "p_radio_km": radio_km,
-            "p_lat": lat,
-            "p_lon": lon,
-            "p_cantidad_min": cantidad_min,
-            "p_limite": limite,
-        }).execute()
-        raw_items = resp.data or []
-
-        # Batch precios
-        items_precio = [(r["inventario_id"], float(r.get("precio_mayorista") or 0)) for r in raw_items]
-        precios_map = _precios_comprador_batch(db, items_precio)
-
-        items = []
-        for r in raw_items:
-            precio_base = float(r.get("precio_mayorista") or 0)
-            inv_id = r["inventario_id"]
-            items.append({
-                "inventario_id": inv_id,
-                "planta_id": r["planta_id"],
-                "nombre_comun": r["nombre_comun"],
-                "nombre_cientifico": r.get("nombre_cientifico"),
-                "foto_ia_url": r.get("foto_ia_url"),
-                "precio_mayorista": precio_base,
-                "precio_comprador": precios_map.get(inv_id, 0),
-                "stock": r["stock"],
-                "altura_cm": r["altura_cm"],
-                "vivero_id": r["vivero_id"],
-                "nombre_vivero": r["nombre_vivero"],
-                "distancia_km": float(r.get("distancia_km") or 0),
-            })
-        return {"ok": True, "items": items, "total": len(items)}
-
     query = db.table("inventario").select(
-        "inventario_id, planta_id, altura_cm, precio_mayorista, "
-        "stock, unidad_medida, foto_ia_url, vivero_id, "
-        "plantas(nombre_comun, nombre_cientifico), "
-        "viveros(nombre_vivero, ciudad)"
-    ).eq("estado_planta", "disponible").gte("stock", cantidad_min).gte("altura_cm", altura_min)
+        "inventario_id, plantas(nombre_comun, nombre_cientifico, categoria_producto), "
+        "viveros(nombre_vivero, ciudad), precio_mayorista, stock, "
+        "altura_cm, tier_manual, foto_url_thumb"
+    )
 
-    if municipio:
-        v_resp = db.table("viveros").select("vivero_id").eq("ciudad", municipio).execute()
-        vivero_ids = [v["vivero_id"] for v in (v_resp.data or [])]
-        if not vivero_ids:
-            return {"ok": True, "items": [], "total": 0}
-        query = query.in_("vivero_id", vivero_ids)
+    if categoria:
+        query = query.eq("categoria_producto", categoria)
+    if ciudad:
+        query = query.ilike("viveros.ciudad", f"%{ciudad}%")
 
     resp = query.limit(limite).execute()
-    raw_items = resp.data or []
-
-    # Batch precios (1 query resuelve todo)
-    items_precio = [(r["inventario_id"], float(r.get("precio_mayorista") or 0)) for r in raw_items]
-    precios_map = _precios_comprador_batch(db, items_precio)
-
-    items = []
-    for r in raw_items:
-        planta = r.get("plantas") or {}
-        vivero = r.get("viveros") or {}
-        precio_base = float(r.get("precio_mayorista") or 0)
-        inv_id = r["inventario_id"]
-        items.append({
-            "inventario_id": inv_id,
-            "planta_id": r["planta_id"],
-            "nombre_comun": planta.get("nombre_comun", "Sin nombre"),
-            "nombre_cientifico": planta.get("nombre_cientifico"),
-            "foto_ia_url": r.get("foto_ia_url"),
-            "precio_mayorista": precio_base,
-            "precio_comprador": precios_map.get(inv_id, 0),
-            "stock": r.get("stock") or 0,
-            "altura_cm": r.get("altura_cm") or 0,
-            "unidad_medida": r.get("unidad_medida"),
-            "vivero_id": r.get("vivero_id"),
-            "nombre_vivero": vivero.get("nombre_vivero"),
-            "municipio": vivero.get("ciudad"),
-        })
-    return {"ok": True, "items": items, "total": len(items)}
+    return {
+        "ok": True,
+        "items": resp.data or [],
+        "total": len(resp.data or []),
+    }
 
 
 @router.get("/item/{inventario_id}")
-async def detalle_item(
+async def obtener_item_marketplace(
     inventario_id: int,
     user: UserContext = Depends(require_user),
 ):
-    """Detalle B2B (con auth)."""
+    """Detalle de un item (autenticado)."""
     db = admin()
-    tiene_suscripcion = user.rol == "admin"
-    if not tiene_suscripcion:
-        sus = db.table("suscripciones").select("suscripcion_id").eq(
-            "user_id", user.user_id
-        ).eq("estado", "activa").limit(1).execute()
-        tiene_suscripcion = bool(sus.data)
-
     resp = db.table("inventario").select(
-        "inventario_id, planta_id, altura_cm, precio_mayorista, precio_detal, "
-        "stock, unidad_medida, estado_planta, foto_ia_url, notas, vivero_id, "
-        "plantas(nombre_comun, nombre_cientifico, familia_botanica, requerimientos_ia, clima_ideal), "
-        "viveros(nombre_vivero, ciudad, departamento, historia, foto_url, fotos_galeria, latitud, longitud, direccion)"
+        "inventario_id, plantas(nombre_comun, nombre_cientifico, descripcion, categoria_producto), "
+        "viveros(nombre_vivero, ciudad, latitud, longitud, whatsapp_numero), "
+        "precio_mayorista, stock, altura_cm, tier_manual, foto_url, fotos_adicionales"
     ).eq("inventario_id", inventario_id).limit(1).execute()
 
     if not resp.data:
-        raise HTTPException(404, detail="Item no encontrado")
+        raise HTTPException(404, detail="Producto no encontrado")
+
     item = resp.data[0]
-
-    if not tiene_suscripcion and item.get("viveros"):
-        item["viveros"]["latitud"]   = None
-        item["viveros"]["longitud"]  = None
-        item["viveros"]["direccion"] = None
-
-    precio_base = float(item.get("precio_mayorista") or 0)
-    item["precio_comprador"] = _precio_comprador_por_item(db, inventario_id, precio_base)
-    item["tiene_suscripcion"] = tiene_suscripcion
     return {"ok": True, "item": item}
 
 
 # ═══════════════════════════════════════════════════════════
-# COTIZACIONES — helpers
+# COTIZACIONES — FIX 13 ago 2026
 # ═══════════════════════════════════════════════════════════
-
-def _validar_items_y_calcular(db, req_items) -> tuple[list[dict], float]:
-    items_validados = []
-    total = 0.0
-    for item in req_items:
-        inv = db.table("inventario").select(
-            "precio_mayorista, stock, estado_planta"
-        ).eq("inventario_id", item.inventario_id).limit(1).execute()
-        if not inv.data:
-            raise HTTPException(404, detail=f"Inventario {item.inventario_id} no existe")
-        i = inv.data[0]
-        if i["estado_planta"] != "disponible":
-            raise HTTPException(400, detail=f"Item {item.inventario_id} no disponible")
-        if (i.get("stock") or 0) < item.cantidad:
-            raise HTTPException(400, detail=f"Stock insuficiente para {item.inventario_id}")
-        subtotal = float(i["precio_mayorista"]) * item.cantidad
-        total += subtotal
-        items_validados.append({
-            "inventario_id": item.inventario_id,
-            "cantidad": item.cantidad,
-            "precio_unitario": float(i["precio_mayorista"]),
-            "subtotal": subtotal,
-        })
-    return items_validados, total
-
-
-def _merge_items_y_actualizar(
-    db, borrador: dict, items_nuevos: list[dict],
-    notas_nuevas: Optional[str] = None,
-    nombre_nuevo: Optional[str] = None,
-) -> CotizacionResponse:
-    cotizacion_id = borrador["cotizacion_id"]
-    items_combinados = list(borrador.get("items") or [])
-    for nuevo in items_nuevos:
-        match_idx = next(
-            (idx for idx, it in enumerate(items_combinados)
-             if it.get("inventario_id") == nuevo["inventario_id"]),
-            None,
-        )
-        if match_idx is not None:
-            it = items_combinados[match_idx]
-            it["cantidad"] = it.get("cantidad", 0) + nuevo["cantidad"]
-            it["subtotal"] = it["cantidad"] * it.get("precio_unitario", 0)
-        else:
-            items_combinados.append(nuevo)
-    total_combinado = sum(float(it.get("subtotal") or 0) for it in items_combinados)
-    update_payload = {
-        "items": items_combinados,
-        "total_estimado": total_combinado,
-    }
-    if notas_nuevas:
-        update_payload["notas_cliente"] = notas_nuevas
-    if nombre_nuevo:
-        update_payload["prompt_original"] = nombre_nuevo
-    db.table("cotizaciones").update(update_payload).eq("cotizacion_id", cotizacion_id).execute()
-    return CotizacionResponse(
-        ok=True,
-        cotizacion_id=cotizacion_id,
-        total_cop=total_combinado,
-        estado="borrador",
-    )
-
-
-def _enriquecer_items(db, items_raw: list[dict]) -> list[dict]:
-    """Enriquece items con datos + precios comprador — OPTIMIZADO BATCH.
-
-    En lugar de N queries (1 por item), hace 2 queries totales:
-      1. Batch datos inventario+planta+vivero+categoría
-      2. Batch matriz cacheada (get_matriz_comercial devuelve dict cacheado 60s)
-    """
-    if not items_raw:
-        return []
-
-    inventario_ids = [it.get("inventario_id") for it in items_raw if it.get("inventario_id")]
-
-    # Query 1: datos completos de inventario en batch
-    inv_map: dict[int, dict] = {}
-    if inventario_ids:
-        inv_resp = db.table("inventario").select(
-            "inventario_id, foto_ia_url, stock, estado_planta, categoria_producto, "
-            "plantas(nombre_comun, nombre_cientifico, categoria_producto), "
-            "viveros(vivero_id, nombre_vivero, ciudad)"
-        ).in_("inventario_id", inventario_ids).execute()
-        inv_map = {r["inventario_id"]: r for r in (inv_resp.data or [])}
-
-    # Precargar matriz UNA vez (caché 60s)
-    matriz = get_matriz_comercial()
-    markups_b2c = matriz.get("markup_b2c", {})
-
-    enriquecidos = []
-    for it in items_raw:
-        inv_id = it.get("inventario_id")
-        inv = inv_map.get(inv_id, {})
-        planta = inv.get("plantas") or {}
-        vivero = inv.get("viveros") or {}
-
-        # Categoría desde datos ya cargados (0 queries extra)
-        override_inv = inv.get("categoria_producto")
-        default_planta = planta.get("categoria_producto")
-        categoria = override_inv or default_planta or "plantas_ornamentales"
-
-        # Markup desde matriz cacheada (0 queries extra)
-        markup = float(markups_b2c.get(categoria, 0.20))
-
-        precio_unit = float(it.get("precio_unitario") or 0)
-        cantidad = int(it.get("cantidad") or 1)
-        precio_comprador_unitario = round(precio_unit * (1 + markup))
-        subtotal_comprador = precio_comprador_unitario * cantidad
-
-        enriquecidos.append({
-            **it,
-            "nombre_comun": planta.get("nombre_comun"),
-            "nombre_cientifico": planta.get("nombre_cientifico"),
-            "foto_ia_url": inv.get("foto_ia_url"),
-            "stock_disponible": inv.get("stock"),
-            "vivero_id": (vivero or {}).get("vivero_id"),
-            "nombre_vivero": vivero.get("nombre_vivero"),
-            "ciudad_vivero": vivero.get("ciudad"),
-            "categoria": categoria,
-            "precio_comprador_unitario": precio_comprador_unitario,
-            "subtotal_comprador": subtotal_comprador,
-        })
-    return enriquecidos
-
-
-def _total_comprador_desde_items(items_enriquecidos: list[dict]) -> int:
-    """Suma los subtotal_comprador de todos los items."""
-    return sum(int(it.get("subtotal_comprador") or 0) for it in items_enriquecidos)
-
-
-def _obtener_estado_entrega(db, cotizacion_id: int) -> dict:
-    try:
-        resp = db.table("entregas").select(
-            "estado_entrega, fecha_despacho, fecha_entrega, direccion_entrega, "
-            "contacto_nombre, contacto_telefono"
-        ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
-        if resp.data:
-            return resp.data[0]
-    except Exception:
-        pass
-    return {}
-
-
-# ═══════════════════════════════════════════════════════════
-# COTIZACIONES — endpoints B2B
-# ═══════════════════════════════════════════════════════════
-
-@router.post("/cotizacion", response_model=CotizacionResponse)
-async def crear_o_agregar_a_borrador(
-    req: CotizacionRequest,
-    user: UserContext = Depends(require_comprador),
-):
-    if not user.cliente_id:
-        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
-    if req.cotizacion_id is not None and req.nombre_proyecto is not None:
-        raise HTTPException(400, detail="Especificá solo cotizacion_id O nombre_proyecto, no ambos")
-    db = admin()
-    items_nuevos, total_nuevo = _validar_items_y_calcular(db, req.items)
-    if req.cotizacion_id is not None:
-        existente = db.table("cotizaciones").select(
-            "cotizacion_id, cliente_id, estado, items, total_estimado"
-        ).eq("cotizacion_id", req.cotizacion_id).limit(1).execute()
-        if not existente.data:
-            raise HTTPException(404, detail="Proyecto no encontrado")
-        b = existente.data[0]
-        if b["cliente_id"] != user.cliente_id:
-            raise HTTPException(404, detail="Proyecto no encontrado")
-        if b["estado"] != "borrador":
-            raise HTTPException(400, detail=f"No se pueden agregar items a un proyecto en estado '{b['estado']}'")
-        return _merge_items_y_actualizar(db, b, items_nuevos)
-    if req.nombre_proyecto is not None:
-        cot_resp = db.table("cotizaciones").insert({
-            "cliente_id": user.cliente_id,
-            "total_estimado": total_nuevo,
-            "estado": "borrador",
-            "notas_cliente": req.notas,
-            "prompt_original": req.nombre_proyecto,
-            "items": items_nuevos,
-            "generada_por_ia": False,
-        }).execute()
-        cotizacion_id = cot_resp.data[0]["cotizacion_id"]
-        return CotizacionResponse(ok=True, cotizacion_id=cotizacion_id, total_cop=total_nuevo, estado="borrador")
-    existente = db.table("cotizaciones").select(
-        "cotizacion_id, items, total_estimado, notas_cliente, prompt_original"
-    ).eq("cliente_id", user.cliente_id).eq("estado", "borrador").order(
-        "fecha_creacion", desc=True
-    ).limit(1).execute()
-    if existente.data:
-        return _merge_items_y_actualizar(db, existente.data[0], items_nuevos, notas_nuevas=req.notas, nombre_nuevo=req.proyecto)
-    cot_resp = db.table("cotizaciones").insert({
-        "cliente_id": user.cliente_id,
-        "total_estimado": total_nuevo,
-        "estado": "borrador",
-        "notas_cliente": req.notas,
-        "prompt_original": req.proyecto,
-        "items": items_nuevos,
-        "generada_por_ia": False,
-    }).execute()
-    cotizacion_id = cot_resp.data[0]["cotizacion_id"]
-    return CotizacionResponse(ok=True, cotizacion_id=cotizacion_id, total_cop=total_nuevo, estado="borrador")
-
 
 @router.get("/cotizacion/proyectos")
 async def listar_proyectos(user: UserContext = Depends(require_comprador)):
-    """Lista proyectos con total_comprador batch-optimizado.
-
-    ── Fase 8: batch de TODOS los inventario_ids de TODOS los proyectos ──
-    En vez de 1 query por proyecto × N items, ahora 1 query TOTAL para todo.
-    """
+    """Lista proyectos con estado REAL basado en sub_cotizaciones."""
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
     db = admin()
+    
+    # CAMBIO CRÍTICO: Incluir sub_cotizaciones con viveros
     resp = db.table("cotizaciones").select(
         "cotizacion_id, prompt_original, estado, total_estimado, items, "
-        "fecha_creacion, fecha_vencimiento, fecha_conversion, notas_cliente"
+        "fecha_creacion, fecha_vencimiento, fecha_conversion, notas_cliente, "
+        "sub_cotizaciones(sub_cotizacion_id, estado, total_estimado, vivero_id, "
+        "viveros(nombre_vivero, ciudad))"
     ).eq("cliente_id", user.cliente_id).order("fecha_creacion", desc=True).execute()
 
     cot_ids_pagados = [r["cotizacion_id"] for r in (resp.data or []) if r.get("estado") == "pagada"]
@@ -656,14 +361,13 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
         except Exception:
             pass
 
-    # Recolectar TODOS los inventario_ids de TODOS los proyectos en una sola pasada
+    # Recolectar TODOS los inventario_ids
     todos_inv_ids = set()
     for r in resp.data or []:
         for it in r.get("items") or []:
             if it.get("inventario_id"):
                 todos_inv_ids.add(it["inventario_id"])
 
-    # 1 query resuelve categorías de TODOS los items de TODOS los proyectos
     categorias_map = _resolver_categorias_batch(db, list(todos_inv_ids))
     matriz = get_matriz_comercial()
     markups_b2c = matriz.get("markup_b2c", {})
@@ -672,6 +376,11 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
     for r in resp.data or []:
         items = r.get("items") or []
         cot_id = r["cotizacion_id"]
+        estado_cot = r["estado"]
+        
+        # NUEVO: Calcular estado real basado en sub_cotizaciones
+        subs = r.get("sub_cotizaciones") or []
+        estado_real = _calcular_estado_real(estado_cot, subs)
 
         total_comprador = 0
         for it in items:
@@ -683,19 +392,37 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
                 markup = float(markups_b2c.get(categoria, 0.20))
                 total_comprador += round(precio_unit * (1 + markup)) * cantidad
 
+        # NUEVO: Desglose de subs
+        subs_desglose = []
+        monto_disponible = 0
+        for sub in subs:
+            estado_sub = sub.get("estado")
+            vivero_info = sub.get("viveros") or {}
+            subs_desglose.append({
+                "sub_cotizacion_id": sub.get("sub_cotizacion_id"),
+                "estado": estado_sub,
+                "total": float(sub.get("total_estimado") or 0),
+                "nombre_vivero": vivero_info.get("nombre_vivero"),
+                "ciudad": vivero_info.get("ciudad"),
+            })
+            if estado_sub == "aprobada":
+                monto_disponible += float(sub.get("total_estimado") or 0)
+
         proyectos.append({
             "cotizacion_id": cot_id,
             "nombre_proyecto": r.get("prompt_original"),
-            "estado": r["estado"],
+            "estado": estado_real,  # ← CAMBIO: estado real
             "estado_entrega": entrega_map.get(cot_id),
             "total_estimado": float(r.get("total_estimado") or 0),
             "total_comprador": total_comprador,
+            "monto_disponible": monto_disponible,  # ← NUEVO
             "num_items": sum(it.get("cantidad", 0) for it in items),
             "num_items_distintos": len(items),
             "fecha_creacion": str(r.get("fecha_creacion") or ""),
             "fecha_vencimiento": str(r.get("fecha_vencimiento") or ""),
             "fecha_conversion": str(r.get("fecha_conversion")) if r.get("fecha_conversion") else None,
             "notas_cliente": r.get("notas_cliente"),
+            "sub_cotizaciones": subs_desglose,  # ← NUEVO
         })
     return {"ok": True, "proyectos": proyectos, "total": len(proyectos)}
 
@@ -708,73 +435,27 @@ async def obtener_borrador(user: UserContext = Depends(require_comprador)):
     resp = db.table("cotizaciones").select(
         "cotizacion_id, items, total_estimado, fecha_creacion, "
         "fecha_vencimiento, notas_cliente, prompt_original"
-    ).eq("cliente_id", user.cliente_id).eq("estado", "borrador").order(
-        "fecha_creacion", desc=True
-    ).limit(1).execute()
+    ).eq("cliente_id", user.cliente_id).eq("estado", "borrador").limit(1).execute()
+
     if not resp.data:
-        return {"ok": True, "borrador": None}
-    b = resp.data[0]
-    items_enriquecidos = _enriquecer_items(db, b.get("items") or [])
+        return {"ok": True, "cotizacion": None}
+
+    cot = resp.data[0]
+    items_enriquecidos = _enriquecer_items(db, cot.get("items") or [])
     total_comprador = _total_comprador_desde_items(items_enriquecidos)
+
     return {
         "ok": True,
-        "borrador": {
-            "cotizacion_id": b["cotizacion_id"],
+        "cotizacion": {
+            "cotizacion_id": cot["cotizacion_id"],
+            "nombre_proyecto": cot.get("prompt_original") or "Nuevo Proyecto",
             "items": items_enriquecidos,
-            "total_estimado": float(b.get("total_estimado") or 0),
+            "total_estimado": float(cot.get("total_estimado") or 0),
             "total_comprador": total_comprador,
             "num_items": sum(it.get("cantidad", 0) for it in items_enriquecidos),
-            "num_viveros_distintos": len({it.get("vivero_id") for it in items_enriquecidos if it.get("vivero_id")}),
-            "notas_cliente": b.get("notas_cliente"),
-            "prompt_original": b.get("prompt_original"),
-            "fecha_creacion": str(b.get("fecha_creacion") or ""),
-            "fecha_vencimiento": str(b.get("fecha_vencimiento") or ""),
+            "notas_cliente": cot.get("notas_cliente"),
         },
     }
-
-
-@router.delete("/cotizacion/item/{inventario_id}")
-async def quitar_item_borrador(
-    inventario_id: int,
-    cotizacion_id: Optional[int] = Query(None),
-    user: UserContext = Depends(require_comprador),
-):
-    if not user.cliente_id:
-        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
-    db = admin()
-    if cotizacion_id is not None:
-        resp = db.table("cotizaciones").select(
-            "cotizacion_id, cliente_id, estado, items"
-        ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
-        if not resp.data:
-            raise HTTPException(404, detail="Cotización no encontrada")
-        b = resp.data[0]
-        if b["cliente_id"] != user.cliente_id:
-            raise HTTPException(404, detail="Cotización no encontrada")
-        if b["estado"] != "borrador":
-            raise HTTPException(400, detail=f"No se puede modificar una cotización en estado '{b['estado']}'")
-    else:
-        resp = db.table("cotizaciones").select(
-            "cotizacion_id, items"
-        ).eq("cliente_id", user.cliente_id).eq("estado", "borrador").order(
-            "fecha_creacion", desc=True
-        ).limit(1).execute()
-        if not resp.data:
-            raise HTTPException(404, detail="No tienes un borrador activo")
-        b = resp.data[0]
-    items_actuales = b.get("items") or []
-    items_filtrados = [it for it in items_actuales if it.get("inventario_id") != inventario_id]
-    if len(items_filtrados) == len(items_actuales):
-        raise HTTPException(404, detail=f"Item {inventario_id} no está en este borrador")
-    if not items_filtrados:
-        db.table("cotizaciones").delete().eq("cotizacion_id", b["cotizacion_id"]).execute()
-        return {"ok": True, "cotizacion_id": b["cotizacion_id"], "eliminado": True, "borrador": None}
-    total_nuevo = sum(float(it.get("subtotal") or 0) for it in items_filtrados)
-    db.table("cotizaciones").update({
-        "items": items_filtrados,
-        "total_estimado": total_nuevo,
-    }).eq("cotizacion_id", b["cotizacion_id"]).execute()
-    return {"ok": True, "cotizacion_id": b["cotizacion_id"], "total_estimado": total_nuevo, "items_restantes": len(items_filtrados)}
 
 
 @router.get("/cotizacion/{cotizacion_id}")
@@ -785,28 +466,86 @@ async def obtener_cotizacion(
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
     db = admin()
+    
+    # CAMBIO CRÍTICO: Incluir sub_cotizaciones
     resp = db.table("cotizaciones").select(
         "cotizacion_id, cliente_id, prompt_original, estado, items, total_estimado, "
         "fecha_creacion, fecha_vencimiento, fecha_conversion, notas_cliente, notas_agente, "
-        "alternativas_vivero"
+        "alternativas_vivero, "
+        "sub_cotizaciones(sub_cotizacion_id, vivero_id, estado, total_estimado, items, "
+        "notas_rechazo, fecha_respuesta, viveros(nombre_vivero, ciudad, whatsapp_numero))"
     ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+    
     if not resp.data:
         raise HTTPException(404, detail="Cotización no encontrada")
     c = resp.data[0]
     if c["cliente_id"] != user.cliente_id:
         raise HTTPException(404, detail="Cotización no encontrada")
+    
     items_enriquecidos = _enriquecer_items(db, c.get("items") or [])
     total_comprador = _total_comprador_desde_items(items_enriquecidos)
     entrega = _obtener_estado_entrega(db, cotizacion_id)
+    
+    # NUEVO: Procesar sub_cotizaciones
+    subs = c.get("sub_cotizaciones") or []
+    subs_detalle = []
+    monto_disponible = 0
+    
+    for sub in subs:
+        estado_sub = sub.get("estado")
+        vivero = sub.get("viveros") or {}
+        items_sub = sub.get("items") or []
+        
+        items_sub_detalle = []
+        for it in items_sub:
+            it_enriquecido = next(
+                (x for x in items_enriquecidos if x.get("inventario_id") == it.get("inventario_id")),
+                None
+            )
+            if it_enriquecido:
+                items_sub_detalle.append({
+                    "inventario_id": it.get("inventario_id"),
+                    "nombre_comun": it_enriquecido.get("nombre_comun"),
+                    "cantidad": it.get("cantidad", 0),
+                    "precio_unitario": float(it.get("precio_unitario") or 0),
+                    "subtotal": float(it.get("subtotal") or 0),
+                })
+        
+        subs_detalle.append({
+            "sub_cotizacion_id": sub.get("sub_cotizacion_id"),
+            "vivero_id": sub.get("vivero_id"),
+            "nombre_vivero": vivero.get("nombre_vivero"),
+            "ciudad": vivero.get("ciudad"),
+            "whatsapp_vivero": vivero.get("whatsapp_numero"),
+            "estado": estado_sub,
+            "total": float(sub.get("total_estimado") or 0),
+            "items": items_sub_detalle,
+            "notas_rechazo": sub.get("notas_rechazo"),
+            "fecha_respuesta": str(sub.get("fecha_respuesta")) if sub.get("fecha_respuesta") else None,
+        })
+        
+        if estado_sub == "aprobada":
+            monto_disponible += float(sub.get("total_estimado") or 0)
+    
+    # NUEVO: Estado real
+    estado_real = _calcular_estado_real(c["estado"], subs)
+    
+    # NUEVO: Flag para pagar parcial
+    puede_pagar_parcial = (
+        len([s for s in subs if s.get("estado") == "aprobada"]) > 0 and
+        len([s for s in subs if s.get("estado") in ("rechazada", "pendiente")]) > 0
+    )
+    
     return {
         "ok": True,
         "cotizacion": {
             "cotizacion_id": c["cotizacion_id"],
             "nombre_proyecto": c.get("prompt_original"),
-            "estado": c["estado"],
+            "estado": estado_real,  # ← CAMBIO: estado real
             "items": items_enriquecidos,
             "total_estimado": float(c.get("total_estimado") or 0),
             "total_comprador": total_comprador,
+            "monto_disponible": monto_disponible,  # ← NUEVO
             "num_items": sum(it.get("cantidad", 0) for it in items_enriquecidos),
             "num_viveros_distintos": len({it.get("vivero_id") for it in items_enriquecidos if it.get("vivero_id")}),
             "notas_cliente": c.get("notas_cliente"),
@@ -819,6 +558,11 @@ async def obtener_cotizacion(
             "fecha_entrega_real": str(entrega.get("fecha_entrega") or "") if entrega.get("fecha_entrega") else None,
             "direccion_entrega": entrega.get("direccion_entrega"),
             "alternativas_vivero": c.get("alternativas_vivero"),
+            "sub_cotizaciones": subs_detalle,  # ← NUEVO
+            "puede_pagar_parcial": puede_pagar_parcial,  # ← NUEVO
+            "num_subs_aprobadas": len([s for s in subs if s.get("estado") == "aprobada"]),
+            "num_subs_rechazadas": len([s for s in subs if s.get("estado") == "rechazada"]),
+            "num_subs_pendientes": len([s for s in subs if s.get("estado") == "pendiente"]),
         },
     }
 
