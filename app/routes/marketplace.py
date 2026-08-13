@@ -759,6 +759,25 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
         # Mostrar badge "aprobado": solo si está aprobada Y NO vencida
         mostrar_aprobado = estado_real == "aceptada" and estado_cot != "vencida"
 
+        # NUEVO: Desglose de sub_cotizaciones (para mostrar viveristas rechazados)
+        subs_desglose = []
+        if estados_subs:
+            try:
+                subs_full = db.table("sub_cotizaciones").select(
+                    "vivero_id, estado, viveros(nombre_vivero, ciudad)"
+                ).eq("cotizacion_id", cot_id).execute()
+                
+                for sub in subs_full.data or []:
+                    vivero = sub.get("viveros") or {}
+                    subs_desglose.append({
+                        "vivero_id": sub.get("vivero_id"),
+                        "estado": sub.get("estado"),
+                        "nombre_vivero": vivero.get("nombre_vivero"),
+                        "ciudad": vivero.get("ciudad"),
+                    })
+            except Exception:
+                pass
+
         proyectos.append({
             "cotizacion_id": cot_id,
             "nombre_proyecto": r.get("prompt_original"),
@@ -772,9 +791,10 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
             "fecha_vencimiento": str(r.get("fecha_vencimiento") or ""),
             "fecha_conversion": str(r.get("fecha_conversion")) if r.get("fecha_conversion") else None,
             "notas_cliente": r.get("notas_cliente"),
-            "puede_modificar": puede_modificar,  # ← NUEVO
-            "puede_agregar_items": estado_real in ("enviada", "parcial"),  # ← NUEVO
-            "mostrar_aprobado": mostrar_aprobado,  # ← NUEVO
+            "puede_modificar": puede_modificar,
+            "puede_agregar_items": estado_real in ("enviada", "parcial"),
+            "mostrar_aprobado": mostrar_aprobado,
+            "sub_cotizaciones": subs_desglose,  # ← Desglose viveristas: para marcar rechazados
         })
     return {"ok": True, "proyectos": proyectos, "total": len(proyectos)}
 
