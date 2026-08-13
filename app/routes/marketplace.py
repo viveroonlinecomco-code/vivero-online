@@ -1100,11 +1100,6 @@ async def reenviar_cotizacion(
         "vivero_id, estado"
     ).eq("cotizacion_id", cotizacion_id).execute()
     
-    # Marcar como reenviada (opcional: agregar campo fecha_ultimo_reenvio)
-    db.table("cotizaciones").update({
-        "fecha_ultimo_reenvio": "now()"
-    }).eq("cotizacion_id", cotizacion_id).execute()
-    
     # Contar subs reenviadas
     num_reenvios = len(subs_resp.data or [])
     
