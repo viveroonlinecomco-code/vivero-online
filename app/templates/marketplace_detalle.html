@@ -720,11 +720,15 @@ function cartGetCantidadItem(inv_id) {
         selectorEl.classList.add('hidden');
         try {
             const data = await VO.api('/api/marketplace/cotizacion/proyectos');
-            const borradores = (data.proyectos || []).filter(p => p.estado === 'borrador');
-            if (borradores.length === 0) {
+            // ✅ FIX 14 ago: Permitir agregar a múltiples estados (no solo borrador)
+            // Muestra proyectos en: borrador (en edición), enviada (agregar más), parcial (mezcla), rechazada (reenviar)
+            const proyectosEditables = (data.proyectos || []).filter(p => 
+                ['borrador', 'enviada', 'parcial', 'rechazada'].includes(p.estado)
+            );
+            if (proyectosEditables.length === 0) {
                 listEl.innerHTML = '<p class="text-xs text-slate-500 text-center py-2">Aún no tenés proyectos. Creá el primero abajo.</p>';
             } else {
-                listEl.innerHTML = borradores.map(p => renderProyectoCard(p)).join('');
+                listEl.innerHTML = proyectosEditables.map(p => renderProyectoCard(p)).join('');
                 listEl.querySelectorAll('[data-vo="modal-proyecto-card"]').forEach(card => {
                     card.addEventListener('click', () => seleccionarProyecto(parseInt(card.dataset.cotizacionId, 10)));
                 });
