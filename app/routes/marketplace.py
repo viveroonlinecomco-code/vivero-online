@@ -983,8 +983,9 @@ async def cancelar_cotizacion(
     if c["estado"] in ("pagada", "entregada"):
         raise HTTPException(400, detail=f"No se puede cancelar una cotización en estado '{c['estado']}'.")
     
+    # Marcar como cancelada
     db.table("cotizaciones").update({"estado": "cancelada"}).eq("cotizacion_id", cotizacion_id).execute()
-    return {"ok": True, "cotizacion_id": cotizacion_id, "estado": "cancelada"}
+    return {"ok": True, "cotizacion_id": cotizacion_id, "estado": "cancelada", "mensaje": "Cotización cancelada"}
 
 
 @router.post("/cotizacion/{cotizacion_id}/agregar-items")
