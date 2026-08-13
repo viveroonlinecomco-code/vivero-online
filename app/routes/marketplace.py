@@ -41,6 +41,47 @@ public_router = APIRouter(prefix="/api/public/marketplace", tags=["marketplace-g
 
 
 # ═══════════════════════════════════════════════════════════
+# Helper: Calcular estado real basado en sub_cotizaciones (FIX 13 ago)
+# ═══════════════════════════════════════════════════════════
+
+def _calcular_estado_real_cotizacion(estado_original: str, subs_estados: list[str]) -> str:
+    """Calcula estado real de cotización basado en estados de sub_cotizaciones.
+    
+    Reglas:
+      - Si hay mix de APROBADA + RECHAZADA → "parcial"
+      - Si TODAS APROBADAS → "aceptada"  
+      - Si TODAS RECHAZADAS → "rechazada"
+      - Si hay PENDIENTES → "enviada"
+      - Si no hay subs → usa estado_original
+    """
+    if not subs_estados:
+        return estado_original
+    
+    aprobadas = sum(1 for e in subs_estados if e == "aprobada")
+    rechazadas = sum(1 for e in subs_estados if e == "rechazada")
+    pendientes = sum(1 for e in subs_estados if e == "pendiente")
+    total = len(subs_estados)
+    
+    # Caso: mix aprobadas + rechazadas
+    if aprobadas > 0 and rechazadas > 0:
+        return "parcial"
+    
+    # Caso: todas aprobadas
+    if aprobadas == total:
+        return "aceptada"
+    
+    # Caso: todas rechazadas
+    if rechazadas == total:
+        return "rechazada"
+    
+    # Caso: hay pendientes
+    if pendientes > 0:
+        return "enviada"
+    
+    return estado_original
+
+
+# ═══════════════════════════════════════════════════════════
 # Helpers — motor matricial batch (Fase 8)
 # ═══════════════════════════════════════════════════════════
 
@@ -661,6 +702,23 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
         "fecha_creacion, fecha_vencimiento, fecha_conversion, notas_cliente"
     ).eq("cliente_id", user.cliente_id).order("fecha_creacion", desc=True).execute()
 
+    # FIX 13 ago: Obtener estados de sub_cotizaciones para calcular estado real
+    if resp.data:
+        cot_ids = [r["cotizacion_id"] for r in resp.data]
+        subs_resp = db.table("sub_cotizaciones").select(
+            "cotizacion_id, estado"
+        ).in_("cotizacion_id", cot_ids).execute()
+        
+        # Mapear: {cotizacion_id: [lista de estados]}
+        subs_por_cot = {}
+        for sub in subs_resp.data or []:
+            cot_id = sub["cotizacion_id"]
+            if cot_id not in subs_por_cot:
+                subs_por_cot[cot_id] = []
+            subs_por_cot[cot_id].append(sub["estado"])
+    else:
+        subs_por_cot = {}
+
     cot_ids_pagados = [r["cotizacion_id"] for r in (resp.data or []) if r.get("estado") == "pagada"]
     entrega_map = {}
     if cot_ids_pagados:
@@ -699,10 +757,14 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
                 markup = float(markups_b2c.get(categoria, 0.20))
                 total_comprador += round(precio_unit * (1 + markup)) * cantidad
 
+        # FIX 13 ago: Calcular estado real basado en sub_cotizaciones
+        estados_subs = subs_por_cot.get(cot_id, [])
+        estado_real = _calcular_estado_real_cotizacion(r["estado"], estados_subs)
+
         proyectos.append({
             "cotizacion_id": cot_id,
             "nombre_proyecto": r.get("prompt_original"),
-            "estado": r["estado"],
+            "estado": estado_real,  # ← Cambio: usa estado_real en lugar de r["estado"]
             "estado_entrega": entrega_map.get(cot_id),
             "total_estimado": float(r.get("total_estimado") or 0),
             "total_comprador": total_comprador,
@@ -878,3 +940,102 @@ async def eliminar_proyecto(
         raise HTTPException(400, detail=f"No se puede eliminar una cotización en estado '{c['estado']}'.")
     db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
     return {"ok": True, "cotizacion_id": cotizacion_id, "eliminado": True}
+
+
+@router.patch("/cotizacion/{cotizacion_id}/cancelar")
+async def cancelar_cotizacion(
+    cotizacion_id: int,
+    user: UserContext = Depends(require_comprador),
+):
+    """Cancela una cotización (la marca como cancelada)."""
+    if not user.cliente_id:
+        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
+    db = admin()
+    resp = db.table("cotizaciones").select("cliente_id, estado").eq("cotizacion_id", cotizacion_id).limit(1).execute()
+    if not resp.data:
+        raise HTTPException(404, detail="Cotización no encontrada")
+    c = resp.data[0]
+    if c["cliente_id"] != user.cliente_id:
+        raise HTTPException(404, detail="Cotización no encontrada")
+    
+    # No permitir cancelar si ya está pagada o entregada
+    if c["estado"] in ("pagada", "entregada"):
+        raise HTTPException(400, detail=f"No se puede cancelar una cotización en estado '{c['estado']}'.")
+    
+    db.table("cotizaciones").update({"estado": "cancelada"}).eq("cotizacion_id", cotizacion_id).execute()
+    return {"ok": True, "cotizacion_id": cotizacion_id, "estado": "cancelada"}
+
+
+@router.post("/cotizacion/{cotizacion_id}/agregar-items")
+async def agregar_items_a_cotizacion(
+    cotizacion_id: int,
+    req: dict,
+    user: UserContext = Depends(require_comprador),
+):
+    """Agrega items a una cotización SIN perder subs existentes.
+    
+    Request: {"items": [{"inventario_id": int, "cantidad": int, ...}]}
+    
+    IMPORTANTE: Solo copia items nuevos, conserva los existentes.
+    """
+    if not user.cliente_id:
+        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
+    
+    db = admin()
+    
+    # Obtener cotización actual
+    resp = db.table("cotizaciones").select(
+        "cliente_id, estado, items, total_estimado, prompt_original, "
+        "fecha_creacion, fecha_vencimiento"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+    
+    if not resp.data:
+        raise HTTPException(404, detail="Cotización no encontrada")
+    
+    c = resp.data[0]
+    if c["cliente_id"] != user.cliente_id:
+        raise HTTPException(404, detail="Cotización no encontrada")
+    
+    # Solo permitir agregar a proyectos que NO están pagados/entregados
+    if c["estado"] in ("pagada", "entregada", "cancelada"):
+        raise HTTPException(400, detail=f"No se puede agregar items a una cotización en estado '{c['estado']}'.")
+    
+    # Obtener items nuevos
+    items_nuevos = req.get("items", [])
+    if not items_nuevos:
+        raise HTTPException(400, detail="Debe proporcionar al menos un item")
+    
+    # Validar y calcular items nuevos
+    items_validos, total_nuevo_items = _validar_items_y_calcular(db, items_nuevos)
+    
+    # Merge: conservar existentes + agregar nuevos
+    items_actuales = c.get("items") or []
+    inv_ids_existentes = {it.get("inventario_id") for it in items_actuales}
+    
+    # Agregar solo items que NO existen (evitar duplicados)
+    items_para_agregar = [it for it in items_validos if it.get("inventario_id") not in inv_ids_existentes]
+    
+    if not items_para_agregar:
+        raise HTTPException(400, detail="Todos los items ya están en la cotización")
+    
+    # Combinar
+    items_finales = items_actuales + items_para_agregar
+    total_final = sum(float(it.get("subtotal") or 0) for it in items_finales)
+    
+    # Actualizar
+    db.table("cotizaciones").update({
+        "items": items_finales,
+        "total_estimado": total_final,
+    }).eq("cotizacion_id", cotizacion_id).execute()
+    
+    # Enriquecer respuesta
+    items_enriquecidos = _enriquecer_items(db, items_para_agregar)
+    
+    return {
+        "ok": True,
+        "cotizacion_id": cotizacion_id,
+        "items_agregados": items_enriquecidos,
+        "num_items_nuevos": len(items_para_agregar),
+        "total_estimado": total_final,
+        "mensaje": "Items agregados. La cotización conserva sus subs existentes."
+    }
