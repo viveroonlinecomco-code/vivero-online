@@ -44,25 +44,6 @@ public_router = APIRouter(prefix="/api/public/marketplace", tags=["marketplace-g
 # Helpers — motor matricial batch (Fase 8)
 # ═══════════════════════════════════════════════════════════
 
-
-def _calcular_estado_real_cotizacion(estado_cot: str, subs: list[dict]) -> str:
-    """Calcula estado real basado en sub_cotizaciones."""
-    if not subs:
-        return estado_cot
-    estados = [s.get("estado") for s in subs]
-    aprobadas = sum(1 for e in estados if e == "aprobada")
-    rechazadas = sum(1 for e in estados if e == "rechazada")
-    total = len(estados)
-    if aprobadas > 0 and rechazadas > 0:
-        return "parcial"
-    if aprobadas == total:
-        return "aceptada"
-    if rechazadas == total:
-        return "rechazada"
-    return estado_cot
-
-
-
 def _resolver_categorias_batch(db, inventario_ids: list[int]) -> dict[int, str]:
     """Resuelve categorías de MÚLTIPLES SKUs en 1 sola query.
 
@@ -130,6 +111,22 @@ def _precios_comprador_batch(db, items_precio: list[tuple[int, float]]) -> dict[
 # ═══════════════════════════════════════════════════════════
 # 🆕 FASE 8 — ENDPOINTS PÚBLICOS GUEST
 # ═══════════════════════════════════════════════════════════
+
+def _calcular_estado_real_cotizacion(estado_cot: str, subs: list[dict]) -> str:
+    """Calcula estado real: 'parcial' si hay mix aprobadas+rechazadas."""
+    if not subs:
+        return estado_cot
+    estados = [s.get("estado") for s in subs]
+    aprobadas = sum(1 for e in estados if e == "aprobada")
+    rechazadas = sum(1 for e in estados if e == "rechazada")
+    if aprobadas > 0 and rechazadas > 0:
+        return "parcial"
+    if aprobadas == len(estados):
+        return "aceptada"
+    if rechazadas == len(estados):
+        return "rechazada"
+    return estado_cot
+
 
 @public_router.get("")
 async def listar_marketplace_guest(
@@ -651,17 +648,17 @@ async def crear_o_agregar_a_borrador(
 
 @router.get("/cotizacion/proyectos")
 async def listar_proyectos(user: UserContext = Depends(require_comprador)):
-    """Lista proyectos con estado REAL basado en sub_cotizaciones."""
+    """Lista proyectos con total_comprador batch-optimizado.
+
+    ── Fase 8: batch de TODOS los inventario_ids de TODOS los proyectos ──
+    En vez de 1 query por proyecto × N items, ahora 1 query TOTAL para todo.
+    """
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
     db = admin()
-    
-    # CAMBIO 13 ago: Incluir sub_cotizaciones
     resp = db.table("cotizaciones").select(
         "cotizacion_id, prompt_original, estado, total_estimado, items, "
-        "fecha_creacion, fecha_vencimiento, fecha_conversion, notas_cliente, "
-        "sub_cotizaciones(sub_cotizacion_id, estado, total_estimado, vivero_id, "
-        "viveros(nombre_vivero, ciudad))"
+        "fecha_creacion, fecha_vencimiento, fecha_conversion, notas_cliente"
     ).eq("cliente_id", user.cliente_id).order("fecha_creacion", desc=True).execute()
 
     cot_ids_pagados = [r["cotizacion_id"] for r in (resp.data or []) if r.get("estado") == "pagada"]
@@ -675,13 +672,14 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
         except Exception:
             pass
 
-    # Batch categorías
+    # Recolectar TODOS los inventario_ids de TODOS los proyectos en una sola pasada
     todos_inv_ids = set()
     for r in resp.data or []:
         for it in r.get("items") or []:
             if it.get("inventario_id"):
                 todos_inv_ids.add(it["inventario_id"])
 
+    # 1 query resuelve categorías de TODOS los items de TODOS los proyectos
     categorias_map = _resolver_categorias_batch(db, list(todos_inv_ids))
     matriz = get_matriz_comercial()
     markups_b2c = matriz.get("markup_b2c", {})
@@ -690,11 +688,6 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
     for r in resp.data or []:
         items = r.get("items") or []
         cot_id = r["cotizacion_id"]
-        estado_cot = r["estado"]
-        
-        # NUEVO 13 ago: Calcular estado real
-        subs = r.get("sub_cotizaciones") or []
-        estado_real = _calcular_estado_real_cotizacion(estado_cot, subs)
 
         total_comprador = 0
         for it in items:
@@ -706,37 +699,19 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
                 markup = float(markups_b2c.get(categoria, 0.20))
                 total_comprador += round(precio_unit * (1 + markup)) * cantidad
 
-        # NUEVO: Desglose subs
-        subs_desglose = []
-        monto_disponible = 0
-        for sub in subs:
-            estado_sub = sub.get("estado")
-            vivero_info = sub.get("viveros") or {}
-            subs_desglose.append({
-                "sub_cotizacion_id": sub.get("sub_cotizacion_id"),
-                "estado": estado_sub,
-                "total": float(sub.get("total_estimado") or 0),
-                "nombre_vivero": vivero_info.get("nombre_vivero"),
-                "ciudad": vivero_info.get("ciudad"),
-            })
-            if estado_sub == "aprobada":
-                monto_disponible += float(sub.get("total_estimado") or 0)
-
         proyectos.append({
             "cotizacion_id": cot_id,
             "nombre_proyecto": r.get("prompt_original"),
-            "estado": estado_real,
+            "estado": r["estado"],
             "estado_entrega": entrega_map.get(cot_id),
             "total_estimado": float(r.get("total_estimado") or 0),
             "total_comprador": total_comprador,
-            "monto_disponible": monto_disponible,
             "num_items": sum(it.get("cantidad", 0) for it in items),
             "num_items_distintos": len(items),
             "fecha_creacion": str(r.get("fecha_creacion") or ""),
             "fecha_vencimiento": str(r.get("fecha_vencimiento") or ""),
             "fecha_conversion": str(r.get("fecha_conversion")) if r.get("fecha_conversion") else None,
             "notas_cliente": r.get("notas_cliente"),
-            "sub_cotizaciones": subs_desglose,
         })
     return {"ok": True, "proyectos": proyectos, "total": len(proyectos)}
 
