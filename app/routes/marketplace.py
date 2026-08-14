@@ -36,6 +36,7 @@ from app.schemas.transactions import (
 )
 from app.services.supabase import admin
 from app.services.config_global import get_markup_categoria, get_matriz_comercial
+from app.services.whatsapp_meta import notify_viverista_nueva_cotizacion
 
 router = APIRouter(prefix="/api/marketplace", tags=["marketplace"])
 public_router = APIRouter(prefix="/api/public/marketplace", tags=["marketplace-guest"])
@@ -1096,6 +1097,8 @@ async def reenviar_cotizacion(
     - Viverista no responde (recordatorio manual)
     - Cliente quiere acelerar proceso
     - Estado: enviada, parcial, rechazada
+    
+    ✅ FIX 15 ago: Ahora REALMENTE envía notificación WhatsApp a cada viverista
     """
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
@@ -1118,20 +1121,49 @@ async def reenviar_cotizacion(
     if c["estado"] not in ("enviada", "parcial", "rechazada"):
         raise HTTPException(400, detail=f"No se puede reenviar una cotización en estado '{c['estado']}'.")
     
-    # Obtener subs
+    nombre_proyecto = c.get("prompt_original", "Proyecto")
+    
+    # ✅ FIX: Obtener sub_cotizaciones CON datos de viveros (teléfono, nombre, monto)
     subs_resp = db.table("sub_cotizaciones").select(
-        "vivero_id, estado"
+        "vivero_id, total_base, viveros(whatsapp_numero, nombre_vivero)"
     ).eq("cotizacion_id", cotizacion_id).execute()
     
-    # Contar subs reenviadas
-    num_reenvios = len(subs_resp.data or [])
+    subs = subs_resp.data or []
+    notificaciones_enviadas = 0
+    notificaciones_fallidas = 0
+    
+    # ✅ FIX: Para CADA vivero, enviar notificación WhatsApp con template Meta
+    for sub in subs:
+        vivero_data = sub.get("viveros") or {}
+        numero_whatsapp = vivero_data.get("whatsapp_numero")
+        nombre_vivero = vivero_data.get("nombre_vivero", "Viverista")
+        total_vivero = sub.get("total_base", 0)
+        
+        if numero_whatsapp:
+            try:
+                await notify_viverista_nueva_cotizacion(
+                    to=numero_whatsapp,
+                    nombre_viverista=nombre_vivero,
+                    proyecto=nombre_proyecto,
+                    cliente="Cliente ViveroOnline",
+                    tu_parte_cop=int(total_vivero),
+                    ciudad_entrega="Sabana de Bogotá",
+                    horas_para_responder=2  # Urgente en reenvío
+                )
+                notificaciones_enviadas += 1
+            except Exception as e:
+                print(f"Error enviando notificación a {numero_whatsapp}: {e}")
+                notificaciones_fallidas += 1
     
     return {
         "ok": True,
         "cotizacion_id": cotizacion_id,
-        "nombre_proyecto": c.get("prompt_original"),
-        "num_viveristas_notificados": num_reenvios,
-        "mensaje": f"Reenviado a {num_reenvios} vivero(s).",
+        "nombre_proyecto": nombre_proyecto,
+        "num_viveristas_notificados": notificaciones_enviadas,
+        "num_notificaciones_fallidas": notificaciones_fallidas,
+        "mensaje": f"✅ Reenviado a {notificaciones_enviadas} vivero(s)." + (
+            f" ({notificaciones_fallidas} fallos)" if notificaciones_fallidas > 0 else ""
+        ),
     }
 
 
