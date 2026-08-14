@@ -1123,24 +1123,35 @@ async def reenviar_cotizacion(
     
     nombre_proyecto = c.get("prompt_original", "Proyecto")
     
-    # ✅ FIX: Obtener sub_cotizaciones CON datos de viveros (teléfono, nombre, monto)
+    # ✅ FIX: Obtener sub_cotizaciones primero (sin joins complicados)
     subs_resp = db.table("sub_cotizaciones").select(
-        "vivero_id, total_base, viveros(whatsapp_numero, nombre_vivero)"
+        "vivero_id, total_base, estado"
     ).eq("cotizacion_id", cotizacion_id).execute()
     
     subs = subs_resp.data or []
     notificaciones_enviadas = 0
     notificaciones_fallidas = 0
     
-    # ✅ FIX: Para CADA vivero, enviar notificación WhatsApp con template Meta
+    # ✅ FIX: Para CADA vivero, obtener datos y enviar notificación
     for sub in subs:
-        vivero_data = sub.get("viveros") or {}
-        numero_whatsapp = vivero_data.get("whatsapp_numero")
-        nombre_vivero = vivero_data.get("nombre_vivero", "Viverista")
+        vivero_id = sub.get("vivero_id")
         total_vivero = sub.get("total_base", 0)
         
-        if numero_whatsapp:
-            try:
+        # Obtener datos del vivero (número, nombre)
+        try:
+            vivero_resp = db.table("viveros").select(
+                "whatsapp_numero, nombre_vivero"
+            ).eq("vivero_id", vivero_id).limit(1).execute()
+            
+            if not vivero_resp.data:
+                notificaciones_fallidas += 1
+                continue
+            
+            vivero = vivero_resp.data[0]
+            numero_whatsapp = vivero.get("whatsapp_numero")
+            nombre_vivero = vivero.get("nombre_vivero", "Viverista")
+            
+            if numero_whatsapp:
                 await notify_viverista_nueva_cotizacion(
                     to=numero_whatsapp,
                     nombre_viverista=nombre_vivero,
@@ -1151,9 +1162,11 @@ async def reenviar_cotizacion(
                     horas_para_responder=2  # Urgente en reenvío
                 )
                 notificaciones_enviadas += 1
-            except Exception as e:
-                print(f"Error enviando notificación a {numero_whatsapp}: {e}")
+            else:
                 notificaciones_fallidas += 1
+        except Exception as e:
+            print(f"Error procesando vivero {vivero_id}: {e}")
+            notificaciones_fallidas += 1
     
     return {
         "ok": True,
