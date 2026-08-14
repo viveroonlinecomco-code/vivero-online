@@ -92,20 +92,12 @@ def _calcular_estado_real_cotizacion(estado_original: str, subs_estados: list[st
 # ═══════════════════════════════════════════════════════════
 
 def _resolver_categorias_batch(db, inventario_ids: list[int]) -> dict[int, str]:
-    """Resuelve categorías de MÚLTIPLES SKUs en 1 sola query.
-
-    Aplica misma lógica COALESCE que get_categoria_producto SQL:
-        inventario.categoria_producto > plantas.categoria_producto > 'plantas_ornamentales'
-
-    Returns:
-        dict {inventario_id: categoria_efectiva}
-    """
+    """Resuelve categorías de MÚLTIPLES SKUs en 1 sola query."""
     if not inventario_ids:
         return {}
     resp = db.table("inventario").select(
         "inventario_id, categoria_producto, plantas(categoria_producto)"
     ).in_("inventario_id", inventario_ids).execute()
-
     resultado = {}
     for row in resp.data or []:
         override = row.get("categoria_producto")
@@ -130,23 +122,13 @@ def _precio_comprador_por_item(db, inventario_id: int, precio_mayorista: float) 
 
 
 def _precios_comprador_batch(db, items_precio: list[tuple[int, float]]) -> dict[int, int]:
-    """Calcula precios comprador para múltiples items en batch.
-
-    Args:
-        items_precio: lista de (inventario_id, precio_mayorista)
-
-    Returns:
-        dict {inventario_id: precio_comprador_int}
-    """
+    """Calcula precios comprador para múltiples items en batch."""
     if not items_precio:
         return {}
     inv_ids = [inv_id for inv_id, _ in items_precio]
     categorias = _resolver_categorias_batch(db, inv_ids)
-
-    # Precargar matriz UNA vez (caché en memoria durante la request)
     matriz = get_matriz_comercial()
     markups_b2c = matriz.get("markup_b2c", {})
-
     resultado = {}
     for inv_id, precio in items_precio:
         cat = categorias.get(inv_id, "plantas_ornamentales")
@@ -167,18 +149,9 @@ async def listar_marketplace_guest(
     cantidad_min: int = 1,
     limite: int = Query(60, le=120),
 ):
-    """Catálogo público para B2C guest (sin auth).
-
-    Reglas:
-    - Solo productos con logistics_tier IN ('S', 'M') — excluye L y XL
-    - NO expone latitud/longitud, dirección, teléfono viverista
-    - SÍ expone: nombre_vivero, ciudad (transparencia)
-    - Precios con markup por categoría (motor matricial)
-    """
+    """Catálogo público para B2C guest (sin auth)."""
     db = admin()
-
     if q and q.strip():
-        # Búsqueda por texto — filtrar tier S+M después del RPC
         resp = db.rpc("buscar_plantas_cercanas", {
             "p_nombre_planta": q.strip(),
             "p_altura_min_cm": altura_min,
@@ -186,11 +159,9 @@ async def listar_marketplace_guest(
             "p_lat": 4.9195,
             "p_lon": -74.0270,
             "p_cantidad_min": cantidad_min,
-            "p_limite": limite * 2,  # traer más para poder filtrar por tier
+            "p_limite": limite * 2,
         }).execute()
-
         raw_items = resp.data or []
-        # Filtrar solo tier S+M (para guest)
         inv_ids = [r["inventario_id"] for r in raw_items]
         if inv_ids:
             tiers = db.table("inventario").select(
@@ -199,14 +170,10 @@ async def listar_marketplace_guest(
             tier_map = {t["inventario_id"]: t.get("logistics_tier", "M") for t in (tiers.data or [])}
         else:
             tier_map = {}
-
         raw_items = [r for r in raw_items if tier_map.get(r["inventario_id"], "M") in ("S", "M")]
         raw_items = raw_items[:limite]
-
-        # Batch precios comprador
         items_precio = [(r["inventario_id"], float(r.get("precio_mayorista") or 0)) for r in raw_items]
         precios_map = _precios_comprador_batch(db, items_precio)
-
         items = []
         for r in raw_items:
             inv_id = r["inventario_id"]
@@ -216,40 +183,32 @@ async def listar_marketplace_guest(
                 "nombre_comun": r["nombre_comun"],
                 "nombre_cientifico": r.get("nombre_cientifico"),
                 "foto_ia_url": r.get("foto_ia_url"),
-                # 🔒 Fase 8 guest: solo precio_comprador, NO mayorista
                 "precio_comprador": precios_map.get(inv_id, 0),
                 "stock": r["stock"],
                 "altura_cm": r["altura_cm"],
                 "nombre_vivero": r["nombre_vivero"],
                 "municipio": r.get("municipio_vivero"),
-                # NO exponer: latitud, longitud, dirección, distancia_km, precio_mayorista
             })
         return {"ok": True, "items": items, "total": len(items)}
-
-    # Sin búsqueda — listado paginado filtrado tier S+M
+    
     query = db.table("inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
         "stock, unidad_medida, foto_ia_url, vivero_id, logistics_tier, "
         "plantas(nombre_comun, nombre_cientifico), "
         "viveros(nombre_vivero, ciudad)"
     ).eq("estado_planta", "disponible").in_(
-        "logistics_tier", ["S", "M"]  # 🔒 filtro guest
+        "logistics_tier", ["S", "M"]
     ).gte("stock", cantidad_min).gte("altura_cm", altura_min)
-
     if municipio:
         v_resp = db.table("viveros").select("vivero_id").eq("ciudad", municipio).execute()
         vivero_ids = [v["vivero_id"] for v in (v_resp.data or [])]
         if not vivero_ids:
             return {"ok": True, "items": [], "total": 0}
         query = query.in_("vivero_id", vivero_ids)
-
     resp = query.limit(limite).execute()
     raw_items = resp.data or []
-
-    # Batch precios comprador
     items_precio = [(r["inventario_id"], float(r.get("precio_mayorista") or 0)) for r in raw_items]
     precios_map = _precios_comprador_batch(db, items_precio)
-
     items = []
     for r in raw_items:
         planta = r.get("plantas") or {}
@@ -261,27 +220,20 @@ async def listar_marketplace_guest(
             "nombre_comun": planta.get("nombre_comun", "Sin nombre"),
             "nombre_cientifico": planta.get("nombre_cientifico"),
             "foto_ia_url": r.get("foto_ia_url"),
-            # 🔒 Fase 8 guest: solo precio_comprador
             "precio_comprador": precios_map.get(inv_id, 0),
             "stock": r.get("stock") or 0,
             "altura_cm": r.get("altura_cm") or 0,
             "unidad_medida": r.get("unidad_medida"),
             "nombre_vivero": vivero.get("nombre_vivero"),
             "municipio": vivero.get("ciudad"),
-            # NO exponer: vivero_id, latitud, longitud, precio_mayorista, logistics_tier
         })
     return {"ok": True, "items": items, "total": len(items)}
 
 
 @public_router.get("/item/{inventario_id}")
 async def detalle_item_guest(inventario_id: int):
-    """Detalle de producto para B2C guest (sin auth).
-
-    Solo devuelve productos tier S+M. Si el producto es L o XL, devuelve 404
-    (como si no existiera).
-    """
+    """Detalle de producto para B2C guest (sin auth)."""
     db = admin()
-
     resp = db.table("inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
         "stock, unidad_medida, estado_planta, foto_ia_url, notas, "
@@ -290,25 +242,17 @@ async def detalle_item_guest(inventario_id: int):
         "requerimientos_ia, clima_ideal), "
         "viveros(nombre_vivero, ciudad, departamento)"
     ).eq("inventario_id", inventario_id).limit(1).execute()
-
     if not resp.data:
         raise HTTPException(404, detail="Producto no encontrado")
-
     item = resp.data[0]
-
-    # 🔒 Guardrail: si es L o XL, tratar como no existente
     if item.get("logistics_tier") not in ("S", "M"):
         raise HTTPException(404, detail="Producto no encontrado")
-
     if item.get("estado_planta") != "disponible":
         raise HTTPException(404, detail="Producto no disponible")
-
     precio_base = float(item.get("precio_mayorista") or 0)
     precio_comprador = _precio_comprador_por_item(db, inventario_id, precio_base)
-
     planta = item.get("plantas") or {}
     vivero = item.get("viveros") or {}
-
     return {
         "ok": True,
         "item": {
@@ -324,13 +268,10 @@ async def detalle_item_guest(inventario_id: int):
             "altura_cm": item.get("altura_cm"),
             "unidad_medida": item.get("unidad_medida"),
             "stock": item.get("stock"),
-            # 🔒 Solo precio_comprador
             "precio_comprador": precio_comprador,
-            # 🔒 Info vivero mínima (sin dirección/latitud/longitud/teléfono)
             "nombre_vivero": vivero.get("nombre_vivero"),
             "municipio": vivero.get("ciudad"),
             "departamento": vivero.get("departamento"),
-            # 🔒 Límites guest — el frontend los usa para bloquear
             "limite_unidades_por_producto": 10,
             "limite_total_plantas": 120,
         },
@@ -366,11 +307,8 @@ async def listar_marketplace(
             "p_limite": limite,
         }).execute()
         raw_items = resp.data or []
-
-        # Batch precios
         items_precio = [(r["inventario_id"], float(r.get("precio_mayorista") or 0)) for r in raw_items]
         precios_map = _precios_comprador_batch(db, items_precio)
-
         items = []
         for r in raw_items:
             precio_base = float(r.get("precio_mayorista") or 0)
@@ -390,28 +328,23 @@ async def listar_marketplace(
                 "distancia_km": float(r.get("distancia_km") or 0),
             })
         return {"ok": True, "items": items, "total": len(items)}
-
+    
     query = db.table("inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
         "stock, unidad_medida, foto_ia_url, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico), "
         "viveros(nombre_vivero, ciudad)"
     ).eq("estado_planta", "disponible").gte("stock", cantidad_min).gte("altura_cm", altura_min)
-
     if municipio:
         v_resp = db.table("viveros").select("vivero_id").eq("ciudad", municipio).execute()
         vivero_ids = [v["vivero_id"] for v in (v_resp.data or [])]
         if not vivero_ids:
             return {"ok": True, "items": [], "total": 0}
         query = query.in_("vivero_id", vivero_ids)
-
     resp = query.limit(limite).execute()
     raw_items = resp.data or []
-
-    # Batch precios (1 query resuelve todo)
     items_precio = [(r["inventario_id"], float(r.get("precio_mayorista") or 0)) for r in raw_items]
     precios_map = _precios_comprador_batch(db, items_precio)
-
     items = []
     for r in raw_items:
         planta = r.get("plantas") or {}
@@ -449,23 +382,19 @@ async def detalle_item(
             "user_id", user.user_id
         ).eq("estado", "activa").limit(1).execute()
         tiene_suscripcion = bool(sus.data)
-
     resp = db.table("inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, precio_detal, "
         "stock, unidad_medida, estado_planta, foto_ia_url, notas, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico, familia_botanica, requerimientos_ia, clima_ideal), "
         "viveros(nombre_vivero, ciudad, departamento, historia, foto_url, fotos_galeria, latitud, longitud, direccion)"
     ).eq("inventario_id", inventario_id).limit(1).execute()
-
     if not resp.data:
         raise HTTPException(404, detail="Item no encontrado")
     item = resp.data[0]
-
     if not tiene_suscripcion and item.get("viveros"):
         item["viveros"]["latitud"]   = None
         item["viveros"]["longitud"]  = None
         item["viveros"]["direccion"] = None
-
     precio_base = float(item.get("precio_mayorista") or 0)
     item["precio_comprador"] = _precio_comprador_por_item(db, inventario_id, precio_base)
     item["tiene_suscripcion"] = tiene_suscripcion
@@ -539,18 +468,10 @@ def _merge_items_y_actualizar(
 
 
 def _enriquecer_items(db, items_raw: list[dict]) -> list[dict]:
-    """Enriquece items con datos + precios comprador — OPTIMIZADO BATCH.
-
-    En lugar de N queries (1 por item), hace 2 queries totales:
-      1. Batch datos inventario+planta+vivero+categoría
-      2. Batch matriz cacheada (get_matriz_comercial devuelve dict cacheado 60s)
-    """
+    """Enriquece items con datos + precios comprador — OPTIMIZADO BATCH."""
     if not items_raw:
         return []
-
     inventario_ids = [it.get("inventario_id") for it in items_raw if it.get("inventario_id")]
-
-    # Query 1: datos completos de inventario en batch
     inv_map: dict[int, dict] = {}
     if inventario_ids:
         inv_resp = db.table("inventario").select(
@@ -559,31 +480,22 @@ def _enriquecer_items(db, items_raw: list[dict]) -> list[dict]:
             "viveros(vivero_id, nombre_vivero, ciudad)"
         ).in_("inventario_id", inventario_ids).execute()
         inv_map = {r["inventario_id"]: r for r in (inv_resp.data or [])}
-
-    # Precargar matriz UNA vez (caché 60s)
     matriz = get_matriz_comercial()
     markups_b2c = matriz.get("markup_b2c", {})
-
     enriquecidos = []
     for it in items_raw:
         inv_id = it.get("inventario_id")
         inv = inv_map.get(inv_id, {})
         planta = inv.get("plantas") or {}
         vivero = inv.get("viveros") or {}
-
-        # Categoría desde datos ya cargados (0 queries extra)
         override_inv = inv.get("categoria_producto")
         default_planta = planta.get("categoria_producto")
         categoria = override_inv or default_planta or "plantas_ornamentales"
-
-        # Markup desde matriz cacheada (0 queries extra)
         markup = float(markups_b2c.get(categoria, 0.20))
-
         precio_unit = float(it.get("precio_unitario") or 0)
         cantidad = int(it.get("cantidad") or 1)
         precio_comprador_unitario = round(precio_unit * (1 + markup))
         subtotal_comprador = precio_comprador_unitario * cantidad
-
         enriquecidos.append({
             **it,
             "nombre_comun": planta.get("nombre_comun"),
@@ -644,7 +556,6 @@ async def crear_o_agregar_a_borrador(
             raise HTTPException(404, detail="Proyecto no encontrado")
         if b["estado"] not in ("borrador", "enviada", "parcial", "rechazada"):
             raise HTTPException(400, detail=f"No se pueden agregar items a un proyecto en estado '{b['estado']}'")
-
         return _merge_items_y_actualizar(db, b, items_nuevos)
     if req.nombre_proyecto is not None:
         cot_resp = db.table("cotizaciones").insert({
@@ -680,11 +591,7 @@ async def crear_o_agregar_a_borrador(
 
 @router.get("/cotizacion/proyectos")
 async def listar_proyectos(user: UserContext = Depends(require_comprador)):
-    """Lista proyectos con total_comprador batch-optimizado.
-
-    ── Fase 8: batch de TODOS los inventario_ids de TODOS los proyectos ──
-    En vez de 1 query por proyecto × N items, ahora 1 query TOTAL para todo.
-    """
+    """Lista proyectos con total_comprador batch-optimizado."""
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
     db = admin()
@@ -692,27 +599,21 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
         "cotizacion_id, prompt_original, estado, total_estimado, items, "
         "fecha_creacion, fecha_vencimiento, fecha_conversion, notas_cliente"
     ).eq("cliente_id", user.cliente_id).not_.in_("estado", ["cancelada", "entregado"]).order("fecha_creacion", desc=True).execute()
-
-    # FIX 13 ago: Obtener estados de sub_cotizaciones para calcular estado real
     subs_por_cot = {}
     if resp.data:
         cot_ids = [r["cotizacion_id"] for r in resp.data]
-        if cot_ids:  # Solo si hay cotizaciones
+        if cot_ids:
             try:
                 subs_resp = db.table("sub_cotizaciones").select(
                     "cotizacion_id, estado"
                 ).in_("cotizacion_id", cot_ids).execute()
-                
-                # Mapear: {cotizacion_id: [lista de estados]}
                 for sub in subs_resp.data or []:
                     cot_id = sub["cotizacion_id"]
                     if cot_id not in subs_por_cot:
                         subs_por_cot[cot_id] = []
                     subs_por_cot[cot_id].append(sub["estado"])
             except Exception:
-                # Fallback: si query falla, devolver cotizaciones sin estado real
                 pass
-
     cot_ids_pagados = [r["cotizacion_id"] for r in (resp.data or []) if r.get("estado") == "pagada"]
     entrega_map = {}
     if cot_ids_pagados:
@@ -723,31 +624,22 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
             entrega_map = {e["cotizacion_id"]: e["estado_entrega"] for e in (entregas.data or [])}
         except Exception:
             pass
-
-    # Recolectar TODOS los inventario_ids de TODOS los proyectos en una sola pasada
     todos_inv_ids = set()
     for r in resp.data or []:
         for it in r.get("items") or []:
             if it.get("inventario_id"):
                 todos_inv_ids.add(it["inventario_id"])
-
-    # 1 query resuelve categorías de TODOS los items de TODOS los proyectos
     categorias_map = _resolver_categorias_batch(db, list(todos_inv_ids))
     matriz = get_matriz_comercial()
     markups_b2c = matriz.get("markup_b2c", {})
-
     proyectos = []
     ahora = datetime.now(timezone.utc)
     for r in resp.data or []:
         items = r.get("items") or []
         cot_id = r["cotizacion_id"]
         estado_cot = r["estado"]
-        
-        # FILTRO: Excluir cotizaciones canceladas (no mostrar basura)
         if estado_cot == "cancelada":
             continue
-        
-        # Detectar si está vencida
         estáVencida = False
         fecha_venc = r.get("fecha_vencimiento")
         if fecha_venc:
@@ -757,7 +649,6 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
                     estáVencida = True
             except:
                 pass
-
         total_comprador = 0
         for it in items:
             inv_id = it.get("inventario_id")
@@ -767,29 +658,18 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
                 categoria = categorias_map.get(inv_id, "plantas_ornamentales")
                 markup = float(markups_b2c.get(categoria, 0.20))
                 total_comprador += round(precio_unit * (1 + markup)) * cantidad
-
-        # FIX 13 ago: Calcular estado real basado en sub_cotizaciones
         estados_subs = subs_por_cot.get(cot_id, [])
         estado_real = _calcular_estado_real_cotizacion(estado_cot, estados_subs)
-        
-        # Si está vencida, marcar como vencida
         if estáVencida:
             estado_real = "vencida"
-
-        # Botón MODIFICAR: si está enviada, parcial o rechazada (NO vencida, NO pagada)
         puede_modificar = estado_real in ("enviada", "parcial", "rechazada")
-        
-        # Mostrar badge "aprobado": solo si está aprobada Y NO vencida
         mostrar_aprobado = estado_real == "aceptada" and estado_cot != "vencida"
-
-        # NUEVO: Desglose de sub_cotizaciones (para mostrar viveristas rechazados)
         subs_desglose = []
         if estados_subs:
             try:
                 subs_full = db.table("sub_cotizaciones").select(
                     "vivero_id, estado, viveros(nombre_vivero, ciudad)"
                 ).eq("cotizacion_id", cot_id).execute()
-                
                 for sub in subs_full.data or []:
                     vivero = sub.get("viveros") or {}
                     subs_desglose.append({
@@ -800,7 +680,6 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
                     })
             except Exception:
                 pass
-
         proyectos.append({
             "cotizacion_id": cot_id,
             "nombre_proyecto": r.get("prompt_original"),
@@ -817,7 +696,7 @@ async def listar_proyectos(user: UserContext = Depends(require_comprador)):
             "puede_modificar": puede_modificar,
             "puede_agregar_items": estado_real in ("enviada", "parcial"),
             "mostrar_aprobado": mostrar_aprobado,
-            "sub_cotizaciones": subs_desglose,  # ← Desglose viveristas: para marcar rechazados
+            "sub_cotizaciones": subs_desglose,
         })
     return {"ok": True, "proyectos": proyectos, "total": len(proyectos)}
 
@@ -1001,89 +880,10 @@ async def cancelar_cotizacion(
     c = resp.data[0]
     if c["cliente_id"] != user.cliente_id:
         raise HTTPException(404, detail="Cotización no encontrada")
-    
-    # No permitir cancelar si ya está pagada o entregada
     if c["estado"] in ("pagada", "entregada"):
         raise HTTPException(400, detail=f"No se puede cancelar una cotización en estado '{c['estado']}'.")
-    
-    # Marcar como cancelada
     db.table("cotizaciones").update({"estado": "cancelada"}).eq("cotizacion_id", cotizacion_id).execute()
     return {"ok": True, "cotizacion_id": cotizacion_id, "estado": "cancelada", "mensaje": "Cotización cancelada"}
-
-
-@router.post("/cotizacion/{cotizacion_id}/agregar-items")
-async def agregar_items_a_cotizacion(
-    cotizacion_id: int,
-    req: dict,
-    user: UserContext = Depends(require_comprador),
-):
-    """Agrega items a una cotización SIN perder subs existentes.
-    
-    Request: {"items": [{"inventario_id": int, "cantidad": int, ...}]}
-    
-    IMPORTANTE: Solo copia items nuevos, conserva los existentes.
-    """
-    if not user.cliente_id:
-        raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
-    
-    db = admin()
-    
-    # Obtener cotización actual
-    resp = db.table("cotizaciones").select(
-        "cliente_id, estado, items, total_estimado, prompt_original, "
-        "fecha_creacion, fecha_vencimiento"
-    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
-    
-    if not resp.data:
-        raise HTTPException(404, detail="Cotización no encontrada")
-    
-    c = resp.data[0]
-    if c["cliente_id"] != user.cliente_id:
-        raise HTTPException(404, detail="Cotización no encontrada")
-    
-    # Solo permitir agregar a proyectos que NO están pagados/entregados
-    if c["estado"] in ("pagada", "entregada", "cancelada"):
-        raise HTTPException(400, detail=f"No se puede agregar items a una cotización en estado '{c['estado']}'.")
-    
-    # Obtener items nuevos
-    items_nuevos = req.get("items", [])
-    if not items_nuevos:
-        raise HTTPException(400, detail="Debe proporcionar al menos un item")
-    
-    # Validar y calcular items nuevos
-    items_validos, total_nuevo_items = _validar_items_y_calcular(db, items_nuevos)
-    
-    # Merge: conservar existentes + agregar nuevos
-    items_actuales = c.get("items") or []
-    inv_ids_existentes = {it.get("inventario_id") for it in items_actuales}
-    
-    # Agregar solo items que NO existen (evitar duplicados)
-    items_para_agregar = [it for it in items_validos if it.get("inventario_id") not in inv_ids_existentes]
-    
-    if not items_para_agregar:
-        raise HTTPException(400, detail="Todos los items ya están en la cotización")
-    
-    # Combinar
-    items_finales = items_actuales + items_para_agregar
-    total_final = sum(float(it.get("subtotal") or 0) for it in items_finales)
-    
-    # Actualizar
-    db.table("cotizaciones").update({
-        "items": items_finales,
-        "total_estimado": total_final,
-    }).eq("cotizacion_id", cotizacion_id).execute()
-    
-    # Enriquecer respuesta
-    items_enriquecidos = _enriquecer_items(db, items_para_agregar)
-    
-    return {
-        "ok": True,
-        "cotizacion_id": cotizacion_id,
-        "items_agregados": items_enriquecidos,
-        "num_items_nuevos": len(items_para_agregar),
-        "total_estimado": total_final,
-        "mensaje": "Items agregados. La cotización conserva sus subs existentes."
-    }
 
 
 @router.post("/cotizacion/{cotizacion_id}/reenviar")
@@ -1092,11 +892,6 @@ async def reenviar_cotizacion(
     user: UserContext = Depends(require_comprador),
 ):
     """Reenvía notificaciones WhatsApp a viveristas sin duplicar cotización.
-    
-    Útil cuando:
-    - Viverista no responde (recordatorio manual)
-    - Cliente quiere acelerar proceso
-    - Estado: enviada, parcial, rechazada
     
     ✅ FIX 15 ago: Ahora REALMENTE envía notificación WhatsApp a cada viverista
     """
@@ -1117,27 +912,25 @@ async def reenviar_cotizacion(
     if c["cliente_id"] != user.cliente_id:
         raise HTTPException(404, detail="Cotización no encontrada")
     
-    # Solo permitir reenviar si está en estado pendiente de respuesta
     if c["estado"] not in ("enviada", "parcial", "rechazada"):
         raise HTTPException(400, detail=f"No se puede reenviar una cotización en estado '{c['estado']}'.")
     
     nombre_proyecto = c.get("prompt_original", "Proyecto")
     
-    # ✅ FIX: Obtener sub_cotizaciones primero (sin joins complicados)
+    # ✅ Obtener sub_cotizaciones primero (sin joins complicados)
     subs_resp = db.table("sub_cotizaciones").select(
-        "vivero_id, total_base, estado"
+        "vivero_id, total_estimado, estado"
     ).eq("cotizacion_id", cotizacion_id).execute()
     
     subs = subs_resp.data or []
     notificaciones_enviadas = 0
     notificaciones_fallidas = 0
     
-    # ✅ FIX: Para CADA vivero, obtener datos y enviar notificación
+    # ✅ Para CADA vivero, obtener datos y enviar notificación
     for sub in subs:
         vivero_id = sub.get("vivero_id")
-        total_vivero = sub.get("total_base", 0)
+        total_vivero = sub.get("total_estimado", 0)
         
-        # Obtener datos del vivero (número, nombre)
         try:
             vivero_resp = db.table("viveros").select(
                 "whatsapp_numero, nombre_vivero"
@@ -1159,7 +952,7 @@ async def reenviar_cotizacion(
                     cliente="Cliente ViveroOnline",
                     tu_parte_cop=int(total_vivero),
                     ciudad_entrega="Sabana de Bogotá",
-                    horas_para_responder=2  # Urgente en reenvío
+                    horas_para_responder=2
                 )
                 notificaciones_enviadas += 1
             else:
@@ -1185,14 +978,7 @@ async def duplicar_y_reenviar(
     cotizacion_id: int,
     user: UserContext = Depends(require_comprador),
 ):
-    """Duplica cotización (nuevo ID) y reenvía a viveristas.
-    
-    Casos de uso:
-    - Cotización vencida que quiere reactivar
-    - Modificar items SIN perder historial
-    
-    Resultado: copia con estado="enviada"
-    """
+    """Duplica cotización (nuevo ID) y reenvía a viveristas."""
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
     
@@ -1231,13 +1017,9 @@ async def duplicar_y_reenviar(
         "cotizacion_nueva": nueva_cot_id,
         "nombre_proyecto": c.get("prompt_original"),
         "total_estimado": float(c.get("total_estimado") or 0),
-        "mensaje": f"Cotización duplicada con ID {nueva_cot_id}. Se reenviará a los viveristas.",
+        "mensaje": f"Cotización duplicada con ID {nueva_cot_id}.",
     }
 
-
-# ═══════════════════════════════════════════════════════════
-# ENDPOINT: Agregar items a cotización existente
-# ═══════════════════════════════════════════════════════════
 
 @router.post("/cotizacion/{cotizacion_id}/agregar-items")
 async def agregar_items_a_cotizacion(
@@ -1245,19 +1027,12 @@ async def agregar_items_a_cotizacion(
     items_nuevos: list[dict],
     user: UserContext = Depends(require_comprador),
 ):
-    """Agrega productos a una cotización ya enviada.
-    
-    Casos de uso:
-    - Comprador ve el marketplace y quiere agregar más productos
-    - Items nuevos se agregan a la cotización sin perder las subs existentes
-    - Se reenvía notificación a viveristas sobre items adicionales
-    """
+    """Agrega productos a una cotización ya enviada."""
     if not user.cliente_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un cliente")
     
     db = admin()
     
-    # Obtener cotización actual
     resp = db.table("cotizaciones").select(
         "cliente_id, estado, items, total_estimado, prompt_original"
     ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
@@ -1269,11 +1044,9 @@ async def agregar_items_a_cotizacion(
     if c["cliente_id"] != user.cliente_id:
         raise HTTPException(404, detail="No autorizado")
     
-    # Solo se puede agregar si está en estado "enviada" o "parcial"
     if c["estado"] not in ("enviada", "parcial", "rechazada"):
         raise HTTPException(400, detail=f"No se pueden agregar items a cotización en estado '{c['estado']}'")
     
-    # Agregar items nuevos (evitando duplicados por SKU)
     items_existentes = c.get("items") or []
     skus_existentes = {it.get("inventario_id") for it in items_existentes}
     
@@ -1292,7 +1065,6 @@ async def agregar_items_a_cotizacion(
             "mensaje": "Los productos ya estaban en la cotización",
         }
     
-    # Actualizar cotización con items nuevos
     items_finales = items_existentes + items_para_agregar
     
     db.table("cotizaciones").update({
@@ -1304,5 +1076,5 @@ async def agregar_items_a_cotizacion(
         "cotizacion_id": cotizacion_id,
         "items_agregados": len(items_para_agregar),
         "total_items_ahora": len(items_finales),
-        "mensaje": f"✅ Agregados {len(items_para_agregar)} producto(s) a la cotización",
+        "mensaje": f"✅ Agregados {len(items_para_agregar)} producto(s)",
     }
