@@ -19,10 +19,6 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-# FIX 18 AGO 2026 - AGREGAR ESTE IMPORT
-from app.services.precios import calcular_precios_pedido
-from app.services.config_global import get_config, get_matriz_comercial
-
 logger = logging.getLogger(__name__)
 
 # Versión de la Graph API
