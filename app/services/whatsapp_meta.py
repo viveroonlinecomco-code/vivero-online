@@ -8,6 +8,8 @@ Servicios disponibles:
 - notify_comprador_pedido_parcial(to, ...) — async
 - download_media_bytes(media_id) — async
 - verify_signature(body_bytes, signature_header) — sync
+
+FIX 18 AGO 2026: Aplicar matriz comercial correcta (B2B/B2C diferenciados)
 """
 from __future__ import annotations
 
@@ -18,6 +20,9 @@ import os
 from typing import Any, Dict, Optional
 
 import httpx
+
+# ✅ FIX 18 AGO - IMPORTAR SOLO PRECIOS (sin config_global para evitar circular)
+from app.services.precios import calcular_precios_pedido
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +89,7 @@ async def send_template_message(
         to: Número del destinatario
         template_name: Nombre exacto de la plantilla en Meta Business Manager
         language_code: 'es', 'en_US', etc.
-        components: Variables de la plantilla (estructura Meta: [{"type":"body","parameters":[{"type":"text","text":"..."}]}])
+        components: Variables de la plantilla
     """
     to_clean = to.lstrip("+")
     payload = {
@@ -177,14 +182,133 @@ def verify_signature(body_bytes: bytes, signature_header: str) -> bool:
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# TEMPLATES FEATURE AUTO-TIMEOUT (12 ago 2026 — CORREGIDO)
+# ✅ FIX 18 AGO - FUNCIONES DE RECOMENDACIÓN CON PRECIOS CORRECTOS (SIN CIRCULAR IMPORT)
 # ═══════════════════════════════════════════════════════════════════════════
-# 3 templates aprobados por Meta:
-#   1. notif_viverista_nueva_cotizacion  (6 vars body, 3 botones Quick Reply)
-#   2. recordatorio_viverista_pendiente  (5 vars body, 2 botones Quick Reply)
-#   3. notif_comprador_pedido_parcial    (4 vars body, 1 botón URL estática)
-#
-# CORREGIDO: Todas las funciones ahora son ASYNC y usan formato Meta v25.0
+
+async def obtener_recomendacion_producto(
+    supabase,
+    producto_id: int,
+    es_guest: bool = True,
+    plazo: str = "inmediato",
+) -> dict:
+    """
+    ✅ DEVUELVE PRECIO CON MATRIZ COMERCIAL CORRECTA
+    
+    Ejemplo B2C (guest, inmediato):
+        Hiedra: $17.010 × 1.20 (markup) = $20.412 ✅
+    
+    Ejemplo B2B (registrado, >= 5 SMLMV, inmediato):
+        Hiedra: $17.010 × 1.20 × (1 - 0.12 descuento) = $17.962 ✅
+    """
+    
+    try:
+        # 1. Consultar BD
+        inventario = supabase.table("inventario").select(
+            "id, precio_mayorista, categoria_producto, nombre_comun, nombre_cientifico, vivero_id"
+        ).eq("id", producto_id).single().execute()
+        
+        if not inventario.data:
+            return {"error": f"Producto {producto_id} no encontrado"}
+        
+        datos = inventario.data
+        precio_mayorista = datos.get("precio_mayorista", 0)
+        
+        # 2. ✅ CALCULAR PRECIO CON MATRIZ COMERCIAL CORRECTA (sin circular import)
+        resultado_precios = calcular_precios_pedido(
+            cliente={
+                "es_guest": es_guest,
+                "cliente_id": None if es_guest else 0,
+            },
+            items=[{
+                "inventario_id": producto_id,
+                "cantidad": 1,
+                "precio_unitario": precio_mayorista,
+            }],
+            plazo=plazo,
+            forzar_canal=None,
+        )
+        
+        # 3. Extraer precio final del cliente
+        precio_cliente = resultado_precios["totales"]["precio_final_cliente"]
+        
+        # 4. Construir nombre
+        nombre_final = datos.get("nombre_comun", "Producto")
+        nombre_cientifico = datos.get("nombre_cientifico", "")
+        
+        if nombre_cientifico and nombre_cientifico != nombre_final:
+            nombre_final = f"{nombre_final} ({nombre_cientifico})"
+        
+        # 5. Retornar con precio CORRECTO
+        return {
+            "id": producto_id,
+            "nombre": nombre_final,
+            "precio_cliente_cop": int(precio_cliente),
+            "precio_mayorista_cop": precio_mayorista,
+            "canal": resultado_precios["canal"],
+            "plazo": resultado_precios["plazo"],
+            "vivero_id": datos.get("vivero_id"),
+            "error": None
+        }
+        
+    except Exception as e:
+        logger.exception(f"Error en obtener_recomendacion_producto: {e}")
+        return {"error": f"Error: {str(e)}"}
+
+
+async def procesar_consulta_precio_producto(
+    supabase,
+    producto_nombre: str,
+    es_guest: bool = True,
+    plazo: str = "inmediato",
+) -> str:
+    """
+    ✅ PROCESA "PRECIO [PRODUCTO]" CON MATRIZ COMERCIAL CORRECTA
+    
+    Para B2C (guest): Devuelve precio con markup 20%
+    Para B2B: Devuelve precio con descuento aplicado (si >= 5 SMLMV)
+    """
+    
+    try:
+        # 1. Buscar producto
+        productos = supabase.table("inventario").select(
+            "id, precio_mayorista, categoria_producto, nombre_comun"
+        ).ilike("nombre_comun", f"%{producto_nombre}%").limit(1).execute()
+        
+        if not productos.data:
+            return f"No encontré '{producto_nombre}'. Intenta: Hiedra, Geranio, Duranta, Afelandra"
+        
+        producto_id = productos.data[0]["id"]
+        
+        # 2. Obtener recomendación CON precio correcto
+        recom = await obtener_recomendacion_producto(
+            supabase=supabase,
+            producto_id=producto_id,
+            es_guest=es_guest,
+            plazo=plazo,
+        )
+        
+        if "error" in recom and recom["error"]:
+            return f"Error: {recom['error']}"
+        
+        # 3. Construir mensaje con precio CORRECTO
+        precio_formateado = f"${recom['precio_cliente_cop']:,.0f}"
+        canal_str = "tu proyecto" if recom['canal'] == 'b2c' else "tu negocio"
+        
+        mensaje = (
+            f"Para {canal_str}, la {recom['nombre']} "
+            f"tiene un precio de {precio_formateado}. "
+            f"Compra aquí: https://app.viveroonline.com.co/marketplace/producto/{producto_id}"
+        )
+        
+        return mensaje
+        
+    except Exception as e:
+        logger.exception(f"Error en procesar_consulta_precio: {e}")
+        return f"Error: {str(e)}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TEMPLATES — Sin cambios
 # ═══════════════════════════════════════════════════════════════════════════
 
 def _format_cop(monto) -> str:
@@ -201,15 +325,7 @@ async def notify_viverista_nueva_cotizacion(
     ciudad_entrega: str,
     horas_para_responder: int = 2,
 ) -> Dict[str, Any]:
-    """Notificación inicial al viverista con cotización nueva.
-    
-    ESTRATEGIA:
-    1. INTENTA template Meta (si falla, log pero continúa)
-    2. SIEMPRE envía texto libre como fallback (garantizado)
-    
-    Así recuperamos funcionalidad conocida (texto) + agregamos Meta.
-    """
-    # Construir mensaje de texto (BASE — GARANTIZADO)
+    """Notificación inicial al viverista con cotización nueva."""
     msg_texto = (
         f"🌿 *Nueva solicitud — ViveroOnline*\n\n"
         f"Proyecto: *{proyecto}*\n"
@@ -222,7 +338,6 @@ async def notify_viverista_nueva_cotizacion(
         f"Respondé *APROBAR* o *RECHAZAR*"
     )
     
-    # INTENTAR template Meta (best-effort)
     template_result = False
     try:
         components = [
@@ -250,7 +365,6 @@ async def notify_viverista_nueva_cotizacion(
     except Exception as e:
         logger.warning(f"⚠️ Template Meta falló (seguimos con texto): {e}")
     
-    # SIEMPRE enviar texto (fallback garantizado)
     text_result = await send_text_message(to, msg_texto)
     
     return {
@@ -269,10 +383,7 @@ async def notify_viverista_recordatorio(
     numero_recordatorio: int,
     minutos_restantes: int,
 ) -> Dict[str, Any]:
-    """Recordatorio de cotización sin respuesta.
-    
-    Misma estrategia: TEXTO garantizado + template Meta best-effort
-    """
+    """Recordatorio de cotización sin respuesta."""
     msg_texto = (
         f"⏰ *RECORDATORIO — ViveroOnline*\n\n"
         f"Proyecto: *{proyecto}*\n"
@@ -323,10 +434,7 @@ async def notify_comprador_pedido_parcial(
     monto_disponible_cop: int,
     detalle_no_confirmado: str,
 ) -> Dict[str, Any]:
-    """Notificación al comprador con cotización parcial.
-    
-    Misma estrategia: TEXTO garantizado + template Meta best-effort
-    """
+    """Notificación al comprador con cotización parcial."""
     msg_texto = (
         f"📋 *ACTUALIZACIÓN DE TU PEDIDO — ViveroOnline*\n\n"
         f"Hola {nombre_cliente},\n\n"
