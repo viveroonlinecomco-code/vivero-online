@@ -141,7 +141,7 @@ async def _crear_ticket_soporte(
     nombre: str | None = None,
     prioridad: str = "media",
 ) -> int | None:
-    """Crea un ticket en tickets_soporte y notifica al admin por WhatsApp.
+    """Crea un ticket en tickets_soporte y auto-responde + notifica al admin.
 
     tipo_solicitud debe ser uno de: compra, venta, consulta, reclamo, otro.
     prioridad debe ser: baja, media, urgente.
@@ -167,28 +167,36 @@ async def _crear_ticket_soporte(
         logger.error(f"No se pudo crear ticket_soporte: {e}")
         return None
 
-   # Notificar al admin por WhatsApp (best-effort — no bloquea si falla)
-    # Solo si ADMIN_WHATSAPP_NOTIF está configurada (ver header del archivo)
-    if ticket_id and ADMIN_WHATSAPP_NOTIF:
+    # ═══════════════════════════════════════════════════════════════════════
+    # OPCIÓN B HYBRID: Auto-responder + Notificar admin (18 ago 2026)
+    # ═══════════════════════════════════════════════════════════════════════
+    if ticket_id:
         try:
-            emoji_prioridad = {
-                "urgente": "🚨",
-                "media": "⚠️",
-                "baja": "ℹ️",
-            }.get(prioridad, "⚠️")
-
-            msg_admin = (
-                f"🎫 *Nuevo ticket #{ticket_id}*\n\n"
-                f"📞 Contacto: {whatsapp}\n"
-                f"👤 Nombre: {nombre or '(no informado)'}\n"
-                f"🏷️ Tipo: {tipo_solicitud}\n"
-                f"{emoji_prioridad} Prioridad: {prioridad}\n\n"
-                f"📝 _{descripcion[:400]}_\n\n"
-                f"Ver en dashboard: https://app.viveroonline.com.co/admin"
+            from app.routes.ticket_responder import (
+                responder_ticket_segun_tipo,
+                notificar_admin_con_contexto,
             )
-            await send_text_message(ADMIN_WHATSAPP_NOTIF, msg_admin)
+
+            ticket_data = {
+                "whatsapp_numero": whatsapp,
+                "nombre": nombre,
+                "tipo_solicitud": tipo_solicitud,
+                "descripcion": descripcion,
+            }
+
+            # Auto-responder
+            respuesta_info = await responder_ticket_segun_tipo(ticket_id, ticket_data)
+
+            # Notificar admin
+            await notificar_admin_con_contexto(
+                ticket_id,
+                ticket_data,
+                respuesta_info,
+                ADMIN_WHATSAPP_NOTIF,
+            )
+
         except Exception as e:
-            logger.warning(f"No se pudo notificar al admin del ticket #{ticket_id}: {e}")
+            logger.warning(f"Error en auto-respuesta/notificación ticket #{ticket_id}: {e}")
 
     return ticket_id
 
