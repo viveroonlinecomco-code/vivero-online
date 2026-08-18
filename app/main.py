@@ -25,6 +25,7 @@ from app.routes import suscripcion as suscripcion_routes
 from app.routes import pages as pages_routes
 from app.routes.admin_ops import router as admin_ops_router
 from app.routes.admin_config import router as admin_config_router
+from app.routes.admin_tickets import router as admin_tickets_router
 from app.routes.fintech import router as fintech_router
 from app.routes.checkout_guest import router as checkout_guest_router
 from app.routes.pedidos import router as pedidos_router
@@ -145,6 +146,7 @@ app.include_router(public_routes.router)
 app.include_router(ingesta_routes.router)
 app.include_router(admin_ops_router)
 app.include_router(admin_config_router)
+app.include_router(admin_tickets_router)
 app.include_router(fintech_router)
 app.include_router(pedidos_router)
 app.include_router(checkout_guest_router)
