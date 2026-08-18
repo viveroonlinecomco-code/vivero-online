@@ -21,9 +21,8 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-# ✅ FIX 18 AGO - IMPORTAR FUNCIONES DE PRECIOS Y CONFIG
+# ✅ FIX 18 AGO - IMPORTAR SOLO PRECIOS (sin config_global para evitar circular import)
 from app.services.precios import calcular_precios_pedido
-from app.services.config_global import get_config
 
 logger = logging.getLogger(__name__)
 
