@@ -1,27 +1,6 @@
-"""Sistema de respuesta automática de tickets de soporte.
-
-Procesa tickets según tipo_solicitud y proporciona respuestas canned
-o guía al usuario al marketplace/admin.
-
-Tipos de tickets soportados:
-  - compra: Guiar a marketplace o devolver precio específico
-  - consulta: Responder preguntas o derivar a admin
-  - reclamo: Derivar a admin inmediatamente
-  - venta: Derivar a admin inmediatamente
-  - otro: Derivar a admin
-
-Respuestas canned (plantillas automáticas):
-  - Precio de producto: Buscar en BD, devolver + link
-  - Despacho/zona: Explicar cobertura geográfica
-  - Materas: Link a categoría en marketplace
-  - Sobre empresa: Link a /quienes-somos
-  - Productos genéricos: Link a marketplace
-
-Post-respuesta:
-  - Si respuesta automática completa → cerrar ticket con estado "respondido"
-  - Si no se pudo auto-responder → mantener "pendiente" + notificar admin
-"""
-from __future__ import annotations
+"""Sistema auto-respuesta tickets — Opción B HYBRID
+Responde automático (COMPRA) + Derivar (RECLAMO/VENTA/B2B/VAGA)
+Elena recibe: solicitud + respuesta + acción"""
 
 import logging
 import re
@@ -32,28 +11,45 @@ from app.services.whatsapp_meta import send_text_message
 
 logger = logging.getLogger(__name__)
 
+BASE_URL_COMPRA = "https://app.viveroonline.com.co/marketplace"
+BASE_URL_EMPRESA = "https://app.viveroonline.com.co/quienes-somos"
+BASE_URL_DASHBOARD_ADMIN = "https://app.viveroonline.com.co/admin"
+
 
 def _normalizar_nombre_planta(texto: str) -> str:
-    """Extrae nombre de planta del texto (busca palabras que NO sean artículos/preposiciones)."""
-    # Palabras a ignorar
     stopwords = {"el", "la", "de", "del", "a", "para", "por", "en", "con", "sin"}
     palabras = [w.strip().lower() for w in re.split(r"[\s,;./]", texto) if w.strip()]
     palabras = [w for w in palabras if w not in stopwords and len(w) > 2]
     return " ".join(palabras[:3]) if palabras else texto.lower()
 
 
-async def responder_ticket_segun_tipo(ticket_id: int, ticket_data: dict) -> dict:
-    """
-    Responde ticket automáticamente según tipo_solicitud.
+def _detectar_tipo_derivacion(tipo: str, desc: str) -> tuple[str, str]:
+    """Detecta qué tipo de derivación es. Retorna (tipo_derivacion, motivo)"""
+    desc_lower = desc.lower()
 
-    Retorna:
-    {
-        "respondido": bool,
-        "auto_respuesta": str o None,
-        "accion": "cerrar" | "derivar_admin" | "pendiente",
-        "motivo": str
-    }
-    """
+    if tipo == "reclamo" or re.search(
+        r"dañado|roto|muerto|llegó mal|no funciona|problema|error|falla|devuelvo|reembolso",
+        desc_lower,
+    ):
+        return ("reclamo", "ATENCIÓN URGENTE requerida")
+
+    if tipo == "venta" or re.search(
+        r"soy viverista|vendo plantas|quiero vender|registr|tengo \d+ plantas",
+        desc_lower,
+    ):
+        return ("venta", "Onboarding viverista requerido")
+
+    if re.search(
+        r"empresa|constructora|paisajista|facturación|arl|eps|servicios|proveedor|b2b|contrato|cotización",
+        desc_lower,
+    ):
+        return ("b2b", "Seguimiento comercial requerido")
+
+    return ("consulta_vaga", "Análisis y clarificación requerida")
+
+
+async def responder_ticket_segun_tipo(ticket_id: int, ticket_data: dict) -> dict:
+    """OPCIÓN B HYBRID: Responde automático pero MANTIENE estado='pendiente'"""
     db = db_admin()
     whatsapp = ticket_data.get("whatsapp_numero")
     tipo = ticket_data.get("tipo_solicitud", "").lower()
@@ -61,235 +57,220 @@ async def responder_ticket_segun_tipo(ticket_id: int, ticket_data: dict) -> dict
     nombre = ticket_data.get("nombre") or "Cliente"
 
     respuesta = None
-    accion = "derivar_admin"  # default
+    accion = "derivar_admin"
     motivo = ""
+    tipo_derivacion = ""
 
-    # ═══════════════════════════════════════════════════════════════════
-    # 1. TIPO: COMPRA — Guiar a marketplace o responder precio específico
-    # ═══════════════════════════════════════════════════════════════════
-
+    # TIPO: COMPRA
     if tipo == "compra":
-        # Caso 1a: Pregunta por precio de producto específico
-        # Patrones: "precio de X", "cuánto cuesta X", "valor de X", "acanto", "buganvilias", etc
         match_precio = re.search(
-            r"(?:precio|cuesta|valor|tamaño|cuánto|valen?|costo|tarifa).*?(?:de\s+)?([a-záéíóúñ\s]+?)(?:\?|$)",
+            r"(?:precio|cuesta|valor|cuánto|valen?|costo).*?(?:de\s+)?([a-záéíóúñ\s]+?)(?:\?|$)",
             desc,
         )
         if match_precio:
             nombre_planta = _normalizar_nombre_planta(match_precio.group(1))
-            # Buscar en catalogo
             plantas_resp = db.table("plantas").select(
-                "nombre_comun, nombre_cientifico, precio_base"
-            ).ilike("nombre_comun", f"%{nombre_planta}%").limit(3).execute()
+                "nombre_comun, precio_base"
+            ).ilike("nombre_comun", f"%{nombre_planta}%").limit(1).execute()
 
             if plantas_resp.data:
                 planta = plantas_resp.data[0]
-                nombre_comun = planta.get("nombre_comun", "Planta")
                 precio = planta.get("precio_base", 0)
                 respuesta = (
-                    f"🌿 *{nombre_comun}*\n\n"
+                    f"🌿 *{planta.get('nombre_comun')}*\n\n"
                     f"💰 Precio desde: ${int(precio):,} COP\n\n"
-                    f"🛒 Explorá todas nuestras plantas:\n"
-                    f"https://viveroonline.com.co/marketplace\n\n"
-                    f"¿Necesitás más información? Escribinos por acá o "
-                    f"contactá a sales@viveroonline.com.co"
+                    f"🎯 *Comprá HOY sin intermediarios*\n"
+                    f"🛒 {BASE_URL_COMPRA}\n\n"
+                    f"✅ Stock actualizado • Entrega a domicilio"
                 )
-                accion = "cerrar"
+                accion = "pendiente_confirmacion"
             else:
-                # No encontramos en BD, guiar a marketplace
                 respuesta = (
                     f"🌿 ¡Hola {nombre}!\n\n"
-                    f"No encontramos '{nombre_planta}' en nuestra búsqueda rápida, "
-                    f"pero probablemente la tengamos disponible.\n\n"
-                    f"🛒 Explorá nuestro catálogo completo:\n"
-                    f"https://viveroonline.com.co/marketplace\n\n"
-                    f"Si no la encuentras, escribinos con el nombre exacto y "
-                    f"te damos un presupuesto personalizado. 😊"
+                    f"Buscamos '{nombre_planta}' en nuestro catálogo.\n\n"
+                    f"🎯 *Explorá nuestras plantas HOY*\n"
+                    f"🛒 {BASE_URL_COMPRA}\n\n"
+                    f"📸 Comparte foto o descripción para presupuesto personalizado."
                 )
-                accion = "cerrar"
+                accion = "pendiente_confirmacion"
 
-        # Caso 1b: Pregunta por despacho/zona
-        elif re.search(r"despacho|envío|zona|costo de envío|llega", desc):
+        elif re.search(r"despacho|envío|zona|costo.*envío", desc):
             respuesta = (
-                f"🚐 *Entregas en la Sabana de Bogotá*\n\n"
-                f"Hacemos entregas a: Bogotá, Chía, Cajicá, Cota, "
-                f"Tabio, Tenjo, Madrid, Zipaquirá y alrededores.\n\n"
-                f"💰 Costo de envío: Desde $35.000 COP según distancia\n\n"
-                f"🛒 Armá tu pedido aquí:\n"
-                f"https://viveroonline.com.co/marketplace\n\n"
-                f"¿Tu zona no está? Escribinos para consultar. 😊"
-                )
-                accion = "cerrar"
-
-        # Caso 1c: Pregunta por producto genérico (materas, flores, plantas)
-        elif re.search(r"materas|flores|plantas|tienes", desc):
-            respuesta = (
-                f"🌿 ¡Hola {nombre}!\n\n"
-                f"Tenemos amplio catálogo de plantas, materas y accesorios. "
-                f"👇 Explorá todo lo que ofrecemos:\n\n"
-                f"🛒 https://viveroonline.com.co/marketplace\n\n"
-                f"¿Necesitás una cotización personalizada o tenés dudas? "
-                f"Respondé por acá o contactá sales@viveroonline.com.co"
+                f"🚐 *Entregas a la Sabana de Bogotá*\n\n"
+                f"Bogotá, Chía, Cajicá, Cota, Tabio, Tenjo, Madrid, Zipaquirá\n\n"
+                f"💰 Desde $35.000 COP\n"
+                f"📦 Embalaje especial plantas\n\n"
+                f"🎯 *Armá tu pedido*\n"
+                f"🛒 {BASE_URL_COMPRA}"
             )
-            accion = "cerrar"
+            accion = "pendiente_confirmacion"
 
-        # Caso 1d: Pregunta sobre la empresa / info general
         else:
             respuesta = (
                 f"🌿 ¡Hola {nombre}!\n\n"
-                f"Gracias por tu interés en ViveroOnline. 🙌\n\n"
-                f"🛒 Explorá nuestro catálogo:\n"
-                f"https://viveroonline.com.co/marketplace\n\n"
-                f"¿Preguntas? Escribinos aquí o contactá "
-                f"sales@viveroonline.com.co"
+                f"Amplio catálogo plantas, materas, accesorios\n\n"
+                f"🎯 *Visitá nuestro marketplace*\n"
+                f"🛒 {BASE_URL_COMPRA}\n\n"
+                f"✅ Precios sin intermediarios • Entrega ágil"
             )
-            accion = "cerrar"
+            accion = "pendiente_confirmacion"
 
-    # ═══════════════════════════════════════════════════════════════════
-    # 2. TIPO: CONSULTA — Responder o derivar
-    # ═══════════════════════════════════════════════════════════════════
-
+    # TIPO: CONSULTA
     elif tipo == "consulta":
-        # Caso 2a: Pregunta sobre datos de la empresa
-        if re.search(r"quiénes\s+somos|sobre\s+(ustedes|nosotros)|empresa", desc):
+        if re.search(r"quiénes\s+somos|sobre.*ustedes|empresa", desc):
             respuesta = (
                 f"🌱 *Sobre ViveroOnline*\n\n"
-                f"Somos un marketplace B2B que conecta viveristas con paisajistas "
-                f"y constructoras en la región.\n\n"
-                f"📄 Conocé más:\n"
-                f"https://viveroonline.com.co/quienes-somos\n\n"
-                f"¿Querés hablar con nuestro equipo? "
-                f"Escribinos a sales@viveroonline.com.co 😊"
+                f"Marketplace conecta viveristas con compradores\n"
+                f"Plantas directo del vivero, sin intermediarios.\n\n"
+                f"📄 {BASE_URL_EMPRESA}\n\n"
+                f"💚 Misión: Plantas accesibles para todos"
             )
-            accion = "cerrar"
+            accion = "pendiente_confirmacion"
 
-        # Caso 2b: Solicitud B2B compleja (servicios, proveedores, etc)
-        elif re.search(r"servicio|proveedor|facturación|arl|eps|b2b", desc):
+        elif re.search(r"servicio|proveedor|facturación|arl|eps|b2b|empresa", desc):
             respuesta = (
                 f"🌿 *Consulta Comercial*\n\n"
-                f"Gracias por tu interés en trabajar con nosotros. 🙌\n\n"
-                f"Tu consulta es importante y requiere seguimiento personalizado. "
-                f"Pronto te contactaremos.\n\n"
-                f"Contacto directo: sales@viveroonline.com.co"
+                f"Gracias por tu interés. Tu solicitud es importante.\n\n"
+                f"📞 Nuestro equipo comercial te contactará pronto.\n"
+                f"sales@viveroonline.com.co"
             )
-            accion = "derivar_admin"  # Notificar admin para seguimiento
-            motivo = "Solicitud B2B comercial — requiere análisis"
-
-        # Caso 2c: Otra consulta
-        else:
-            respuesta = None
             accion = "derivar_admin"
-            motivo = "Consulta específica — requiere análisis"
+            tipo_derivacion, motivo = _detectar_tipo_derivacion(tipo, desc)
 
-    # ═══════════════════════════════════════════════════════════════════
-    # 3. TIPO: RECLAMO, VENTA, OTRO — Siempre derivar
-    # ═══════════════════════════════════════════════════════════════════
+        else:
+            accion = "derivar_admin"
+            tipo_derivacion, motivo = _detectar_tipo_derivacion(tipo, desc)
 
+    # TIPO: RECLAMO, VENTA, OTRO
     elif tipo in ("reclamo", "venta", "otro"):
         if tipo == "reclamo":
             respuesta = (
-                f"🔴 *Reclamo recibido*\n\n"
-                f"Lamentamos los inconvenientes. Nuestro equipo te contactará "
-                f"pronto para resolver tu situación.\n\n"
-                f"Contacto de urgencia: sales@viveroonline.com.co"
+                f"🔴 *Reclamo Recibido*\n\n"
+                f"Lamentamos. Nuestro equipo te contactará pronto.\n\n"
+                f"📞 sales@viveroonline.com.co"
             )
+            tipo_derivacion = "reclamo"
+            motivo = "ATENCIÓN URGENTE requerida"
             accion = "derivar_admin"
-            motivo = "Reclamo — requiere atención urgente"
+
         elif tipo == "venta":
             respuesta = (
-                f"🌿 *Interés en vender con nosotros*\n\n"
-                f"¡Excelente! Nuestro equipo te contactará para explicarte "
-                f"cómo formar parte de la plataforma.\n\n"
-                f"Contacto: sales@viveroonline.com.co"
+                f"🌿 *Interés en Vender*\n\n"
+                f"¡Excelente! Estamos buscando viveristas asociados.\n\n"
+                f"📞 sales@viveroonline.com.co\n"
+                f"🌐 {BASE_URL_EMPRESA}"
             )
+            tipo_derivacion = "venta"
+            motivo = "Onboarding viverista requerido"
             accion = "derivar_admin"
-            motivo = "Nuevo viverista interesado — onboarding"
+
         else:
-            respuesta = None
             accion = "derivar_admin"
-            motivo = f"Ticket tipo '{tipo}' — requiere análisis"
+            tipo_derivacion, motivo = _detectar_tipo_derivacion(tipo, desc)
 
-    # ═════════════════════════════════════════════════════════════════════
-    # Enviar respuesta por WhatsApp si existe
-    # ═════════════════════════════════════════════════════════════════════
-
+    # Enviar respuesta
     respondido = False
     if respuesta and whatsapp:
         try:
             await send_text_message(whatsapp, respuesta)
             respondido = True
-            logger.info(f"✅ Respuesta automática enviada al ticket #{ticket_id}")
+            logger.info(f"✅ Respuesta ticket #{ticket_id}")
         except Exception as e:
-            logger.error(f"No se pudo enviar respuesta al ticket #{ticket_id}: {e}")
-            respondido = False
+            logger.error(f"❌ Error ticket #{ticket_id}: {e}")
 
-    # ═════════════════════════════════════════════════════════════════════
-    # Actualizar estado del ticket
-    # ═════════════════════════════════════════════════════════════════════
-
-    if accion == "cerrar" and respondido:
-        # Cerrar ticket automáticamente
+    # Actualizar BD
+    if accion == "pendiente_confirmacion" and respondido:
         db.table("tickets_soporte").update({
-            "estado": "respondido",
+            "estado_interno": "respondido_por_bot",
             "atendido_por": "bot_autorespuesta",
-            "notas_admin": "Respuesta automática enviada por bot",
+            "notas_admin": "Bot respondió. Revisar y confirmar cierre.",
         }).eq("ticket_id", ticket_id).execute()
-        logger.info(f"✅ Ticket #{ticket_id} cerrado automáticamente")
 
     elif accion == "derivar_admin":
-        # Dejar en pendiente pero notificar admin
         db.table("tickets_soporte").update({
-            "notas_admin": f"AUTO-DERIVAR: {motivo}",
+            "estado_interno": "requiere_analisis",
+            "tipo_derivacion": tipo_derivacion,
+            "notas_admin": f"DERIVAR [{tipo_derivacion.upper()}]: {motivo}",
         }).eq("ticket_id", ticket_id).execute()
 
     return {
         "respondido": respondido,
         "auto_respuesta": respuesta,
         "accion": accion,
+        "tipo_derivacion": tipo_derivacion,
         "motivo": motivo,
     }
 
 
-async def notificar_admin_ticket_con_respuesta(
+async def notificar_admin_con_contexto(
     ticket_id: int,
     ticket_data: dict,
     respuesta_info: dict,
     admin_whatsapp: str,
 ) -> bool:
-    """
-    Notifica al admin cuando:
-    - Un ticket fue respondido automáticamente (info)
-    - Un ticket requiere derivación (alerta)
-    """
+    """Elena recibe: SOLICITUD + RESPUESTA + ACCIÓN"""
     tipo = ticket_data.get("tipo_solicitud", "").upper()
     whatsapp_cliente = ticket_data.get("whatsapp_numero", "")
-    desc = (ticket_data.get("descripcion") or "")[:100]
+    descripcion_cliente = ticket_data.get("descripcion", "")
+    respuesta_bot = respuesta_info.get("auto_respuesta")
     accion = respuesta_info.get("accion")
+    nombre_cliente = ticket_data.get("nombre", "Cliente")
+    tipo_derivacion = respuesta_info.get("tipo_derivacion", "")
+    motivo = respuesta_info.get("motivo", "")
 
-    if accion == "cerrar":
-        # Notificación informativa
+    # RESPUESTA AUTOMÁTICA
+    if accion == "pendiente_confirmacion" and respuesta_bot:
         msg = (
-            f"✅ *Ticket #{ticket_id} respondido automáticamente*\n\n"
-            f"📞 {whatsapp_cliente}\n"
-            f"🏷️ Tipo: {tipo}\n"
-            f"📝 _{desc}_\n\n"
-            f"Estado: CERRADO"
+            f"✅ *Ticket #{ticket_id} — Bot respondió*\n\n"
+            f"👤 {nombre_cliente} ({whatsapp_cliente})\n"
+            f"🏷️ {tipo}\n\n"
+            f"────── SOLICITUD ──────\n"
+            f"{descripcion_cliente[:150]}\n\n"
+            f"────── RESPUESTA ──────\n"
+            f"{respuesta_bot[:250]}\n\n"
+            f"────────────────────────\n\n"
+            f"🎯 ¿Está OK? Confirma:\n"
+            f"{BASE_URL_DASHBOARD_ADMIN}/ticket/{ticket_id}"
         )
+
+    # DERIVACIÓN
     else:
-        # Alerta para derivación
+        emoji_map = {"reclamo": "🔴", "venta": "🌿", "b2b": "💼", "consulta_vaga": "❓"}
+        emoji = emoji_map.get(tipo_derivacion, "⚠️")
+
+        prioridad_map = {
+            "reclamo": "🔴 URGENTE",
+            "venta": "🟠 MEDIA",
+            "b2b": "🟡 COMERCIAL",
+            "consulta_vaga": "🟢 BAJA",
+        }
+        prioridad = prioridad_map.get(tipo_derivacion, "Normal")
+
         msg = (
-            f"⚠️ *Ticket #{ticket_id} requiere atención*\n\n"
-            f"📞 {whatsapp_cliente}\n"
-            f"🏷️ Tipo: {tipo}\n"
-            f"📝 _{desc}_\n\n"
-            f"Acción: {respuesta_info.get('motivo', 'Revisar y responder')}\n\n"
-            f"Ver en dashboard: https://app.viveroonline.com.co/admin"
+            f"{emoji} *Ticket #{ticket_id} — {tipo_derivacion.upper()}*\n\n"
+            f"👤 {nombre_cliente} ({whatsapp_cliente})\n"
+            f"🏷️ {tipo}\n"
+            f"📊 {prioridad}\n\n"
+            f"────── SOLICITUD ──────\n"
+            f"{descripcion_cliente[:150]}\n\n"
+        )
+
+        if respuesta_bot:
+            msg += (
+                f"────── RESPUESTA ──────\n"
+                f"{respuesta_bot[:200]}\n\n"
+            )
+
+        msg += (
+            f"────────────────────────\n\n"
+            f"⚡ {motivo}\n\n"
+            f"🔗 {BASE_URL_DASHBOARD_ADMIN}/ticket/{ticket_id}"
         )
 
     try:
         await send_text_message(admin_whatsapp, msg)
-        logger.info(f"✅ Admin notificado sobre ticket #{ticket_id}")
+        logger.info(f"✅ Admin notificado ticket #{ticket_id}")
         return True
     except Exception as e:
-        logger.error(f"No se pudo notificar admin del ticket #{ticket_id}: {e}")
+        logger.error(f"❌ Error notificación #{ticket_id}: {e}")
         return False
