@@ -1,7 +1,6 @@
-"""Auto-responder para tickets de soporte y notificación a admin.
+"""Auto-responder para tickets + NOTIFICACIÓN GARANTIZADA al admin.
 
-Entregado 12 ago 2026 — Sistema automático que responde tickets según tipo
-sin caso específico, reduce carga manual 70%.
+19 ago 2026 — Todos los tickets notifican a admin, sin excepciones.
 """
 import logging
 from app.services.whatsapp_meta import send_text_message
@@ -13,15 +12,13 @@ logger = logging.getLogger(__name__)
 async def responder_ticket_segun_tipo(ticket_id: int, ticket_data: dict) -> dict:
     """Auto-responde al usuario según tipo de ticket.
     
-    Tipos soportados: compra, consulta, reclamo, venta, otro
-    
-    Retorna: {"tipo": "auto_cerrado" | "escalado", "mensaje": "respuesta enviada"}
+    Tipos: compra, consulta, reclamo, venta, otro
     """
     tipo = ticket_data.get("tipo_solicitud", "otro").lower()
     descripcion = ticket_data.get("descripcion", "").lower()
     whatsapp = ticket_data.get("whatsapp_numero", "")
     
-    # Compra + precio específico → Busca en BD, responde + cierra
+    # COMPRA + PRECIO específico
     if tipo == "compra" and whatsapp:
         respuesta = _buscar_producto_responder_compra(descripcion)
         if respuesta and respuesta.get("encontrado"):
@@ -30,10 +27,10 @@ async def responder_ticket_segun_tipo(ticket_id: int, ticket_data: dict) -> dict
                 logger.info(f"Ticket #{ticket_id} auto-cerrado: compra con precio")
                 return {"tipo": "auto_cerrado", "mensaje": respuesta["mensaje"]}
             except Exception as e:
-                logger.warning(f"Error enviando respuesta compra ticket #{ticket_id}: {e}")
+                logger.warning(f"Error enviando respuesta compra #{ticket_id}: {e}")
     
-    # Compra + despacho/info → Guía marketplace + email sales
-    if tipo == "compra" and ("despacho" in descripcion or "envío" in descripcion or "entrega" in descripcion):
+    # COMPRA + DESPACHO
+    if tipo == "compra" and any(kw in descripcion for kw in ["despacho", "envío", "entrega"]):
         respuesta = (
             "🚚 *Información de despacho*\n\n"
             "Hacemos entregas en la Sabana de Bogotá (Chía, Cajicá, Cota, Tabio, Tenjo).\n\n"
@@ -44,12 +41,12 @@ async def responder_ticket_segun_tipo(ticket_id: int, ticket_data: dict) -> dict
         )
         try:
             await send_text_message(whatsapp, respuesta)
-            logger.info(f"Ticket #{ticket_id} auto-cerrado: compra + despacho")
+            logger.info(f"Ticket #{ticket_id} auto-cerrado: despacho")
             return {"tipo": "auto_cerrado", "mensaje": respuesta}
         except Exception as e:
-            logger.warning(f"Error enviando respuesta despacho ticket #{ticket_id}: {e}")
+            logger.warning(f"Error enviando respuesta despacho #{ticket_id}: {e}")
     
-    # Consulta específica → Responde si sabe
+    # CONSULTA específica
     if tipo == "consulta":
         respuesta = _responder_consulta_especifica(descripcion)
         if respuesta:
@@ -58,20 +55,20 @@ async def responder_ticket_segun_tipo(ticket_id: int, ticket_data: dict) -> dict
                 logger.info(f"Ticket #{ticket_id} auto-cerrado: consulta")
                 return {"tipo": "auto_cerrado", "mensaje": respuesta}
             except Exception as e:
-                logger.warning(f"Error enviando respuesta consulta ticket #{ticket_id}: {e}")
+                logger.warning(f"Error enviando respuesta consulta #{ticket_id}: {e}")
     
-    # Consulta B2B o reclamo → Derivar admin (escalado)
-    if tipo in ("venta", "reclamo") or ("b2b" in descripcion):
+    # Tipos que SIEMPRE se escalan
+    if tipo in ("venta", "reclamo") or "b2b" in descripcion:
         logger.info(f"Ticket #{ticket_id} escalado a admin: {tipo}")
-        return {"tipo": "escalado", "mensaje": f"Derivado a admin para procesamiento de {tipo}"}
+        return {"tipo": "escalado", "mensaje": f"Derivado a admin"}
     
     # Por defecto: derivar admin
     logger.info(f"Ticket #{ticket_id} escalado a admin: tipo desconocido")
-    return {"tipo": "escalado", "mensaje": "Tu solicitud está siendo procesada por nuestro equipo"}
+    return {"tipo": "escalado", "mensaje": "Tu solicitud está siendo procesada"}
 
 
 def _buscar_producto_responder_compra(descripcion: str) -> dict | None:
-    """Busca producto en descripción y devuelve precio + link si existe."""
+    """Busca producto en descripción."""
     productos_conocidos = {
         "hiedra": {"precio": 20412, "id": 1},
         "geranio": {"precio": 15000, "id": 2},
@@ -94,7 +91,7 @@ def _buscar_producto_responder_compra(descripcion: str) -> dict | None:
 
 
 def _responder_consulta_especifica(descripcion: str) -> str | None:
-    """Responde consultas sobre la plataforma si reconoce el patrón."""
+    """Responde consultas frecuentes."""
     if "como funciona" in descripcion or "qué es viveroonline" in descripcion:
         return (
             "🌿 *ViveroOnline* es la plataforma de venta directa de plantas para:\n\n"
@@ -108,7 +105,7 @@ def _responder_consulta_especifica(descripcion: str) -> str | None:
         return (
             "🌿 *Plantas para interior*:\n\n"
             "Tenemos opciones que se adaptan a poca luz y poco riego.\n\n"
-            "Explora el catálogo filtrado por tipo:\n"
+            "Explora el catálogo:\n"
             "https://app.viveroonline.com.co/marketplace\n\n"
             "¿Querés una cotización personalizada?"
         )
@@ -122,39 +119,45 @@ async def notificar_admin_con_contexto(
     respuesta_info: dict,
     admin_whatsapp: str,
 ) -> None:
-    """Notifica al admin sobre ticket con contexto.
+    """✅ NOTIFICA AL ADMIN DE TODOS LOS TICKETS, SIN EXCEPCIONES.
     
-    Se envía SOLO si:
-    1. El ticket fue escalado (no auto-cerrado)
-    2. admin_whatsapp está configurado
-    3. El tipo es B2B o reclamo (prioritario)
+    Diferencia: auto-cerrados vs escalados (emojis diferentes)
     """
     if not admin_whatsapp:
         logger.warning(f"ADMIN_WHATSAPP_NOTIF no configurado — ticket #{ticket_id} sin notificación")
         return
     
-    tipo = ticket_data.get("tipo_solicitud", "otro")
-    
-    # Solo notificar si es escalado o prioritario
-    if respuesta_info.get("tipo") != "escalado" and tipo not in ("venta", "reclamo", "b2b"):
-        return
-    
+    tipo = ticket_data.get("tipo_solicitud", "otro").upper()
     cliente_whatsapp = ticket_data.get("whatsapp_numero", "?")
     nombre = ticket_data.get("nombre", "Cliente anónimo")
-    descripcion = ticket_data.get("descripcion", "")
+    descripcion = ticket_data.get("descripcion", "")[:200]
+    respuesta_tipo = respuesta_info.get("tipo", "?")
     
-    # Mensaje al admin
-    prioridad_emoji = "🔴" if tipo in ("reclamo", "venta") else "🟡"
+    # EMOJI Y PRIORIDAD según tipo
+    emoji_map = {
+        "compra": "🟢",
+        "consulta": "🔵",
+        "reclamo": "🔴",
+        "venta": "🟠",
+        "b2b": "💼",
+    }
+    emoji = emoji_map.get(tipo.lower(), "⚪")
+    
+    # ESTADO DE RESPUESTA
+    estado_bot = "✅ Auto-respondido" if respuesta_tipo == "auto_cerrado" else "⚠️ Escalado a revisión"
+    
+    # CONSTRUIR MENSAJE AL ADMIN
     msg_admin = (
-        f"{prioridad_emoji} *Ticket #{ticket_id}* — {tipo.upper()}\n\n"
+        f"{emoji} *Ticket #{ticket_id}* — {tipo}\n\n"
         f"👤 Cliente: {nombre}\n"
         f"📱 WhatsApp: {cliente_whatsapp}\n\n"
-        f"💬 Solicitud:\n{descripcion[:500]}\n\n"
-        f"Panel: https://app.viveroonline.com.co/admin"
+        f"💬 Solicitud:\n{descripcion}\n\n"
+        f"🤖 {estado_bot}\n\n"
+        f"🔗 Panel: https://app.viveroonline.com.co/admin"
     )
     
     try:
         await send_text_message(admin_whatsapp, msg_admin)
-        logger.info(f"Notificación admin enviada para ticket #{ticket_id}")
+        logger.info(f"✅ Notificación admin enviada para ticket #{ticket_id}")
     except Exception as e:
-        logger.error(f"Error notificando admin ticket #{ticket_id}: {e}")
+        logger.error(f"❌ Error notificando admin ticket #{ticket_id}: {e}")
