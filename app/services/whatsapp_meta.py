@@ -1,194 +1,372 @@
-"""Bot WhatsApp Simple y Robusto — SIN dependencias complejas."""
+"""Cliente para enviar mensajes via Meta WhatsApp Cloud API.
+
+Servicios disponibles:
+- send_text_message(to, body) — async
+- send_template_message(to, template_name, language_code, components) — async
+- notify_viverista_nueva_cotizacion(to, ...) — async
+- notify_viverista_recordatorio(to, ...) — async
+- notify_comprador_pedido_parcial(to, ...) — async
+- download_media_bytes(media_id) — async
+- verify_signature(body_bytes, signature_header) — sync
+"""
 from __future__ import annotations
-import json
+
+import hashlib
+import hmac
 import logging
 import os
-from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Request, HTTPException
-from app.services.supabase import admin
-from app.services.whatsapp_meta import (
-    send_text_message,
-    verify_signature,
-    procesar_consulta_precio_producto,
-)
+import httpx
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
 
-VERIFY_TOKEN = os.getenv("META_WA_VERIFY_TOKEN", "")
-ADMIN_WHATSAPP = os.getenv("ADMIN_WHATSAPP_NOTIF", "")
+# Versión de la Graph API
+_GRAPH_API = "https://graph.facebook.com/v25.0"
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# WEBHOOK
-# ═══════════════════════════════════════════════════════════════════════════
+def _phone_id() -> str:
+    return os.getenv("META_WA_PHONE_NUMBER_ID", "")
 
-@router.post("/api/whatsapp/webhook")
-async def webhook_whatsapp(request: Request):
-    """Recibe mensajes de Meta WhatsApp."""
-    body_bytes = await request.body()
-    signature_header = request.headers.get("x-hub-signature-256", "")
-    
-    if not verify_signature(body_bytes, signature_header):
-        raise HTTPException(status_code=401, detail="Invalid signature")
-    
+
+def _access_token() -> str:
+    return os.getenv("META_WA_ACCESS_TOKEN", "")
+
+
+async def send_text_message(to: str, body: str) -> bool:
+    """Envía un mensaje de texto plano a un número WhatsApp.
+
+    Args:
+        to: Número en formato E.164 (ej: '+573178543819')
+        body: Texto a enviar (max 4096 chars)
+
+    Returns:
+        True si se envió, False si hubo error.
+    """
+    to_clean = to.lstrip("+")
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_clean,
+        "type": "text",
+        "text": {"body": body[:4096]},
+    }
     try:
-        data = await request.json()
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Invalid JSON")
-    
-    if data.get("entry"):
-        for entry in data["entry"]:
-            if entry.get("changes"):
-                for change in entry["changes"]:
-                    if change.get("value", {}).get("messages"):
-                        await _procesar_mensaje(change["value"])
-    
-    return {"status": "ok"}
-
-
-async def _procesar_mensaje(webhook_data: dict):
-    """Procesa un mensaje recibido."""
-    try:
-        whatsapp_num = webhook_data.get("contacts", [{}])[0].get("wa_id", "")
-        nombre_cliente = webhook_data.get("contacts", [{}])[0].get("profile", {}).get("name", "Cliente")
-        
-        if not whatsapp_num:
-            return
-        
-        messages = webhook_data.get("messages", [])
-        if not messages:
-            return
-        
-        mensaje_texto = messages[0].get("text", {}).get("body", "").strip()
-        if not mensaje_texto:
-            return
-        
-        logger.info(f"📱 Mensaje de {whatsapp_num}: {mensaje_texto[:50]}")
-        
-        lower = mensaje_texto.lower()
-        
-        # ═══════════════════════════════════════════════════════════════════
-        # 1️⃣ HANDLER PRECIO — Prioritario
-        # ═══════════════════════════════════════════════════════════════════
-        if lower.startswith("precio "):
-            producto_nombre = lower.replace("precio ", "", 1).strip()
-            if producto_nombre:
-                try:
-                    logger.info(f"🔍 Consultando precio: {producto_nombre}")
-                    respuesta = await procesar_consulta_precio_producto(
-                        supabase=admin(),
-                        producto_nombre=producto_nombre,
-                        es_guest=False,
-                        plazo="inmediato",
-                    )
-                    logger.info(f"✅ Respuesta precio: {respuesta[:50]}")
-                    await send_text_message(whatsapp_num, respuesta)
-                    return
-                except Exception as e:
-                    logger.error(f"❌ Error precio: {e}")
-                    await send_text_message(whatsapp_num, "⚠️ Error al consultar precio. Intentá de nuevo.")
-                    return
-        
-        # ═══════════════════════════════════════════════════════════════════
-        # 2️⃣ SALUDO INICIAL — Primera vez
-        # ═══════════════════════════════════════════════════════════════════
-        if lower in ("hola", "hi", "buenos días", "buenas tardes", "buenas noches", "buenas"):
-            await send_text_message(
-                whatsapp_num,
-                "🌱 ¡Hola! Bienvenido a ViveroOnline.com.co\n\n¿Qué necesitás hoy?\n1️⃣ Comprar plantas\n2️⃣ Vender mis plantas\n3️⃣ Consultar"
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{_GRAPH_API}/{_phone_id()}/messages",
+                headers={
+                    "Authorization": f"Bearer {_access_token()}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
             )
-            return
-        
-        # ═══════════════════════════════════════════════════════════════════
-        # 3️⃣ COMANDOS DEL MENÚ
-        # ═══════════════════════════════════════════════════════════════════
-        if mensaje_texto in ("1", "1️⃣"):
-            await send_text_message(whatsapp_num, "📍 Explora nuestro catálogo:\nhttps://app.viveroonline.com.co/marketplace")
-            return
-        
-        if mensaje_texto in ("2", "2️⃣"):
-            await send_text_message(whatsapp_num, "🌳 ¡Queremos contar con vos! Registrate como viverista:\nhttps://app.viveroonline.com.co/registro-vivero")
-            return
-        
-        if mensaje_texto in ("3", "3️⃣"):
-            await send_text_message(whatsapp_num, "❓ Perfecto, escribe tu consulta y te respondemos pronto.")
-            return
-        
-        if lower in ("salir", "exit", "fin"):
-            await send_text_message(whatsapp_num, "Sesión cerrada. ¡Hasta pronto! 🌿")
-            return
-        
-        # ═══════════════════════════════════════════════════════════════════
-        # 4️⃣ TICKET POR DEFECTO + NOTIFICACIÓN ADMIN
-        # ═══════════════════════════════════════════════════════════════════
-        logger.info(f"📝 Creando ticket para {whatsapp_num}")
-        
-        try:
-            # Crear ticket
-            ticket_data = {
-                "whatsapp_numero": whatsapp_num,
-                "nombre": nombre_cliente,
-                "tipo_solicitud": "consulta",
-                "descripcion": mensaje_texto,
-                "estado": "abierto",
-                "fecha_creacion": datetime.now(timezone.utc).isoformat(),
-            }
-            
-            result = admin().table("tickets").insert(ticket_data).execute()
-            
-            if not result.data:
-                logger.error("No se pudo crear ticket")
-                await send_text_message(whatsapp_num, "✅ Tu solicitud fue recibida. Te contactaremos pronto.")
-                return
-            
-            ticket_id = result.data[0].get("id")
-            logger.info(f"✅ Ticket #{ticket_id} creado")
-            
-            # ✅ NOTIFICAR AL ADMIN INMEDIATAMENTE
-            if ADMIN_WHATSAPP:
-                try:
-                    msg_admin = (
-                        f"🔵 *Ticket #{ticket_id}* — CONSULTA\n\n"
-                        f"👤 Cliente: {nombre_cliente}\n"
-                        f"📱 WhatsApp: {whatsapp_num}\n\n"
-                        f"💬 Solicitud:\n{mensaje_texto[:200]}\n\n"
-                        f"🔗 Panel: https://app.viveroonline.com.co/admin"
-                    )
-                    
-                    await send_text_message(ADMIN_WHATSAPP, msg_admin)
-                    logger.info(f"✅ Admin notificado de ticket #{ticket_id}")
-                except Exception as e:
-                    logger.error(f"❌ Error notificando admin: {e}")
-            else:
-                logger.warning("⚠️ ADMIN_WHATSAPP_NOTIF no configurado")
-            
-            # Responder al usuario
-            await send_text_message(
-                whatsapp_num,
-                f"✅ ¡Recibí tu solicitud! (ticket #{ticket_id})\n\nNuestro equipo te contactará en las próximas horas. 🌿"
-            )
-            
-        except Exception as e:
-            logger.error(f"❌ Error creando ticket: {e}")
-            await send_text_message(whatsapp_num, "✅ Tu solicitud fue recibida.")
-        
+        if resp.status_code == 200:
+            logger.info(f"Texto enviado a {to}")
+            return True
+        logger.error("Meta send_text error %d: %s", resp.status_code, resp.text[:300])
+        return False
     except Exception as e:
-        logger.exception(f"❌ Error procesando mensaje: {e}")
+        logger.exception(f"Meta send_text exception: {e}")
+        return False
 
 
-@router.get("/api/whatsapp/webhook")
-async def verify_whatsapp_webhook(
-    hub_mode: str = "",
-    hub_challenge: str = "",
-    hub_verify_token: str = "",
-):
-    """Verifica webhook con Meta."""
-    if hub_verify_token == VERIFY_TOKEN:
-        logger.info("✅ WhatsApp webhook verificado")
-        return int(hub_challenge) if hub_challenge.isdigit() else hub_challenge
+async def send_template_message(
+    to: str,
+    template_name: str,
+    language_code: str = "es",
+    components: list | None = None,
+) -> bool:
+    """Envía un mensaje usando una plantilla aprobada por Meta.
+
+    Usar para notificaciones business-initiated (ej: orden pagada).
+
+    Args:
+        to: Número del destinatario
+        template_name: Nombre exacto de la plantilla en Meta Business Manager
+        language_code: 'es', 'en_US', etc.
+        components: Variables de la plantilla (estructura Meta: [{"type":"body","parameters":[{"type":"text","text":"..."}]}])
+    """
+    to_clean = to.lstrip("+")
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_clean,
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {"code": language_code},
+        },
+    }
+    if components:
+        payload["template"]["components"] = components
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{_GRAPH_API}/{_phone_id()}/messages",
+                headers={
+                    "Authorization": f"Bearer {_access_token()}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        if resp.status_code == 200:
+            logger.info(f"Template {template_name} enviado a {to}")
+            return True
+        logger.error(
+            "Meta send_template error %d for %s: %s", resp.status_code, template_name, resp.text[:300]
+        )
+        return False
+    except Exception as e:
+        logger.exception(f"Meta send_template exception: {e}")
+        return False
+
+
+async def download_media_bytes(media_id: str) -> bytes:
+    """Descarga los bytes de un media file de Meta (imagen, audio, etc.)
+
+    Proceso 2 pasos:
+    1. GET /v25.0/{media_id} → obtiene URL real con token
+    2. GET URL real → bytes del archivo
+
+    Raises:
+        Exception si no se puede obtener la URL o descargar.
+    """
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        # Paso 1: obtener URL real
+        meta_resp = await client.get(
+            f"{_GRAPH_API}/{media_id}",
+            headers={"Authorization": f"Bearer {_access_token()}"},
+        )
+        meta_resp.raise_for_status()
+        media_url = meta_resp.json().get("url")
+        if not media_url:
+            raise ValueError(f"Meta no devolvió URL para media_id={media_id}")
+
+        # Paso 2: descargar desde URL real
+        media_resp = await client.get(
+            media_url,
+            headers={"Authorization": f"Bearer {_access_token()}"},
+        )
+        media_resp.raise_for_status()
+        return media_resp.content
+
+
+def verify_signature(body_bytes: bytes, signature_header: str) -> bool:
+    """Valida la firma x-hub-signature-256 de Meta usando HMAC-SHA256 + App Secret.
+
+    Returns:
+        True si válida. True también si META_WA_APP_SECRET no está configurado
+        (así no bloqueamos en dev). False si la firma no coincide.
+    """
+    app_secret = os.getenv("META_WA_APP_SECRET", "")
+    if not app_secret:
+        logger.warning("META_WA_APP_SECRET no configurado — saltando validación de firma")
+        return True
+
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+
+    expected = signature_header[7:]
+    computed = hmac.new(
+        app_secret.encode("utf-8"),
+        body_bytes,
+        hashlib.sha256,
+    ).hexdigest()
+
+    return hmac.compare_digest(expected, computed)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TEMPLATES FEATURE AUTO-TIMEOUT (12 ago 2026 — CORREGIDO)
+# ═══════════════════════════════════════════════════════════════════════════
+# 3 templates aprobados por Meta:
+#   1. notif_viverista_nueva_cotizacion  (6 vars body, 3 botones Quick Reply)
+#   2. recordatorio_viverista_pendiente  (5 vars body, 2 botones Quick Reply)
+#   3. notif_comprador_pedido_parcial    (4 vars body, 1 botón URL estática)
+#
+# CORREGIDO: Todas las funciones ahora son ASYNC y usan formato Meta v25.0
+# ═══════════════════════════════════════════════════════════════════════════
+
+def _format_cop(monto) -> str:
+    """Formato monto Colombia: 88410 -> $88.410"""
+    return f"${int(monto):,}".replace(",", ".")
+
+
+async def notify_viverista_nueva_cotizacion(
+    to: str,
+    nombre_viverista: str,
+    proyecto: str,
+    cliente: str,
+    tu_parte_cop: int,
+    ciudad_entrega: str,
+    horas_para_responder: int = 2,
+) -> Dict[str, Any]:
+    """Notificación inicial al viverista con cotización nueva.
     
-    logger.warning("❌ Token de verificación inválido")
-    raise HTTPException(status_code=403, detail="Invalid token")
+    ESTRATEGIA:
+    1. INTENTA template Meta (si falla, log pero continúa)
+    2. SIEMPRE envía texto libre como fallback (garantizado)
+    
+    Así recuperamos funcionalidad conocida (texto) + agregamos Meta.
+    """
+    # Construir mensaje de texto (BASE — GARANTIZADO)
+    msg_texto = (
+        f"🌿 *Nueva solicitud — ViveroOnline*\n\n"
+        f"Proyecto: *{proyecto}*\n"
+        f"Solicitante: *{cliente}*\n"
+        f"📦 {nombre_viverista}\n\n"
+        f"💰 Tu precio: {_format_cop(tu_parte_cop)} COP\n\n"
+        f"Zona: {ciudad_entrega}\n"
+        f"⏰ Responde en {horas_para_responder}h\n\n"
+        f"¿Confirmás disponibilidad?\n"
+        f"Respondé *APROBAR* o *RECHAZAR*"
+    )
+    
+    # INTENTAR template Meta (best-effort)
+    template_result = False
+    try:
+        components = [
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": nombre_viverista},
+                    {"type": "text", "text": proyecto},
+                    {"type": "text", "text": cliente},
+                    {"type": "text", "text": _format_cop(tu_parte_cop)},
+                    {"type": "text", "text": ciudad_entrega},
+                    {"type": "text", "text": str(horas_para_responder)},
+                ]
+            }
+        ]
+        
+        template_result = await send_template_message(
+            to=to,
+            template_name="notif_viverista_nueva_cotizacion",
+            language_code="es",
+            components=components,
+        )
+        if template_result:
+            logger.info(f"✅ Template Meta enviado a {to}")
+    except Exception as e:
+        logger.warning(f"⚠️ Template Meta falló (seguimos con texto): {e}")
+    
+    # SIEMPRE enviar texto (fallback garantizado)
+    text_result = await send_text_message(to, msg_texto)
+    
+    return {
+        "ok": text_result,
+        "template_meta": template_result,
+        "text": text_result,
+        "message": "Notificación enviada (texto garantizado)"
+    }
+
+
+async def notify_viverista_recordatorio(
+    to: str,
+    nombre_viverista: str,
+    proyecto: str,
+    tu_parte_cop: int,
+    numero_recordatorio: int,
+    minutos_restantes: int,
+) -> Dict[str, Any]:
+    """Recordatorio de cotización sin respuesta.
+    
+    Misma estrategia: TEXTO garantizado + template Meta best-effort
+    """
+    msg_texto = (
+        f"⏰ *RECORDATORIO — ViveroOnline*\n\n"
+        f"Proyecto: *{proyecto}*\n"
+        f"Tu precio: {_format_cop(tu_parte_cop)} COP\n\n"
+        f"Recordatorio {numero_recordatorio}/3\n"
+        f"⏱️ {minutos_restantes} minutos para responder\n\n"
+        f"¿Confirmás disponibilidad?\n"
+        f"Respondé *APROBAR* o *RECHAZAR*"
+    )
+    
+    template_result = False
+    try:
+        components = [
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": nombre_viverista},
+                    {"type": "text", "text": proyecto},
+                    {"type": "text", "text": _format_cop(tu_parte_cop)},
+                    {"type": "text", "text": str(numero_recordatorio)},
+                    {"type": "text", "text": str(minutos_restantes)},
+                ]
+            }
+        ]
+        
+        template_result = await send_template_message(
+            to=to,
+            template_name="recordatorio_viverista_pendiente",
+            language_code="es",
+            components=components,
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ Template recordatorio falló: {e}")
+    
+    text_result = await send_text_message(to, msg_texto)
+    
+    return {
+        "ok": text_result,
+        "template_meta": template_result,
+        "text": text_result
+    }
+
+
+async def notify_comprador_pedido_parcial(
+    to: str,
+    nombre_cliente: str,
+    proyecto: str,
+    monto_disponible_cop: int,
+    detalle_no_confirmado: str,
+) -> Dict[str, Any]:
+    """Notificación al comprador con cotización parcial.
+    
+    Misma estrategia: TEXTO garantizado + template Meta best-effort
+    """
+    msg_texto = (
+        f"📋 *ACTUALIZACIÓN DE TU PEDIDO — ViveroOnline*\n\n"
+        f"Hola {nombre_cliente},\n\n"
+        f"Proyecto: *{proyecto}*\n\n"
+        f"✅ Disponible para procesar: {_format_cop(monto_disponible_cop)} COP\n"
+        f"❌ No confirmado por vivero: {detalle_no_confirmado}\n\n"
+        f"Ingresá al panel para:\n"
+        f"• Pagar lo disponible\n"
+        f"• Buscar vivero alternativo\n"
+        f"• Cancelar pedido\n\n"
+        f"Tu pedido está protegido. 🌿"
+    )
+    
+    template_result = False
+    try:
+        components = [
+            {
+                "type": "body",
+                "parameters": [
+                    {"type": "text", "text": nombre_cliente},
+                    {"type": "text", "text": proyecto},
+                    {"type": "text", "text": _format_cop(monto_disponible_cop)},
+                    {"type": "text", "text": detalle_no_confirmado},
+                ]
+            }
+        ]
+        
+        template_result = await send_template_message(
+            to=to,
+            template_name="notif_comprador_pedido_parcial",
+            language_code="es",
+            components=components,
+        )
+    except Exception as e:
+        logger.warning(f"⚠️ Template comprador falló: {e}")
+    
+    text_result = await send_text_message(to, msg_texto)
+    
+    return {
+        "ok": text_result,
+        "template_meta": template_result,
+        "text": text_result
+    }
