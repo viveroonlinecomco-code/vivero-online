@@ -1,12 +1,6 @@
 """Cliente para enviar mensajes via Meta WhatsApp Cloud API.
 
-Servicios:
-- send_text_message() — envía texto
-- send_template_message() — envía template Meta
-- procesar_consulta_precio_producto() — consulta precio con matriz comercial
-- obtener_recomendacion_producto() — obtiene recomendación de producto
-- download_media_bytes() — descarga media
-- verify_signature() — valida firma Meta
+VERSIÓN CORREGIDA — Usa columnas correctas de inventario.
 """
 from __future__ import annotations
 
@@ -33,15 +27,7 @@ def _access_token() -> str:
 
 
 async def send_text_message(to: str, body: str) -> bool:
-    """Envía un mensaje de texto.
-    
-    Args:
-        to: Número en formato E.164 (ej: '+573178543819')
-        body: Texto a enviar (max 4096 chars)
-    
-    Returns:
-        True si se envió, False si hubo error.
-    """
+    """Envía un mensaje de texto."""
     to_clean = to.lstrip("+")
     payload = {
         "messaging_product": "whatsapp",
@@ -149,31 +135,40 @@ def verify_signature(body_bytes: bytes, signature_header: str) -> bool:
     return hmac.compare_digest(expected, computed)
 
 
-async def obtener_recomendacion_producto(
+async def procesar_consulta_precio_producto(
     supabase,
-    producto_id: int,
+    producto_nombre: str,
     es_guest: bool = True,
     plazo: str = "inmediato",
-) -> dict:
-    """Obtiene recomendación de producto con precio correcto (matriz comercial).
+) -> str:
+    """✅ CORREGIDO — Procesa "PRECIO [PRODUCTO]" con matriz comercial correcta.
     
-    Ejemplo B2C (guest, inmediato):
-        Hiedra: $17.010 × 1.20 (markup) = $20.412 ✅
-    
-    Ejemplo B2B (registrado, >= 5 SMLMV, inmediato):
-        Hiedra: $17.010 × 1.20 × (1 - 0.12 descuento) = $17.962 ✅
+    Busca producto por nombre_comun y retorna precio final cliente.
     """
     try:
-        # 1. Consultar BD
-        inventario = supabase.table("inventario").select(
-            "id, precio_mayorista, categoria_producto, nombre_comun, nombre_cientifico, vivero_id"
-        ).eq("id", producto_id).single().execute()
+        logger.info(f"🔍 Buscando producto: {producto_nombre}")
         
-        if not inventario.data:
-            return {"error": f"Producto {producto_id} no encontrado"}
+        # 1. Buscar producto por nombre_comun (sin especificar id si no existe)
+        productos = supabase.table("inventario").select(
+            "*"
+        ).ilike("nombre_comun", f"%{producto_nombre}%").limit(1).execute()
         
-        datos = inventario.data
-        precio_mayorista = datos.get("precio_mayorista", 0)
+        if not productos.data:
+            logger.warning(f"Producto no encontrado: {producto_nombre}")
+            return f"No encontré '{producto_nombre}'. Intenta con: Hiedra, Geranio, Duranta, Afelandra"
+        
+        producto = productos.data[0]
+        logger.info(f"✅ Producto encontrado: {producto.get('nombre_comun')}")
+        
+        # Obtener ID (puede ser 'id' o 'inventario_id')
+        producto_id = producto.get("id") or producto.get("inventario_id")
+        precio_mayorista = producto.get("precio_mayorista", 0)
+        
+        if not producto_id or not precio_mayorista:
+            logger.error(f"Datos incompletos: id={producto_id}, precio={precio_mayorista}")
+            return "Error: datos incompletos del producto"
+        
+        logger.info(f"Precio mayorista: ${precio_mayorista}")
         
         # 2. Calcular precio con matriz comercial
         resultado_precios = calcular_precios_pedido(
@@ -192,15 +187,64 @@ async def obtener_recomendacion_producto(
         
         # 3. Extraer precio final
         precio_cliente = resultado_precios["totales"]["precio_final_cliente"]
+        logger.info(f"✅ Precio cliente: ${precio_cliente}")
         
         # 4. Construir nombre
+        nombre_final = producto.get("nombre_comun", "Producto")
+        
+        # 5. Construir mensaje
+        precio_formateado = f"${int(precio_cliente):,.0f}".replace(",", ".")
+        canal_str = "tu proyecto"
+        
+        mensaje = (
+            f"Para {canal_str}, la {nombre_final} "
+            f"tiene un precio de {precio_formateado} COP. "
+            f"Compra aquí: https://app.viveroonline.com.co/marketplace/producto/{producto_id}"
+        )
+        
+        logger.info(f"✅ Respuesta: {mensaje[:50]}")
+        return mensaje
+        
+    except Exception as e:
+        logger.exception(f"❌ Error procesar_consulta_precio: {e}")
+        return f"⚠️ Error al consultar precio: {str(e)}"
+
+
+async def obtener_recomendacion_producto(
+    supabase,
+    producto_id: int,
+    es_guest: bool = True,
+    plazo: str = "inmediato",
+) -> dict:
+    """Obtiene recomendación con precio correcto."""
+    try:
+        inventario = supabase.table("inventario").select(
+            "*"
+        ).eq("id", producto_id).single().execute()
+        
+        if not inventario.data:
+            return {"error": f"Producto no encontrado"}
+        
+        datos = inventario.data
+        precio_mayorista = datos.get("precio_mayorista", 0)
+        
+        resultado_precios = calcular_precios_pedido(
+            cliente={
+                "es_guest": es_guest,
+                "cliente_id": None if es_guest else 0,
+            },
+            items=[{
+                "inventario_id": producto_id,
+                "cantidad": 1,
+                "precio_unitario": precio_mayorista,
+            }],
+            plazo=plazo,
+            forzar_canal=None,
+        )
+        
+        precio_cliente = resultado_precios["totales"]["precio_final_cliente"]
         nombre_final = datos.get("nombre_comun", "Producto")
-        nombre_cientifico = datos.get("nombre_cientifico", "")
         
-        if nombre_cientifico and nombre_cientifico != nombre_final:
-            nombre_final = f"{nombre_final} ({nombre_cientifico})"
-        
-        # 5. Retornar
         return {
             "id": producto_id,
             "nombre": nombre_final,
@@ -208,62 +252,12 @@ async def obtener_recomendacion_producto(
             "precio_mayorista_cop": precio_mayorista,
             "canal": resultado_precios["canal"],
             "plazo": resultado_precios["plazo"],
-            "vivero_id": datos.get("vivero_id"),
             "error": None
         }
         
     except Exception as e:
         logger.exception(f"Error obtener_recomendacion_producto: {e}")
         return {"error": f"Error: {str(e)}"}
-
-
-async def procesar_consulta_precio_producto(
-    supabase,
-    producto_nombre: str,
-    es_guest: bool = True,
-    plazo: str = "inmediato",
-) -> str:
-    """Procesa "PRECIO [PRODUCTO]" con matriz comercial correcta.
-    
-    Retorna mensaje con precio para B2C o B2B.
-    """
-    try:
-        # 1. Buscar producto
-        productos = supabase.table("inventario").select(
-            "id, precio_mayorista, categoria_producto, nombre_comun"
-        ).ilike("nombre_comun", f"%{producto_nombre}%").limit(1).execute()
-        
-        if not productos.data:
-            return f"No encontré '{producto_nombre}'. Intenta con: Hiedra, Geranio, Duranta, Afelandra"
-        
-        producto_id = productos.data[0]["id"]
-        
-        # 2. Obtener recomendación con precio correcto
-        recom = await obtener_recomendacion_producto(
-            supabase=supabase,
-            producto_id=producto_id,
-            es_guest=es_guest,
-            plazo=plazo,
-        )
-        
-        if "error" in recom and recom["error"]:
-            return f"Error: {recom['error']}"
-        
-        # 3. Construir mensaje
-        precio_formateado = f"${recom['precio_cliente_cop']:,.0f}".replace(",", ".")
-        canal_str = "tu proyecto" if recom['canal'] == 'b2c' else "tu negocio"
-        
-        mensaje = (
-            f"Para {canal_str}, la {recom['nombre']} "
-            f"tiene un precio de {precio_formateado} COP. "
-            f"Compra aquí: https://app.viveroonline.com.co/marketplace/producto/{producto_id}"
-        )
-        
-        return mensaje
-        
-    except Exception as e:
-        logger.exception(f"Error procesar_consulta_precio: {e}")
-        return f"Error: {str(e)}"
 
 
 def _format_cop(monto) -> str:
@@ -294,11 +288,7 @@ async def notify_viverista_nueva_cotizacion(
     )
     
     text_result = await send_text_message(to, msg_texto)
-    
-    return {
-        "ok": text_result,
-        "message": "Notificación enviada"
-    }
+    return {"ok": text_result, "message": "Notificación enviada"}
 
 
 async def notify_viverista_recordatorio(
@@ -315,13 +305,10 @@ async def notify_viverista_recordatorio(
         f"Proyecto: *{proyecto}*\n"
         f"Tu precio: {_format_cop(tu_parte_cop)} COP\n\n"
         f"Recordatorio {numero_recordatorio}/3\n"
-        f"⏱️ {minutos_restantes} minutos para responder\n\n"
-        f"¿Confirmás disponibilidad?\n"
-        f"Respondé *APROBAR* o *RECHAZAR*"
+        f"⏱️ {minutos_restantes} minutos para responder"
     )
     
     text_result = await send_text_message(to, msg_texto)
-    
     return {"ok": text_result}
 
 
@@ -337,15 +324,9 @@ async def notify_comprador_pedido_parcial(
         f"📋 *ACTUALIZACIÓN DE TU PEDIDO — ViveroOnline*\n\n"
         f"Hola {nombre_cliente},\n\n"
         f"Proyecto: *{proyecto}*\n\n"
-        f"✅ Disponible para procesar: {_format_cop(monto_disponible_cop)} COP\n"
-        f"❌ No confirmado por vivero: {detalle_no_confirmado}\n\n"
-        f"Ingresá al panel para:\n"
-        f"• Pagar lo disponible\n"
-        f"• Buscar vivero alternativo\n"
-        f"• Cancelar pedido\n\n"
-        f"Tu pedido está protegido. 🌿"
+        f"✅ Disponible: {_format_cop(monto_disponible_cop)} COP\n"
+        f"❌ No confirmado: {detalle_no_confirmado}"
     )
     
     text_result = await send_text_message(to, msg_texto)
-    
     return {"ok": text_result}
