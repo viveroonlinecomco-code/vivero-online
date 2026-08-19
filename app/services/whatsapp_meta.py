@@ -1,4 +1,4 @@
-"""Cliente WhatsApp — Auto-detecta estructura de tabla inventario."""
+"""Cliente WhatsApp — Estructura CORRECTA de tablas: plantas + inventario."""
 from __future__ import annotations
 
 import hashlib
@@ -83,7 +83,6 @@ async def send_template_message(
                 json=payload,
             )
         if resp.status_code == 200:
-            logger.info(f"✅ Template enviado")
             return True
         return False
     except Exception as e:
@@ -127,86 +126,66 @@ def verify_signature(body_bytes: bytes, signature_header: str) -> bool:
     return hmac.compare_digest(expected, computed)
 
 
-def _obtener_nombre_producto(row: dict) -> str:
-    """Auto-detecta el nombre del producto en cualquier columna."""
-    # Intenta varias columnas comunes
-    for col in ["nombre_comun", "nombre", "product_name", "title", "name", "descripcion"]:
-        if col in row and row[col]:
-            return str(row[col])
-    return "Producto"
-
-
-def _obtener_id_producto(row: dict) -> int | None:
-    """Auto-detecta el ID del producto."""
-    for col in ["id", "inventario_id", "product_id", "producto_id"]:
-        if col in row:
-            val = row[col]
-            if val:
-                try:
-                    return int(val)
-                except:
-                    pass
-    return None
-
-
-def _obtener_precio(row: dict) -> int | None:
-    """Auto-detecta el precio mayorista."""
-    for col in ["precio_mayorista", "precio_base", "price", "costo", "precio"]:
-        if col in row:
-            val = row[col]
-            if val:
-                try:
-                    return int(val)
-                except:
-                    pass
-    return None
-
-
 async def procesar_consulta_precio_producto(
     supabase,
     producto_nombre: str,
     es_guest: bool = True,
     plazo: str = "inmediato",
 ) -> str:
-    """✅ AUTO-DETECTA estructura de tabla."""
+    """✅ ESTRUCTURA CORRECTA: Busca en plantas → inventario → precio.
+    
+    Pasos:
+    1. Busca en tabla 'plantas' por nombre_comun
+    2. Obtiene planta_id
+    3. Busca en tabla 'inventario' donde planta_id = ese ID
+    4. Obtiene precio_mayorista
+    5. Calcula con matriz comercial correcta
+    """
     try:
         logger.info(f"🔍 Buscando: {producto_nombre}")
         
-        # 1. SELECT * para obtener toda la data
-        productos = supabase.table("inventario").select(
-            "*"
-        ).limit(5).execute()
+        # 1. BUSCAR EN TABLA 'plantas' por nombre_comun
+        plantas_resp = supabase.table("plantas").select(
+            "planta_id, nombre_comun"
+        ).ilike("nombre_comun", f"%{producto_nombre}%").limit(1).execute()
         
-        if not productos.data:
-            return "No hay productos en el catálogo"
+        if not plantas_resp.data:
+            logger.warning(f"Planta no encontrada: {producto_nombre}")
+            return f"No encontré '{producto_nombre}'. Intenta con: Hiedra, Geranio, Duranta, Afelandra"
         
-        logger.info(f"Total productos: {len(productos.data)}")
+        planta = plantas_resp.data[0]
+        planta_id = planta.get("planta_id")
+        nombre_comun = planta.get("nombre_comun")
+        logger.info(f"✅ Planta encontrada: {nombre_comun} (id={planta_id})")
         
-        # 2. Buscar en Python (más flexible)
-        producto_encontrado = None
-        for row in productos.data:
-            nombre = _obtener_nombre_producto(row)
-            if producto_nombre.lower() in nombre.lower():
-                producto_encontrado = row
-                break
+        # 2. BUSCAR EN TABLA 'inventario' por planta_id
+        inventario_resp = supabase.table("inventario").select(
+            "inventario_id, precio_mayorista, stock"
+        ).eq("planta_id", planta_id).limit(1).execute()
         
-        if not producto_encontrado:
-            return f"No encontré '{producto_nombre}'. Intenta con otros nombres."
+        if not inventario_resp.data:
+            logger.warning(f"Inventario no encontrado para planta_id={planta_id}")
+            return f"'{nombre_comun}' no está disponible en inventario"
         
-        # 3. Extraer datos
-        producto_id = _obtener_id_producto(producto_encontrado)
-        precio_mayorista = _obtener_precio(producto_encontrado)
-        nombre_final = _obtener_nombre_producto(producto_encontrado)
+        inventario = inventario_resp.data[0]
+        precio_mayorista = inventario.get("precio_mayorista", 0)
+        inventario_id = inventario.get("inventario_id")
+        logger.info(f"✅ Inventario encontrado: inventario_id={inventario_id}, precio=${precio_mayorista}")
         
-        logger.info(f"✅ Encontrado: {nombre_final} (id={producto_id}, precio=${precio_mayorista})")
+        if not precio_mayorista:
+            return "Error: precio no disponible"
         
-        if not producto_id or not precio_mayorista:
-            return "Error: datos incompletos"
-        
-        # 4. Calcular precio
+        # 3. CALCULAR PRECIO CON MATRIZ COMERCIAL
         resultado_precios = calcular_precios_pedido(
-            cliente={"es_guest": es_guest, "cliente_id": None if es_guest else 0},
-            items=[{"inventario_id": producto_id, "cantidad": 1, "precio_unitario": precio_mayorista}],
+            cliente={
+                "es_guest": es_guest,
+                "cliente_id": None if es_guest else 0,
+            },
+            items=[{
+                "inventario_id": inventario_id,
+                "cantidad": 1,
+                "precio_unitario": precio_mayorista,
+            }],
             plazo=plazo,
             forzar_canal=None,
         )
@@ -214,13 +193,14 @@ async def procesar_consulta_precio_producto(
         precio_cliente = resultado_precios["totales"]["precio_final_cliente"]
         logger.info(f"✅ Precio cliente: ${precio_cliente}")
         
-        # 5. Mensaje
+        # 4. CONSTRUIR MENSAJE
         precio_fmt = f"${int(precio_cliente):,.0f}".replace(",", ".")
         mensaje = (
-            f"Para tu proyecto, la {nombre_final} "
+            f"Para tu proyecto, la {nombre_comun} "
             f"tiene un precio de {precio_fmt} COP. "
             f"Compra: https://app.viveroonline.com.co/marketplace"
         )
+        logger.info(f"✅ Respuesta: {mensaje[:80]}")
         return mensaje
         
     except Exception as e:
@@ -234,7 +214,7 @@ async def obtener_recomendacion_producto(
     es_guest: bool = True,
     plazo: str = "inmediato",
 ) -> dict:
-    """Obtiene recomendación."""
+    """Obtiene recomendación de producto."""
     try:
         inventario = supabase.table("inventario").select("*").eq("id", producto_id).single().execute()
         
@@ -242,8 +222,7 @@ async def obtener_recomendacion_producto(
             return {"error": "No encontrado"}
         
         datos = inventario.data
-        nombre = _obtener_nombre_producto(datos)
-        precio = _obtener_precio(datos)
+        precio = datos.get("precio_mayorista", 0)
         
         if not precio:
             return {"error": "Sin precio"}
@@ -259,7 +238,7 @@ async def obtener_recomendacion_producto(
         
         return {
             "id": producto_id,
-            "nombre": nombre,
+            "nombre": "Producto",
             "precio_cliente_cop": int(precio_cliente),
             "precio_mayorista_cop": precio,
             "error": None
