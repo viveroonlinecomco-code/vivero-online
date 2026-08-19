@@ -1,4 +1,4 @@
-"""Webhook y rutas para Bot WhatsApp integrado con LangGraph + tienda marketplace.
+"""Webhook y rutas para Bot WhatsApp — VERSIÓN CORREGIDA 19 AGO.
 
 Gestiona:
 - Webhook POST /api/whatsapp/webhook (recibe mensajes)
@@ -6,7 +6,6 @@ Gestiona:
 - Flujo LangGraph para compradores/viveristas
 - Tickets de soporte
 - Consultas de precio (BI/B2C)
-- Onboarding viveristas
 """
 from __future__ import annotations
 
@@ -24,7 +23,6 @@ from app.services.whatsapp_meta import (
     send_text_message,
     verify_signature,
     procesar_consulta_precio_producto,
-    obtener_recomendacion_producto,
 )
 from app.routes.ticket_responder import (
     responder_ticket_segun_tipo,
@@ -34,31 +32,19 @@ from app.routes.ticket_responder import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# ═══════════════════════════════════════════════════════════════════════════
-# CONFIGURACIÓN
-# ═══════════════════════════════════════════════════════════════════════════
-
 VERIFY_TOKEN = os.getenv("META_WA_VERIFY_TOKEN", "")
 ADMIN_WHATSAPP = os.getenv("ADMIN_WHATSAPP_NOTIF", "")
 
 
-class WebhookMessage(BaseModel):
-    messaging_product: str
-    entry: list
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# HELPERS
-# ═══════════════════════════════════════════════════════════════════════════
-
 def _obtener_sesion_cliente(whatsapp: str) -> Optional[dict]:
-    """Obtiene o crea sesión del cliente en BD."""
+    """Obtiene sesión del cliente en BD."""
     try:
         resp = (
             admin()
             .table("whatsapp_sesiones")
             .select("*")
             .eq("whatsapp_numero", whatsapp)
+            .order("fecha_creacion", desc=True)
             .limit(1)
             .execute()
         )
@@ -70,8 +56,8 @@ def _obtener_sesion_cliente(whatsapp: str) -> Optional[dict]:
         return None
 
 
-def _crear_sesion_cliente(whatsapp: str, rol: str = "comprador") -> dict:
-    """Crea nueva sesión para cliente."""
+def _crear_sesion_cliente(whatsapp: str, rol: str = "guest") -> dict:
+    """Crea nueva sesión."""
     try:
         sesion = {
             "whatsapp_numero": whatsapp,
@@ -86,70 +72,20 @@ def _crear_sesion_cliente(whatsapp: str, rol: str = "comprador") -> dict:
         return sesion
     except Exception as e:
         logger.warning(f"Error creando sesión {whatsapp}: {e}")
-        return {"whatsapp_numero": whatsapp, "rol": rol, "error": str(e)}
+        return {"whatsapp_numero": whatsapp, "rol": rol}
 
 
-def _detectar_rol(whatsapp: str, mensaje: str) -> str:
-    """Detecta rol del usuario (viverista/comprador/admin/guest)."""
-    lower = mensaje.lower()
-    
-    # Viverista
-    if any(kw in lower for kw in ["vivero", "vendo", "soy viverista", "productos", "precio mayorista"]):
-        return "viverista"
-    
-    # Buscar en BD si está registrado
-    try:
-        cliente_resp = (
-            admin()
-            .table("clientes")
-            .select("cliente_id")
-            .eq("whatsapp_principal", whatsapp)
-            .limit(1)
-            .execute()
-        )
-        if cliente_resp.data:
-            return "comprador"
-        
-        vivero_resp = (
-            admin()
-            .table("viveros")
-            .select("vivero_id")
-            .eq("mandato_whatsapp_numero", whatsapp)
-            .limit(1)
-            .execute()
-        )
-        if vivero_resp.data:
-            return "viverista"
-    except Exception:
-        pass
-    
-    # Por defecto
-    return "guest"
-
-
-def _save_message(sesion_id: str, role: str, content: str, agente: str = "user"):
+def _save_message(whatsapp: str, role: str, content: str):
     """Guarda mensaje en historial."""
     try:
         admin().table("whatsapp_mensajes").insert({
-            "sesion_id": sesion_id,
+            "whatsapp_numero": whatsapp,
             "rol": role,
             "contenido": content,
-            "agente": agente,
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }).execute()
-    except Exception as e:
-        logger.warning(f"Error guardando mensaje: {e}")
-
-
-def _close_session(sesion_id: str):
-    """Cierra sesión."""
-    try:
-        admin().table("whatsapp_sesiones").update({
-            "estado": "cerrada",
-            "fecha_cierre": datetime.now(timezone.utc).isoformat(),
-        }).eq("sesion_id", sesion_id).execute()
-    except Exception as e:
-        logger.warning(f"Error cerrando sesión {sesion_id}: {e}")
+    except Exception:
+        pass
 
 
 async def _crear_ticket_y_notificar(
@@ -157,11 +93,9 @@ async def _crear_ticket_y_notificar(
     nombre: str,
     tipo: str,
     descripcion: str,
-    sesion_id: Optional[str] = None,
 ):
-    """Crea ticket y notifica al admin."""
+    """Crea ticket y notifica admin."""
     try:
-        # Crear ticket
         ticket_data = {
             "whatsapp_numero": whatsapp,
             "nombre": nombre,
@@ -169,17 +103,15 @@ async def _crear_ticket_y_notificar(
             "descripcion": descripcion,
             "estado": "abierto",
             "fecha_creacion": datetime.now(timezone.utc).isoformat(),
-            "sesion_id": sesion_id,
         }
         
         result = admin().table("tickets").insert(ticket_data).execute()
         if not result.data:
-            logger.error(f"No se pudo crear ticket para {whatsapp}")
             return
         
         ticket_id = result.data[0].get("id")
         
-        # Auto-responder según tipo
+        # Auto-responder
         respuesta_info = await responder_ticket_segun_tipo(ticket_id, ticket_data)
         
         # Notificar admin
@@ -191,26 +123,23 @@ async def _crear_ticket_y_notificar(
                 admin_whatsapp=ADMIN_WHATSAPP,
             )
         
-        logger.info(f"Ticket #{ticket_id} creado para {whatsapp}")
+        logger.info(f"Ticket #{ticket_id} creado")
         
     except Exception as e:
         logger.error(f"Error creando ticket: {e}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# WEBHOOK PRINCIPAL
+# WEBHOOK
 # ═══════════════════════════════════════════════════════════════════════════
 
 @router.post("/api/whatsapp/webhook")
 async def webhook_whatsapp(request: Request):
-    """Recibe mensajes de Meta WhatsApp Cloud API."""
-    
-    # Validar firma
+    """Recibe mensajes de Meta WhatsApp."""
     body_bytes = await request.body()
     signature_header = request.headers.get("x-hub-signature-256", "")
     
     if not verify_signature(body_bytes, signature_header):
-        logger.warning("Firma WhatsApp inválida")
         raise HTTPException(status_code=401, detail="Invalid signature")
     
     try:
@@ -218,7 +147,6 @@ async def webhook_whatsapp(request: Request):
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON")
     
-    # Procesar entrada
     if data.get("entry"):
         for entry in data["entry"]:
             if entry.get("changes"):
@@ -236,46 +164,35 @@ async def _procesar_mensaje(webhook_data: dict):
         nombre_cliente = webhook_data.get("contacts", [{}])[0].get("profile", {}).get("name", "Cliente")
         
         if not whatsapp_num:
-            logger.warning("No se pudo extraer número WhatsApp")
             return
         
         messages = webhook_data.get("messages", [])
         if not messages:
             return
         
-        mensaje_data = messages[0]
-        mensaje_texto = mensaje_data.get("text", {}).get("body", "").strip()
-        
+        mensaje_texto = messages[0].get("text", {}).get("body", "").strip()
         if not mensaje_texto:
-            logger.debug(f"Mensaje vacío de {whatsapp_num}")
             return
         
         logger.info(f"Mensaje de {whatsapp_num}: {mensaje_texto[:50]}")
         
-        # Obtener/crear sesión
+        # ✅ OBTENER O CREAR SESIÓN
         sesion = _obtener_sesion_cliente(whatsapp_num)
+        
+        # ✅ SI NO EXISTE SESIÓN = PRIMER MENSAJE → ENVIAR SALUDO Y SALIR
         if not sesion:
-            sesion = _crear_sesion_cliente(whatsapp_num)
-        
-        sesion_id = sesion.get("sesion_id") or sesion.get("id")
-        rol = sesion.get("rol", _detectar_rol(whatsapp_num, mensaje_texto))
-        lower = mensaje_texto.lower()
-        
-        # Saludo inicial
-        if not sesion.get("mensaje_inicial"):
+            _crear_sesion_cliente(whatsapp_num)
             await send_text_message(
                 whatsapp_num,
                 "🌱 ¡Hola! Bienvenido a ViveroOnline.com.co\n\n¿Qué necesitás hoy?\n1️⃣ Comprar plantas\n2️⃣ Vender mis plantas\n3️⃣ Consultar"
             )
-            admin().table("whatsapp_sesiones").update({
-                "mensaje_inicial": True
-            }).eq("sesion_id", sesion_id).execute()
-            return
+            return  # ✅ SALIR AQUÍ, NO PROCESAR MÁS
         
-        # ══════════════════════════════════════════════════════════════════
-        # ✅ FIX 19 AGO - CONSULTA DE PRECIO PARA COMPRADOR REGISTRADO
-        # ══════════════════════════════════════════════════════════════════
-        if rol in ("comprador", "admin") and lower.startswith("precio "):
+        # ✅ SESIÓN EXISTE = PROCESAR COMANDO
+        lower = mensaje_texto.lower()
+        
+        # ── PRECIO PARA COMPRADOR ──────────────────────────────────────────
+        if lower.startswith("precio "):
             producto_nombre = lower.replace("precio ", "", 1).strip()
             if producto_nombre:
                 try:
@@ -285,57 +202,47 @@ async def _procesar_mensaje(webhook_data: dict):
                         es_guest=False,
                         plazo="inmediato",
                     )
-                    _save_message(sesion_id, "assistant", respuesta, agente="precio_bot")
+                    _save_message(whatsapp_num, "bot", respuesta)
                     await send_text_message(whatsapp_num, respuesta)
                     return
                 except Exception as e:
-                    logger.error(f"Error procesando consulta de precio: {e}")
-                    await send_text_message(whatsapp_num, "⚠️ Error al consultar precio. Intentá de nuevo.")
+                    logger.error(f"Error precio: {e}")
+                    await send_text_message(whatsapp_num, "⚠️ Error al consultar precio.")
                     return
         
-        # Comandos de control
-        if lower in ("salir", "exit", "fin"):
-            _close_session(sesion_id)
-            await send_text_message(whatsapp_num, "Sesión cerrada. ¡Hasta pronto! 🌿")
-            return
-        
-        # Opciones del menú
+        # ── COMANDOS ───────────────────────────────────────────────────────
         if mensaje_texto in ("1", "1️⃣"):
-            respuesta = "📍 Explora el catálogo:\nhttps://app.viveroonline.com.co/marketplace"
-            await send_text_message(whatsapp_num, respuesta)
+            await send_text_message(whatsapp_num, "📍 Explora el catálogo:\nhttps://app.viveroonline.com.co/marketplace")
             return
         
         if mensaje_texto in ("2", "2️⃣"):
-            respuesta = "🌳 Registrate como viverista:\nhttps://app.viveroonline.com.co/registro-vivero"
-            await send_text_message(whatsapp_num, respuesta)
+            await send_text_message(whatsapp_num, "🌳 Registrate:\nhttps://app.viveroonline.com.co/registro-vivero")
             return
         
         if mensaje_texto in ("3", "3️⃣"):
-            respuesta = "❓ Escribe tu consulta o escribí 'ayuda' para opciones"
-            await send_text_message(whatsapp_num, respuesta)
+            await send_text_message(whatsapp_num, "❓ Escribe tu consulta o escribí 'ayuda'")
             return
         
-        # Crear ticket por defecto
+        if lower in ("salir", "exit", "fin"):
+            await send_text_message(whatsapp_num, "Sesión cerrada. ¡Hasta pronto! 🌿")
+            return
+        
+        # ── TICKET POR DEFECTO ─────────────────────────────────────────────
         await _crear_ticket_y_notificar(
             whatsapp=whatsapp_num,
             nombre=nombre_cliente,
             tipo="consulta",
             descripcion=mensaje_texto,
-            sesion_id=sesion_id,
         )
         
         await send_text_message(
             whatsapp_num,
-            f"✅ ¡Recibí tu solicitud! (ticket #{sesion_id[:6]})\n\nNuestro equipo te contactará por WhatsApp en las próximas horas."
+            f"✅ ¡Recibí tu solicitud!\n\nNuestro equipo te contactará en las próximas horas."
         )
         
     except Exception as e:
-        logger.exception(f"Error procesando mensaje: {e}")
+        logger.exception(f"Error procesando: {e}")
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# WEBHOOK VERIFICACIÓN (GET)
-# ═══════════════════════════════════════════════════════════════════════════
 
 @router.get("/api/whatsapp/webhook")
 async def verify_whatsapp_webhook(
@@ -343,10 +250,9 @@ async def verify_whatsapp_webhook(
     hub_challenge: str = "",
     hub_verify_token: str = "",
 ):
-    """Verifica el webhook con Meta."""
+    """Verifica webhook con Meta."""
     if hub_verify_token == VERIFY_TOKEN:
         logger.info("WhatsApp webhook verificado")
         return int(hub_challenge) if hub_challenge.isdigit() else hub_challenge
     
-    logger.warning("Token de verificación inválido")
-    raise HTTPException(status_code=403, detail="Invalid verification token")
+    raise HTTPException(status_code=403, detail="Invalid token")
