@@ -1,13 +1,12 @@
 """Cliente para enviar mensajes via Meta WhatsApp Cloud API.
 
-Servicios disponibles:
-- send_text_message(to, body) — async
-- send_template_message(to, template_name, language_code, components) — async
-- notify_viverista_nueva_cotizacion(to, ...) — async
-- notify_viverista_recordatorio(to, ...) — async
-- notify_comprador_pedido_parcial(to, ...) — async
-- download_media_bytes(media_id) — async
-- verify_signature(body_bytes, signature_header) — sync
+Servicios:
+- send_text_message() — envía texto
+- send_template_message() — envía template Meta
+- procesar_consulta_precio_producto() — consulta precio con matriz comercial
+- obtener_recomendacion_producto() — obtiene recomendación de producto
+- download_media_bytes() — descarga media
+- verify_signature() — valida firma Meta
 """
 from __future__ import annotations
 
@@ -18,10 +17,10 @@ import os
 from typing import Any, Dict, Optional
 
 import httpx
+from app.services.precios import calcular_precios_pedido
 
 logger = logging.getLogger(__name__)
 
-# Versión de la Graph API
 _GRAPH_API = "https://graph.facebook.com/v25.0"
 
 
@@ -34,12 +33,12 @@ def _access_token() -> str:
 
 
 async def send_text_message(to: str, body: str) -> bool:
-    """Envía un mensaje de texto plano a un número WhatsApp.
-
+    """Envía un mensaje de texto.
+    
     Args:
         to: Número en formato E.164 (ej: '+573178543819')
         body: Texto a enviar (max 4096 chars)
-
+    
     Returns:
         True si se envió, False si hubo error.
     """
@@ -61,12 +60,12 @@ async def send_text_message(to: str, body: str) -> bool:
                 json=payload,
             )
         if resp.status_code == 200:
-            logger.info(f"Texto enviado a {to}")
+            logger.info(f"✅ Mensaje enviado a {to}")
             return True
-        logger.error("Meta send_text error %d: %s", resp.status_code, resp.text[:300])
+        logger.error(f"❌ Error {resp.status_code}: {resp.text[:300]}")
         return False
     except Exception as e:
-        logger.exception(f"Meta send_text exception: {e}")
+        logger.exception(f"❌ Exception: {e}")
         return False
 
 
@@ -76,16 +75,7 @@ async def send_template_message(
     language_code: str = "es",
     components: list | None = None,
 ) -> bool:
-    """Envía un mensaje usando una plantilla aprobada por Meta.
-
-    Usar para notificaciones business-initiated (ej: orden pagada).
-
-    Args:
-        to: Número del destinatario
-        template_name: Nombre exacto de la plantilla en Meta Business Manager
-        language_code: 'es', 'en_US', etc.
-        components: Variables de la plantilla (estructura Meta: [{"type":"body","parameters":[{"type":"text","text":"..."}]}])
-    """
+    """Envía un mensaje usando una plantilla Meta aprobada."""
     to_clean = to.lstrip("+")
     payload = {
         "messaging_product": "whatsapp",
@@ -110,29 +100,18 @@ async def send_template_message(
                 json=payload,
             )
         if resp.status_code == 200:
-            logger.info(f"Template {template_name} enviado a {to}")
+            logger.info(f"✅ Template {template_name} enviado")
             return True
-        logger.error(
-            "Meta send_template error %d for %s: %s", resp.status_code, template_name, resp.text[:300]
-        )
+        logger.error(f"❌ Error {resp.status_code}")
         return False
     except Exception as e:
-        logger.exception(f"Meta send_template exception: {e}")
+        logger.exception(f"❌ Exception: {e}")
         return False
 
 
 async def download_media_bytes(media_id: str) -> bytes:
-    """Descarga los bytes de un media file de Meta (imagen, audio, etc.)
-
-    Proceso 2 pasos:
-    1. GET /v25.0/{media_id} → obtiene URL real con token
-    2. GET URL real → bytes del archivo
-
-    Raises:
-        Exception si no se puede obtener la URL o descargar.
-    """
+    """Descarga bytes de un media file de Meta."""
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-        # Paso 1: obtener URL real
         meta_resp = await client.get(
             f"{_GRAPH_API}/{media_id}",
             headers={"Authorization": f"Bearer {_access_token()}"},
@@ -140,9 +119,8 @@ async def download_media_bytes(media_id: str) -> bytes:
         meta_resp.raise_for_status()
         media_url = meta_resp.json().get("url")
         if not media_url:
-            raise ValueError(f"Meta no devolvió URL para media_id={media_id}")
+            raise ValueError(f"Meta no devolvió URL")
 
-        # Paso 2: descargar desde URL real
         media_resp = await client.get(
             media_url,
             headers={"Authorization": f"Bearer {_access_token()}"},
@@ -152,15 +130,10 @@ async def download_media_bytes(media_id: str) -> bytes:
 
 
 def verify_signature(body_bytes: bytes, signature_header: str) -> bool:
-    """Valida la firma x-hub-signature-256 de Meta usando HMAC-SHA256 + App Secret.
-
-    Returns:
-        True si válida. True también si META_WA_APP_SECRET no está configurado
-        (así no bloqueamos en dev). False si la firma no coincide.
-    """
+    """Valida la firma x-hub-signature-256 de Meta."""
     app_secret = os.getenv("META_WA_APP_SECRET", "")
     if not app_secret:
-        logger.warning("META_WA_APP_SECRET no configurado — saltando validación de firma")
+        logger.warning("META_WA_APP_SECRET no configurado")
         return True
 
     if not signature_header or not signature_header.startswith("sha256="):
@@ -176,16 +149,122 @@ def verify_signature(body_bytes: bytes, signature_header: str) -> bool:
     return hmac.compare_digest(expected, computed)
 
 
-# ═══════════════════════════════════════════════════════════════════════════
-# TEMPLATES FEATURE AUTO-TIMEOUT (12 ago 2026 — CORREGIDO)
-# ═══════════════════════════════════════════════════════════════════════════
-# 3 templates aprobados por Meta:
-#   1. notif_viverista_nueva_cotizacion  (6 vars body, 3 botones Quick Reply)
-#   2. recordatorio_viverista_pendiente  (5 vars body, 2 botones Quick Reply)
-#   3. notif_comprador_pedido_parcial    (4 vars body, 1 botón URL estática)
-#
-# CORREGIDO: Todas las funciones ahora son ASYNC y usan formato Meta v25.0
-# ═══════════════════════════════════════════════════════════════════════════
+async def obtener_recomendacion_producto(
+    supabase,
+    producto_id: int,
+    es_guest: bool = True,
+    plazo: str = "inmediato",
+) -> dict:
+    """Obtiene recomendación de producto con precio correcto (matriz comercial).
+    
+    Ejemplo B2C (guest, inmediato):
+        Hiedra: $17.010 × 1.20 (markup) = $20.412 ✅
+    
+    Ejemplo B2B (registrado, >= 5 SMLMV, inmediato):
+        Hiedra: $17.010 × 1.20 × (1 - 0.12 descuento) = $17.962 ✅
+    """
+    try:
+        # 1. Consultar BD
+        inventario = supabase.table("inventario").select(
+            "id, precio_mayorista, categoria_producto, nombre_comun, nombre_cientifico, vivero_id"
+        ).eq("id", producto_id).single().execute()
+        
+        if not inventario.data:
+            return {"error": f"Producto {producto_id} no encontrado"}
+        
+        datos = inventario.data
+        precio_mayorista = datos.get("precio_mayorista", 0)
+        
+        # 2. Calcular precio con matriz comercial
+        resultado_precios = calcular_precios_pedido(
+            cliente={
+                "es_guest": es_guest,
+                "cliente_id": None if es_guest else 0,
+            },
+            items=[{
+                "inventario_id": producto_id,
+                "cantidad": 1,
+                "precio_unitario": precio_mayorista,
+            }],
+            plazo=plazo,
+            forzar_canal=None,
+        )
+        
+        # 3. Extraer precio final
+        precio_cliente = resultado_precios["totales"]["precio_final_cliente"]
+        
+        # 4. Construir nombre
+        nombre_final = datos.get("nombre_comun", "Producto")
+        nombre_cientifico = datos.get("nombre_cientifico", "")
+        
+        if nombre_cientifico and nombre_cientifico != nombre_final:
+            nombre_final = f"{nombre_final} ({nombre_cientifico})"
+        
+        # 5. Retornar
+        return {
+            "id": producto_id,
+            "nombre": nombre_final,
+            "precio_cliente_cop": int(precio_cliente),
+            "precio_mayorista_cop": precio_mayorista,
+            "canal": resultado_precios["canal"],
+            "plazo": resultado_precios["plazo"],
+            "vivero_id": datos.get("vivero_id"),
+            "error": None
+        }
+        
+    except Exception as e:
+        logger.exception(f"Error obtener_recomendacion_producto: {e}")
+        return {"error": f"Error: {str(e)}"}
+
+
+async def procesar_consulta_precio_producto(
+    supabase,
+    producto_nombre: str,
+    es_guest: bool = True,
+    plazo: str = "inmediato",
+) -> str:
+    """Procesa "PRECIO [PRODUCTO]" con matriz comercial correcta.
+    
+    Retorna mensaje con precio para B2C o B2B.
+    """
+    try:
+        # 1. Buscar producto
+        productos = supabase.table("inventario").select(
+            "id, precio_mayorista, categoria_producto, nombre_comun"
+        ).ilike("nombre_comun", f"%{producto_nombre}%").limit(1).execute()
+        
+        if not productos.data:
+            return f"No encontré '{producto_nombre}'. Intenta con: Hiedra, Geranio, Duranta, Afelandra"
+        
+        producto_id = productos.data[0]["id"]
+        
+        # 2. Obtener recomendación con precio correcto
+        recom = await obtener_recomendacion_producto(
+            supabase=supabase,
+            producto_id=producto_id,
+            es_guest=es_guest,
+            plazo=plazo,
+        )
+        
+        if "error" in recom and recom["error"]:
+            return f"Error: {recom['error']}"
+        
+        # 3. Construir mensaje
+        precio_formateado = f"${recom['precio_cliente_cop']:,.0f}".replace(",", ".")
+        canal_str = "tu proyecto" if recom['canal'] == 'b2c' else "tu negocio"
+        
+        mensaje = (
+            f"Para {canal_str}, la {recom['nombre']} "
+            f"tiene un precio de {precio_formateado} COP. "
+            f"Compra aquí: https://app.viveroonline.com.co/marketplace/producto/{producto_id}"
+        )
+        
+        return mensaje
+        
+    except Exception as e:
+        logger.exception(f"Error procesar_consulta_precio: {e}")
+        return f"Error: {str(e)}"
+
 
 def _format_cop(monto) -> str:
     """Formato monto Colombia: 88410 -> $88.410"""
@@ -201,15 +280,7 @@ async def notify_viverista_nueva_cotizacion(
     ciudad_entrega: str,
     horas_para_responder: int = 2,
 ) -> Dict[str, Any]:
-    """Notificación inicial al viverista con cotización nueva.
-    
-    ESTRATEGIA:
-    1. INTENTA template Meta (si falla, log pero continúa)
-    2. SIEMPRE envía texto libre como fallback (garantizado)
-    
-    Así recuperamos funcionalidad conocida (texto) + agregamos Meta.
-    """
-    # Construir mensaje de texto (BASE — GARANTIZADO)
+    """Notificación al viverista con cotización nueva."""
     msg_texto = (
         f"🌿 *Nueva solicitud — ViveroOnline*\n\n"
         f"Proyecto: *{proyecto}*\n"
@@ -222,42 +293,11 @@ async def notify_viverista_nueva_cotizacion(
         f"Respondé *APROBAR* o *RECHAZAR*"
     )
     
-    # INTENTAR template Meta (best-effort)
-    template_result = False
-    try:
-        components = [
-            {
-                "type": "body",
-                "parameters": [
-                    {"type": "text", "text": nombre_viverista},
-                    {"type": "text", "text": proyecto},
-                    {"type": "text", "text": cliente},
-                    {"type": "text", "text": _format_cop(tu_parte_cop)},
-                    {"type": "text", "text": ciudad_entrega},
-                    {"type": "text", "text": str(horas_para_responder)},
-                ]
-            }
-        ]
-        
-        template_result = await send_template_message(
-            to=to,
-            template_name="notif_viverista_nueva_cotizacion",
-            language_code="es",
-            components=components,
-        )
-        if template_result:
-            logger.info(f"✅ Template Meta enviado a {to}")
-    except Exception as e:
-        logger.warning(f"⚠️ Template Meta falló (seguimos con texto): {e}")
-    
-    # SIEMPRE enviar texto (fallback garantizado)
     text_result = await send_text_message(to, msg_texto)
     
     return {
         "ok": text_result,
-        "template_meta": template_result,
-        "text": text_result,
-        "message": "Notificación enviada (texto garantizado)"
+        "message": "Notificación enviada"
     }
 
 
@@ -269,10 +309,7 @@ async def notify_viverista_recordatorio(
     numero_recordatorio: int,
     minutos_restantes: int,
 ) -> Dict[str, Any]:
-    """Recordatorio de cotización sin respuesta.
-    
-    Misma estrategia: TEXTO garantizado + template Meta best-effort
-    """
+    """Recordatorio de cotización sin respuesta."""
     msg_texto = (
         f"⏰ *RECORDATORIO — ViveroOnline*\n\n"
         f"Proyecto: *{proyecto}*\n"
@@ -283,37 +320,9 @@ async def notify_viverista_recordatorio(
         f"Respondé *APROBAR* o *RECHAZAR*"
     )
     
-    template_result = False
-    try:
-        components = [
-            {
-                "type": "body",
-                "parameters": [
-                    {"type": "text", "text": nombre_viverista},
-                    {"type": "text", "text": proyecto},
-                    {"type": "text", "text": _format_cop(tu_parte_cop)},
-                    {"type": "text", "text": str(numero_recordatorio)},
-                    {"type": "text", "text": str(minutos_restantes)},
-                ]
-            }
-        ]
-        
-        template_result = await send_template_message(
-            to=to,
-            template_name="recordatorio_viverista_pendiente",
-            language_code="es",
-            components=components,
-        )
-    except Exception as e:
-        logger.warning(f"⚠️ Template recordatorio falló: {e}")
-    
     text_result = await send_text_message(to, msg_texto)
     
-    return {
-        "ok": text_result,
-        "template_meta": template_result,
-        "text": text_result
-    }
+    return {"ok": text_result}
 
 
 async def notify_comprador_pedido_parcial(
@@ -323,10 +332,7 @@ async def notify_comprador_pedido_parcial(
     monto_disponible_cop: int,
     detalle_no_confirmado: str,
 ) -> Dict[str, Any]:
-    """Notificación al comprador con cotización parcial.
-    
-    Misma estrategia: TEXTO garantizado + template Meta best-effort
-    """
+    """Notificación al comprador con cotización parcial."""
     msg_texto = (
         f"📋 *ACTUALIZACIÓN DE TU PEDIDO — ViveroOnline*\n\n"
         f"Hola {nombre_cliente},\n\n"
@@ -340,33 +346,6 @@ async def notify_comprador_pedido_parcial(
         f"Tu pedido está protegido. 🌿"
     )
     
-    template_result = False
-    try:
-        components = [
-            {
-                "type": "body",
-                "parameters": [
-                    {"type": "text", "text": nombre_cliente},
-                    {"type": "text", "text": proyecto},
-                    {"type": "text", "text": _format_cop(monto_disponible_cop)},
-                    {"type": "text", "text": detalle_no_confirmado},
-                ]
-            }
-        ]
-        
-        template_result = await send_template_message(
-            to=to,
-            template_name="notif_comprador_pedido_parcial",
-            language_code="es",
-            components=components,
-        )
-    except Exception as e:
-        logger.warning(f"⚠️ Template comprador falló: {e}")
-    
     text_result = await send_text_message(to, msg_texto)
     
-    return {
-        "ok": text_result,
-        "template_meta": template_result,
-        "text": text_result
-    }
+    return {"ok": text_result}
