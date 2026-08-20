@@ -1,1230 +1,311 @@
-<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<script>
-  window.va = window.va || function () { (window.vaq = window.vaq || []).push(arguments); };
-</script>
-<script defer src="/_vercel/insights/script.js"></script>
-<script>
-  window.si = window.si || function () { (window.siq = window.siq || []).push(arguments); };
-</script>
-<script defer src="/_vercel/speed-insights/script.js"></script>
-<title>Centro de Control · ViveroOnline</title>
-<script src="https://cdn.tailwindcss.com?plugins=forms"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
-<script>
-tailwind.config = {
-    theme: {
-        extend: {
-            colors: {
-                primary: "#012d1d",
-                accent:  "#22c55e",
-                bg:      "#f0f2ee",
-            },
-            fontFamily: {
-                sans: ["Inter", "sans-serif"],
-                mono: ["DM Mono", "monospace"],
-            },
-        },
-    },
-}
-</script>
-<style>
-* { box-sizing: border-box; }
-body { min-height: 100dvh; background: #f0f2ee; font-family: "Inter", sans-serif; }
+<!-- SECCIÓN TICKETS - Agregar a admin_dashboard.html -->
 
-/* Sidebar */
-.sidebar { width: 240px; min-height: 100dvh; background: #012d1d; position: fixed; top: 0; left: 0; bottom: 0; display: flex; flex-direction: column; z-index: 40; transition: transform .25s; }
-.sidebar.hidden-mobile { transform: translateX(-100%); }
-@media(max-width:768px){ .sidebar { transform: translateX(-100%); } .sidebar.open { transform: translateX(0); } }
-.sidebar-item { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-radius: 10px; cursor: pointer; color: rgba(255,255,255,.6); font-size: 14px; font-weight: 500; transition: all .15s; margin: 1px 8px; }
-.sidebar-item:hover { background: rgba(255,255,255,.08); color: #fff; }
-.sidebar-item.active { background: rgba(34,197,94,.15); color: #4ade80; }
-.sidebar-item .icon { font-size: 20px; }
+<!-- Agregar en SIDEBAR (después de "Auditoría y Soporte") -->
+<div class="sidebar-item" onclick="goTo('tickets')" id="nav-tickets">
+    <span class="material-symbols-outlined icon">support_agent</span>
+    📞 Gestión de Tickets
+</div>
 
-/* Main layout */
-.main { margin-left: 240px; min-height: 100dvh; }
-@media(max-width:768px){ .main { margin-left: 0; } }
-
-/* Cards */
-.card { background: #fff; border-radius: 14px; padding: 20px; border: 1px solid rgba(1,45,29,.08); }
-.kpi-val { font-size: 28px; font-weight: 800; color: #012d1d; }
-.kpi-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; }
-
-/* Tables */
-.tbl { width: 100%; border-collapse: collapse; }
-.tbl th { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: #64748b; padding: 10px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
-.tbl td { padding: 12px; font-size: 13px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
-.tbl tr:hover td { background: #f8fafc; }
-.tbl tr:last-child td { border-bottom: none; }
-
-/* Badges */
-.badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight: 600; }
-.badge-green { background: #dcfce7; color: #15803d; }
-.badge-yellow { background: #fef9c3; color: #a16207; }
-.badge-red { background: #fee2e2; color: #dc2626; }
-.badge-blue { background: #dbeafe; color: #1d4ed8; }
-.badge-gray { background: #f1f5f9; color: #64748b; }
-
-/* Buttons */
-.btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s; border: none; }
-.btn-primary { background: #012d1d; color: #fff; }
-.btn-primary:hover { background: #024a2f; }
-.btn-danger { background: #fee2e2; color: #dc2626; }
-.btn-danger:hover { background: #fecaca; }
-.btn-ghost { background: #f1f5f9; color: #475569; }
-.btn-ghost:hover { background: #e2e8f0; }
-.btn-success { background: #dcfce7; color: #15803d; }
-.btn-success:hover { background: #bbf7d0; }
-
-/* Section tabs */
-.section { display: none; }
-.section.active { display: block; }
-
-/* Search */
-.search-box { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 8px 12px; }
-.search-box input { border: none; outline: none; font-size: 14px; flex: 1; background: transparent; }
-
-/* Modal overlay */
-.modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 100; display: none; align-items: center; justify-content: center; }
-.modal-bg.open { display: flex; }
-.modal { background: #fff; border-radius: 16px; padding: 24px; width: 100%; max-width: 440px; }
-
-/* Toast */
-#toast { position: fixed; bottom: 24px; right: 24px; z-index: 200; display: none; }
-.toast-msg { background: #012d1d; color: #fff; padding: 12px 18px; border-radius: 10px; font-size: 13px; font-weight: 600; margin-top: 8px; animation: fadeUp .3s; }
-.toast-msg.error { background: #dc2626; }
-@keyframes fadeUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: translateY(0); } }
-
-/* Mobile overlay */
-.overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 35; }
-.overlay.show { display: block; }
-</style>
-</head>
-<body>
-
-<!-- Mobile overlay -->
-<div class="overlay" id="overlay" onclick="closeSidebar()"></div>
-
-<!-- SIDEBAR -->
-<aside class="sidebar" id="sidebar">
-    <div style="padding:20px 16px 12px; border-bottom: 1px solid rgba(255,255,255,.1);">
-        <div style="display:flex;align-items:center;gap:10px;">
-            <span class="material-symbols-outlined" style="color:#4ade80;font-size:28px;">energy_savings_leaf</span>
-            <div>
-                <p style="color:#fff;font-weight:800;font-size:14px;line-height:1.2;">ViveroOnline</p>
-                <p style="color:rgba(255,255,255,.4);font-size:11px;">Centro de Control</p>
-            </div>
-        </div>
+<!-- Agregar SECCIÓN en MAIN (después de section-auditoria) -->
+<div class="section" id="section-tickets">
+    <div style="margin-bottom:24px;">
+        <h1 style="font-size:22px;font-weight:800;color:#012d1d;">📞 Gestión de Tickets</h1>
+        <p style="color:#64748b;font-size:13px;margin-top:2px;">Responde consultas de clientes desde WhatsApp</p>
     </div>
 
-    <nav style="flex:1;padding:12px 0;overflow-y:auto;">
-        <div class="sidebar-item active" onclick="goTo('dashboard')" id="nav-dashboard">
-            <span class="material-symbols-outlined icon">dashboard</span>
-            Centro de Control
-        </div>
-        <div class="sidebar-item" onclick="goTo('comunidad')" id="nav-comunidad">
-            <span class="material-symbols-outlined icon">groups</span>
-            Comunidad
-        </div>
-        <div class="sidebar-item" onclick="goTo('catalogo')" id="nav-catalogo">
-            <span class="material-symbols-outlined icon">inventory_2</span>
-            Catálogo e Inventario
-        </div>
-        <div class="sidebar-item" onclick="goTo('suscripciones')" id="nav-suscripciones">
-            <span class="material-symbols-outlined icon">star</span>
-            Suscripciones
-        </div>
-        <div class="sidebar-item" onclick="goTo('secop')" id="nav-secop">
-            <span class="material-symbols-outlined icon">cloud_download</span>
-            SECOP II
-        </div>
-        <div class="sidebar-item" onclick="goTo('auditoria')" id="nav-auditoria">
-            <span class="material-symbols-outlined icon">shield</span>
-            Auditoría y Soporte
-        </div>
-    </nav>
-
-    <div style="padding:16px;border-top:1px solid rgba(255,255,255,.1);">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-            <div style="width:32px;height:32px;border-radius:50%;background:rgba(74,222,128,.2);display:flex;align-items:center;justify-content:center;">
-                <span class="material-symbols-outlined" style="color:#4ade80;font-size:16px;">person</span>
-            </div>
-            <div>
-                <p id="admin-nombre" style="color:#fff;font-size:12px;font-weight:600;">Admin</p>
-                <p style="color:rgba(255,255,255,.4);font-size:11px;">Administrador</p>
-            </div>
-        </div>
-        <button onclick="VO.logout()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:6px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);border:none;border-radius:8px;padding:8px;font-size:12px;font-weight:600;cursor:pointer;" onmouseover="this.style.background='rgba(255,255,255,.15)'" onmouseout="this.style.background='rgba(255,255,255,.08)'">
-            <span class="material-symbols-outlined" style="font-size:16px;">logout</span>
-            Cerrar sesión
+    <!-- TAB: Pendientes | Respondidos -->
+    <div style="display:flex;gap:12px;margin-bottom:16px;border-bottom:1px solid #e2e8f0;">
+        <button onclick="switchTicketTab('pendientes')" id="tab-pendientes" style="padding:12px 16px;border:none;background:none;cursor:pointer;font-weight:600;color:#012d1d;border-bottom:3px solid #012d1d;">
+            ⏳ Pendientes
+        </button>
+        <button onclick="switchTicketTab('respondidos')" id="tab-respondidos" style="padding:12px 16px;border:none;background:none;cursor:pointer;font-weight:600;color:#94a3b8;border-bottom:3px solid transparent;">
+            ✅ Respondidos
         </button>
     </div>
-</aside>
 
-<!-- MAIN -->
-<div class="main">
-
-    <!-- Top bar (mobile) -->
-    <div style="display:none;position:sticky;top:0;z-index:30;background:#f0f2ee;padding:12px 16px;border-bottom:1px solid rgba(1,45,29,.08);align-items:center;gap:12px;" id="mobile-topbar">
-        <button onclick="openSidebar()" style="border:none;background:none;cursor:pointer;padding:4px;">
-            <span class="material-symbols-outlined" style="font-size:24px;color:#012d1d;">menu</span>
-        </button>
-        <span class="material-symbols-outlined" style="color:#22c55e;font-size:22px;">energy_savings_leaf</span>
-        <span style="font-weight:800;font-size:15px;color:#012d1d;">Centro de Control</span>
+    <!-- TABLA PENDIENTES -->
+    <div id="tickets-pendientes" class="card">
+        <table class="tbl">
+            <thead>
+                <tr>
+                    <th>Ticket</th>
+                    <th>Cliente</th>
+                    <th>WhatsApp</th>
+                    <th>Descripción</th>
+                    <th>Prioridad</th>
+                    <th>Creado</th>
+                    <th>Acciones</th>
+                </tr>
+            </thead>
+            <tbody id="tbody-tickets-pendientes">
+                <tr><td colspan="7" style="text-align:center;color:#94a3b8;">Cargando...</td></tr>
+            </tbody>
+        </table>
     </div>
 
-    <div style="padding:24px 28px;max-width:1100px;margin:0 auto;">
-
-        <!-- ══════════ DASHBOARD ══════════ -->
-        <div class="section active" id="section-dashboard">
-            <div style="margin-bottom:24px;">
-                <h1 style="font-size:22px;font-weight:800;color:#012d1d;">📊 Centro de Control</h1>
-                <p style="color:#64748b;font-size:13px;margin-top:2px;">KPIs en tiempo real de ViveroOnline</p>
-            </div>
-
-            <!-- KPIs -->
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:20px;">
-                <div class="card">
-                    <p class="kpi-label">GMV Total</p>
-                    <p class="kpi-val" id="k-gmv">—</p>
-                    <p style="font-size:11px;color:#94a3b8;margin-top:4px;">Acumulado plataforma</p>
-                </div>
-                <div class="card">
-                    <p class="kpi-label">Ticket Promedio</p>
-                    <p class="kpi-val" id="k-ticket">—</p>
-                    <p style="font-size:11px;color:#94a3b8;margin-top:4px;">Por transacción</p>
-                </div>
-                <div class="card">
-                    <p class="kpi-label">Viveristas Activos</p>
-                    <p class="kpi-val" id="k-viveristas">—</p>
-                    <p style="font-size:11px;color:#94a3b8;margin-top:4px;">Con catálogo publicado</p>
-                </div>
-                <div class="card">
-                    <p class="kpi-label">Compradores</p>
-                    <p class="kpi-val" id="k-compradores">—</p>
-                    <p style="font-size:11px;color:#94a3b8;margin-top:4px;">Usuarios activos B2B</p>
-                </div>
-                <div class="card">
-                    <p class="kpi-label">Plantas en Catálogo</p>
-                    <p class="kpi-val" id="k-items">—</p>
-                    <p style="font-size:11px;color:#94a3b8;margin-top:4px;">Disponibles para compra</p>
-                </div>
-                <div class="card">
-                    <p class="kpi-label">Suscriptores Plan</p>
-                    <p class="kpi-val" id="k-suscriptores">—</p>
-                    <p style="font-size:11px;color:#94a3b8;margin-top:4px;">Plan Inteligencia activo</p>
-                </div>
-            </div>
-
-            <!-- Accesos rápidos -->
-            <div class="card" style="margin-bottom:16px;">
-                <h3 style="font-weight:700;font-size:14px;color:#012d1d;margin-bottom:14px;">⚡ Acciones rápidas</h3>
-                <div style="display:flex;flex-wrap:wrap;gap:10px;">
-                    <button class="btn btn-primary" onclick="goTo('suscripciones');setTimeout(()=>document.getElementById('btn-nueva-sus').click(),300)">
-                        <span class="material-symbols-outlined" style="font-size:16px;">star</span>
-                        Dar suscripción
-                    </button>
-                    <button class="btn btn-ghost" onclick="goTo('comunidad')">
-                        <span class="material-symbols-outlined" style="font-size:16px;">groups</span>
-                        Ver usuarios
-                    </button>
-                    <button class="btn btn-ghost" onclick="goTo('catalogo')">
-                        <span class="material-symbols-outlined" style="font-size:16px;">inventory_2</span>
-                        Ver catálogo
-                    </button>
-                    <a href="/marketplace" target="_blank" class="btn btn-ghost" style="text-decoration:none;">
-                        <span class="material-symbols-outlined" style="font-size:16px;">storefront</span>
-                        Ver marketplace
-                    </a>
-                </div>
-            </div>
-
-            <!-- Top Viveristas -->
-            <div class="card">
-                <div style="display:flex;align-items:center;justify-content:between;margin-bottom:14px;">
-                    <h3 style="font-weight:700;font-size:14px;color:#012d1d;flex:1;">🏆 Top Viveristas (últimos 90 días · GMV)</h3>
-                </div>
-                <div id="top-viveristas">
-                    <p style="text-align:center;color:#94a3b8;font-size:13px;padding:20px;">Cargando...</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- ══════════ COMUNIDAD ══════════ -->
-        <div class="section" id="section-comunidad">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
-                <div>
-                    <h1 style="font-size:22px;font-weight:800;color:#012d1d;">👥 Comunidad</h1>
-                    <p style="color:#64748b;font-size:13px;margin-top:2px;">Todos los usuarios de la plataforma</p>
-                </div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <button class="btn btn-ghost" onclick="filtrarComunidad('')" id="fil-todos">Todos</button>
-                    <button class="btn btn-ghost" onclick="filtrarComunidad('viverista')" id="fil-viverista">🌿 Viveristas</button>
-                    <button class="btn btn-ghost" onclick="filtrarComunidad('comprador')" id="fil-comprador">🛒 Compradores</button>
-                </div>
-            </div>
-
-            <div class="card" style="margin-bottom:16px;">
-                <div class="search-box">
-                    <span class="material-symbols-outlined" style="color:#94a3b8;font-size:18px;">search</span>
-                    <input type="text" placeholder="Buscar por nombre o vivero..." id="q-comunidad" oninput="buscarComunidad()">
-                </div>
-            </div>
-
-            <div class="card" style="overflow-x:auto;">
-                <table class="tbl" id="tbl-comunidad">
-                    <thead>
-                        <tr>
-                            <th>Usuario</th>
-                            <th>Rol</th>
-                            <th>Vivero / Info</th>
-                            <th>Suscripción</th>
-                            <th>Onboarding</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tbody-comunidad">
-                        <tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:24px;">Cargando...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- ══════════ CATÁLOGO ══════════ -->
-        <div class="section" id="section-catalogo">
-            <div style="margin-bottom:20px;">
-                <h1 style="font-size:22px;font-weight:800;color:#012d1d;">📦 Catálogo e Inventario</h1>
-                <p style="color:#64748b;font-size:13px;margin-top:2px;">Todos los productos del marketplace</p>
-            </div>
-
-            <div class="card" style="margin-bottom:16px;">
-                <div class="search-box">
-                    <span class="material-symbols-outlined" style="color:#94a3b8;font-size:18px;">search</span>
-                    <input type="text" placeholder="Buscar planta o vivero..." id="q-catalogo" oninput="buscarCatalogo()">
-                </div>
-            </div>
-
-            <div class="card" style="overflow-x:auto;">
-                <table class="tbl">
-                    <thead>
-                        <tr>
-                            <th>Planta</th>
-                            <th>Vivero</th>
-                            <th>Precio mayorista</th>
-                            <th>Stock</th>
-                            <th>Altura</th>
-                            <th>Estado</th>
-                            <th>Acción</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tbody-catalogo">
-                        <tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:24px;">Cargando...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- ══════════ SUSCRIPCIONES ══════════ -->
-        <div class="section" id="section-suscripciones">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
-                <div>
-                    <h1 style="font-size:22px;font-weight:800;color:#012d1d;">⭐ Suscripciones</h1>
-                    <p style="color:#64748b;font-size:13px;margin-top:2px;">Plan Inteligencia — gestión manual</p>
-                </div>
-                <button class="btn btn-primary" id="btn-nueva-sus" onclick="abrirModalActivar()">
-                    <span class="material-symbols-outlined" style="font-size:16px;">add</span>
-                    Dar acceso a usuario
-                </button>
-            </div>
-
-            <div class="card" style="overflow-x:auto;">
-                <table class="tbl">
-                    <thead>
-                        <tr>
-                            <th>Usuario</th>
-                            <th>Rol</th>
-                            <th>Plan</th>
-                            <th>Estado</th>
-                            <th>Vence</th>
-                            <th>Acciones</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tbody-sus">
-                        <tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:24px;">Cargando...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- ══════════ SECOP ══════════ -->
-        <div class="section" id="section-secop">
-            <div style="margin-bottom:20px;">
-                <h1 style="font-size:22px;font-weight:800;color:#012d1d;">📋 SECOP II</h1>
-                <p style="color:#64748b;font-size:13px;margin-top:2px;">Ingesta y análisis de procesos públicos de contratación</p>
-            </div>
-
-            <!-- Ingestar -->
-            <div class="card" style="margin-bottom:16px;">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
-                    <h3 style="font-weight:700;font-size:15px;color:#012d1d;">Ingestar SECOP II</h3>
-                    <span style="font-size:11px;color:#94a3b8;">Procesos públicos de contratación</span>
-                </div>
-                <p style="font-size:13px;color:#64748b;margin-bottom:16px;">Trae procesos recientes de SECOP que mencionan plantas/arborización/paisajismo en la Sabana de Bogotá. Si activás clasificación IA, Gemini analiza cada proceso (~2–3s por proceso).</p>
-                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:16px;">
-                    <div>
-                        <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Días atrás</label>
-                        <input type="number" id="secop-dias" value="30" min="1" max="365"
-                            style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:13px;outline:none;background:#fff;">
-                    </div>
-                    <div>
-                        <label style="display:block;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">Límite procesos</label>
-                        <input type="number" id="secop-limit" value="5" min="1" max="200"
-                            style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:8px 12px;font-size:13px;outline:none;background:#fff;">
-                    </div>
-                    <div style="display:flex;align-items:flex-end;padding-bottom:2px;">
-                        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:#475569;font-weight:500;">
-                            <input type="checkbox" id="secop-clasificar" style="width:16px;height:16px;accent-color:#012d1d;">
-                            Clasificar con IA (Gemini)
-                        </label>
-                    </div>
-                </div>
-                <button id="secop-disparar" onclick="dispararSecop()"
-                    class="btn btn-primary" style="width:100%;justify-content:center;padding:12px;">
-                    <span id="secop-btn-content" style="display:flex;align-items:center;gap:8px;">
-                        <span class="material-symbols-outlined" style="font-size:18px;">cloud_download</span>
-                        <span>Disparar ingesta</span>
-                    </span>
-                </button>
-
-                <div id="secop-resultado" style="display:none;margin-top:16px;">
-                    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;">
-                        <div style="background:#f0fdf4;border-radius:10px;padding:12px;text-align:center;">
-                            <p style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;">Ingestados</p>
-                            <p style="font-size:24px;font-weight:800;color:#012d1d;" id="secop-ingestados">0</p>
-                        </div>
-                        <div style="background:#f0fdf4;border-radius:10px;padding:12px;text-align:center;">
-                            <p style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;">Nuevos</p>
-                            <p style="font-size:24px;font-weight:800;color:#012d1d;" id="secop-nuevos">0</p>
-                        </div>
-                        <div style="background:#f0fdf4;border-radius:10px;padding:12px;text-align:center;">
-                            <p style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;">Clasificados</p>
-                            <p style="font-size:24px;font-weight:800;color:#012d1d;" id="secop-clasificados">0</p>
-                        </div>
-                        <div style="background:#f0fdf4;border-radius:10px;padding:12px;text-align:center;">
-                            <p style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;">Relevantes</p>
-                            <p style="font-size:24px;font-weight:800;color:#012d1d;" id="secop-relevantes">0</p>
-                        </div>
-                    </div>
-                    <p id="secop-fecha-desde" style="font-size:11px;color:#94a3b8;margin-top:10px;"></p>
-                    <div id="secop-warnings" style="display:none;margin-top:10px;">
-                        <p style="font-size:12px;font-weight:700;color:#92400e;">⚠ Advertencias:</p>
-                        <ul style="font-size:12px;color:#b45309;list-style:disc;padding-left:16px;margin-top:4px;"></ul>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Procesos en BD -->
-            <div class="card">
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-                    <div>
-                        <h3 style="font-weight:700;font-size:15px;color:#012d1d;">Procesos SECOP en BD</h3>
-                        <p style="font-size:11px;color:#94a3b8;margin-top:2px;">Oportunidades reales de demanda ingresadas</p>
-                    </div>
-                    <button onclick="cargarProcesosSecop()" class="btn btn-ghost" style="padding:6px 10px;">
-                        <span class="material-symbols-outlined" style="font-size:16px;">refresh</span>
-                        Refrescar
-                    </button>
-                </div>
-
-                <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px;">
-                    <div style="background:#f8fafc;border-radius:10px;padding:12px;text-align:center;">
-                        <p style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;">En BD</p>
-                        <p style="font-size:22px;font-weight:800;color:#012d1d;" id="bd-total">0</p>
-                    </div>
-                    <div style="background:#f8fafc;border-radius:10px;padding:12px;text-align:center;">
-                        <p style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;">Clasificados</p>
-                        <p style="font-size:22px;font-weight:800;color:#012d1d;" id="bd-clasificados">0</p>
-                    </div>
-                    <div style="background:#f0fdf4;border-radius:10px;padding:12px;text-align:center;">
-                        <p style="font-size:10px;color:#64748b;font-weight:700;text-transform:uppercase;">Relevantes</p>
-                        <p style="font-size:22px;font-weight:800;color:#012d1d;" id="bd-relevantes">0</p>
-                    </div>
-                </div>
-
-                <div id="resumen-especies-block" style="display:none;margin-bottom:14px;padding:12px;background:#f0fdf4;border-radius:10px;border:1px solid #bbf7d0;">
-                    <p style="font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;margin-bottom:8px;">🌱 Plantas más mencionadas</p>
-                    <div style="display:flex;flex-wrap:wrap;gap:6px;" id="resumen-especies-tags"></div>
-                </div>
-
-                <div id="procesos-tabla">
-                    <p style="text-align:center;color:#94a3b8;font-size:13px;padding:20px;">Cargando...</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- ══════════ AUDITORÍA ══════════ -->
-        <div class="section" id="section-auditoria">
-            <div style="margin-bottom:20px;">
-                <h1 style="font-size:22px;font-weight:800;color:#012d1d;">🛡️ Auditoría y Soporte</h1>
-                <p style="color:#64748b;font-size:13px;margin-top:2px;">Log de actividad del sistema IA</p>
-            </div>
-
-            <div class="card" style="overflow-x:auto;">
-                <table class="tbl">
-                    <thead>
-                        <tr>
-                            <th>Fecha</th>
-                            <th>Tipo</th>
-                            <th>Agente</th>
-                            <th>Detalle</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tbody-auditoria">
-                        <tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px;">Cargando...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-    </div><!-- /content -->
-</div><!-- /main -->
-
-<!-- ══════════ MODAL: Activar suscripción ══════════ -->
-<div class="modal-bg" id="modal-activar">
-    <div class="modal">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-            <h3 style="font-weight:800;font-size:16px;color:#012d1d;">⭐ Dar acceso Plan Inteligencia</h3>
-            <button onclick="cerrarModal('modal-activar')" style="border:none;background:none;cursor:pointer;">
-                <span class="material-symbols-outlined" style="color:#94a3b8;">close</span>
-            </button>
-        </div>
-
-        <div style="margin-bottom:14px;">
-            <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px;">Usuario (nombre o email)</label>
-            <input type="text" id="sus-buscar" placeholder="Escribí el nombre..." oninput="buscarUsuarioParaSus()"
-                style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;">
-            <div id="sus-resultados" style="margin-top:6px;max-height:160px;overflow-y:auto;"></div>
-        </div>
-
-        <div id="sus-usuario-sel" style="display:none;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 12px;margin-bottom:14px;">
-            <p id="sus-usuario-nombre" style="font-weight:700;font-size:13px;color:#15803d;"></p>
-            <p id="sus-usuario-id" style="font-size:11px;color:#4ade80;font-family:monospace;"></p>
-        </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;">
-            <div>
-                <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px;">Días de acceso</label>
-                <select id="sus-dias" style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;background:#fff;">
-                    <option value="30">30 días</option>
-                    <option value="60">60 días</option>
-                    <option value="90">90 días</option>
-                    <option value="365">1 año</option>
-                </select>
-            </div>
-            <div>
-                <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px;">Nota interna</label>
-                <input type="text" id="sus-nota" placeholder="Opcional..."
-                    style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;">
-            </div>
-        </div>
-
-        <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="confirmarActivar()">
-            <span class="material-symbols-outlined" style="font-size:16px;">star</span>
-            Activar suscripción
-        </button>
+    <!-- TABLA RESPONDIDOS -->
+    <div id="tickets-respondidos" class="card" style="display:none;">
+        <table class="tbl">
+            <thead>
+                <tr>
+                    <th>Ticket</th>
+                    <th>Cliente</th>
+                    <th>Estado</th>
+                    <th>Respondido por</th>
+                    <th>Fecha Respuesta</th>
+                </tr>
+            </thead>
+            <tbody id="tbody-tickets-respondidos">
+                <tr><td colspan="5" style="text-align:center;color:#94a3b8;">Cargando...</td></tr>
+            </tbody>
+        </table>
     </div>
 </div>
 
-<!-- ══════════ MODAL: Gestionar suscripción ══════════ -->
-<div class="modal-bg" id="modal-gestionar-sus">
+<!-- MODAL: Ver Detalles + Responder -->
+<div class="modal-bg" id="modal-ticket">
     <div class="modal">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
-            <h3 style="font-weight:800;font-size:16px;color:#012d1d;" id="modal-sus-titulo">Gestionar suscripción</h3>
-            <button onclick="cerrarModal('modal-gestionar-sus')" style="border:none;background:none;cursor:pointer;">
-                <span class="material-symbols-outlined" style="color:#94a3b8;">close</span>
-            </button>
-        </div>
-        <p id="modal-sus-info" style="font-size:13px;color:#64748b;margin-bottom:16px;"></p>
-
-        <div style="margin-bottom:14px;">
-            <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px;">Extender por</label>
-            <select id="modal-sus-dias" style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;background:#fff;">
-                <option value="30">30 días</option>
-                <option value="60">60 días</option>
-                <option value="90">90 días</option>
-                <option value="365">1 año</option>
-            </select>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+            <h2 id="modal-title" style="font-size:18px;font-weight:700;color:#012d1d;">Ticket #0</h2>
+            <button onclick="closeModalTicket()" style="border:none;background:none;cursor:pointer;font-size:24px;color:#94a3b8;">✕</button>
         </div>
 
-        <div style="display:flex;gap:8px;">
-            <button class="btn btn-success" style="flex:1;justify-content:center;" onclick="extenderSus()">
-                <span class="material-symbols-outlined" style="font-size:16px;">schedule</span>
-                Extender
+        <!-- Detalles -->
+        <div style="background:#f8fafc;border-radius:10px;padding:16px;margin-bottom:16px;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;">
+                <div>
+                    <p style="color:#64748b;font-weight:600;margin-bottom:4px;">👤 Cliente</p>
+                    <p id="modal-cliente" style="color:#012d1d;font-weight:600;">—</p>
+                </div>
+                <div>
+                    <p style="color:#64748b;font-weight:600;margin-bottom:4px;">📱 WhatsApp</p>
+                    <p id="modal-whatsapp" style="color:#012d1d;font-weight:600;">—</p>
+                </div>
+                <div>
+                    <p style="color:#64748b;font-weight:600;margin-bottom:4px;">🏷️ Tipo</p>
+                    <p id="modal-tipo" style="color:#012d1d;">—</p>
+                </div>
+                <div>
+                    <p style="color:#64748b;font-weight:600;margin-bottom:4px;">📅 Creado</p>
+                    <p id="modal-fecha" style="color:#012d1d;">—</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Descripción -->
+        <div style="margin-bottom:16px;">
+            <p style="color:#64748b;font-weight:600;font-size:12px;margin-bottom:8px;">💬 SOLICITUD DEL CLIENTE</p>
+            <div id="modal-descripcion" style="background:#f8fafc;padding:12px;border-radius:8px;font-size:13px;color:#012d1d;line-height:1.6;max-height:120px;overflow-y:auto;">—</div>
+        </div>
+
+        <!-- Notas existentes -->
+        <div style="margin-bottom:16px;">
+            <p style="color:#64748b;font-weight:600;font-size:12px;margin-bottom:8px;">📋 NOTAS INTERNAS</p>
+            <div id="modal-notas" style="background:#f8fafc;padding:12px;border-radius:8px;font-size:12px;color:#475569;max-height:100px;overflow-y:auto;min-height:40px;">Sin notas</div>
+        </div>
+
+        <!-- Campo de respuesta -->
+        <div style="margin-bottom:16px;">
+            <p style="color:#64748b;font-weight:600;font-size:12px;margin-bottom:8px;">✉️ RESPUESTA (se envía por WhatsApp)</p>
+            <textarea id="modal-mensaje" placeholder="Ej: Hola Hannah, hemos cotizado tu proyecto. Contactaremos en la próxima hora..." style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:13px;font-family:inherit;resize:vertical;min-height:80px;max-height:150px;"></textarea>
+            <p style="font-size:11px;color:#94a3b8;margin-top:4px;">📤 Se enviará desde WhatsApp admin</p>
+        </div>
+
+        <!-- Notas adicionales (opcional) -->
+        <div style="margin-bottom:20px;">
+            <p style="color:#64748b;font-weight:600;font-size:12px;margin-bottom:8px;">📝 NOTAS INTERNAS (opcional)</p>
+            <input id="modal-notas-input" type="text" placeholder="Ej: Contactar viverista X para cotización..." style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:10px;font-size:13px;">
+        </div>
+
+        <!-- Botones -->
+        <div style="display:flex;gap:10px;">
+            <button onclick="responderTicketWhatsApp()" style="flex:1;" class="btn btn-primary">
+                <span class="material-symbols-outlined" style="font-size:16px;">send</span>
+                Responder y Cerrar
             </button>
-            <button class="btn btn-danger" style="flex:1;justify-content:center;" onclick="cancelarSus()">
-                <span class="material-symbols-outlined" style="font-size:16px;">cancel</span>
-                Cancelar acceso
+            <button onclick="guardarNotasTicket()" style="flex:1;" class="btn btn-ghost">
+                <span class="material-symbols-outlined" style="font-size:16px;">note_add</span>
+                Solo Guardar Notas
             </button>
         </div>
     </div>
 </div>
 
-<!-- Toast -->
-<div id="toast"></div>
-
-<script src="/static/js/vivero.js"></script>
+<!-- SCRIPTS -->
 <script>
-// ──────── Responsive ────────
-const mobileTopbar = document.getElementById('mobile-topbar');
-function checkMobile() {
-    if (window.innerWidth < 768) {
-        mobileTopbar.style.display = 'flex';
+let ticketActual = null;
+
+async function switchTicketTab(tab) {
+    // Actualizar botones
+    document.getElementById('tab-pendientes').style.borderBottomColor = tab === 'pendientes' ? '#012d1d' : 'transparent';
+    document.getElementById('tab-pendientes').style.color = tab === 'pendientes' ? '#012d1d' : '#94a3b8';
+    document.getElementById('tab-respondidos').style.borderBottomColor = tab === 'respondidos' ? '#012d1d' : 'transparent';
+    document.getElementById('tab-respondidos').style.color = tab === 'respondidos' ? '#012d1d' : '#94a3b8';
+    
+    // Actualizar vistas
+    document.getElementById('tickets-pendientes').style.display = tab === 'pendientes' ? 'block' : 'none';
+    document.getElementById('tickets-respondidos').style.display = tab === 'respondidos' ? 'block' : 'none';
+    
+    if (tab === 'pendientes') {
+        await loadTicketsPendientes();
     } else {
-        mobileTopbar.style.display = 'none';
+        await loadTicketsRespondidos();
     }
 }
-window.addEventListener('resize', checkMobile);
-checkMobile();
 
-function openSidebar() {
-    document.getElementById('sidebar').classList.add('open');
-    document.getElementById('overlay').classList.add('show');
-}
-function closeSidebar() {
-    document.getElementById('sidebar').classList.remove('open');
-    document.getElementById('overlay').classList.remove('show');
-}
-
-// ──────── Navegación ────────
-function goTo(section) {
-    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-    document.querySelectorAll('.sidebar-item').forEach(i => i.classList.remove('active'));
-    document.getElementById('section-' + section).classList.add('active');
-    document.getElementById('nav-' + section).classList.add('active');
-    closeSidebar();
-    if (!loaded[section]) loadSection(section);
-}
-
-const loaded = {};
-
-async function loadSection(s) {
-    loaded[s] = true;
-    if (s === 'dashboard') await loadDashboard();
-    if (s === 'comunidad') await loadComunidad();
-    if (s === 'catalogo') await loadCatalogo();
-    if (s === 'suscripciones') await loadSuscripciones();
-    if (s === 'secop') await cargarProcesosSecop();
-    if (s === 'auditoria') await loadAuditoria();
-}
-
-// ──────── Helpers ────────
-function fCOP(v) {
-    return '$' + Number(v || 0).toLocaleString('es-CO');
-}
-function badge(text, type) {
-    return `<span class="badge badge-${type}">${text}</span>`;
-}
-function fDate(s) {
-    if (!s || s === 'None') return '—';
-    return new Date(s).toLocaleDateString('es-CO', { day:'2-digit', month:'short', year:'numeric' });
-}
-function showToast(msg, type='ok') {
-    const t = document.getElementById('toast');
-    const el = document.createElement('div');
-    el.className = 'toast-msg' + (type === 'error' ? ' error' : '');
-    el.textContent = msg;
-    t.style.display = 'block';
-    t.appendChild(el);
-    setTimeout(() => { el.remove(); if (!t.children.length) t.style.display='none'; }, 3500);
-}
-
-// ──────── Auth ────────
-let ME = null;
-let COMUNIDAD_DATA = [];
-let SUS_DATA = [];
-let CATALOGO_DATA = [];
-let SUS_USUARIO_SEL = null;
-let SUS_ID_ACTIVO = null;
-
-// ──────── Init ────────
-document.addEventListener('DOMContentLoaded', async () => {
+async function loadTicketsPendientes() {
     try {
-        ME = await VO.me();
-        if (ME.rol !== 'admin') {
-            showToast('Acceso solo para admin', 'error');
-            setTimeout(() => window.location.href = '/', 1500);
+        const resp = await VO.api('/api/admin/tickets/pendientes');
+        const tbody = document.getElementById('tbody-tickets-pendientes');
+        
+        if (!resp.tickets || resp.tickets.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:20px;">✅ Sin tickets pendientes</td></tr>';
             return;
         }
-        document.getElementById('admin-nombre').textContent = ME.nombre || 'Admin';
-        await loadDashboard();
-    } catch(e) {
-        showToast('Error de sesión: ' + e.message, 'error');
-    }
-});
-
-// ──────── DASHBOARD ────────
-async function loadDashboard() {
-    try {
-        const k = await VO.api('/api/kpis');
-        document.getElementById('k-gmv').textContent       = fCOP(k.gmv_total_cop);
-        document.getElementById('k-ticket').textContent    = fCOP(k.ticket_promedio_cop);
-        document.getElementById('k-viveristas').textContent = k.viveristas_activos || 0;
-        document.getElementById('k-compradores').textContent = k.compradores_activos || 0;
-        document.getElementById('k-items').textContent     = k.items_disponibles || 0;
-
-        // Contar suscriptores
-        try {
-            const sus = await VO.api('/api/admin/suscripciones');
-            const activas = (sus.suscripciones || []).filter(s => s.estado === 'activa').length;
-            document.getElementById('k-suscriptores').textContent = activas;
-        } catch { document.getElementById('k-suscriptores').textContent = '—'; }
-
-        // Top viveristas
-        const tops = (k.top_viveristas || []).slice(0, 5);
-        const tv = document.getElementById('top-viveristas');
-        if (!tops.length) {
-            tv.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:13px;padding:20px;">Sin actividad registrada aún.</p>';
-        } else {
-            tv.innerHTML = tops.map((v, i) => `
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #f1f5f9;">
-                    <div style="display:flex;align-items:center;gap:10px;">
-                        <span style="width:24px;height:24px;border-radius:50%;background:#f0fdf4;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#15803d;">${i+1}</span>
-                        <div>
-                            <p style="font-size:13px;font-weight:600;">${v.nombre_vivero || '—'}</p>
-                            <p style="font-size:11px;color:#94a3b8;">${v.ciudad || ''}</p>
-                        </div>
-                    </div>
-                    <div style="text-align:right;">
-                        <p style="font-size:13px;font-weight:700;color:#012d1d;">${fCOP(v.gmv_90d_cop)}</p>
-                        <p style="font-size:11px;color:#94a3b8;">${v.ventas_90d || 0} ventas</p>
-                    </div>
-                </div>`).join('');
-        }
-    } catch(e) {
-        showToast('Error cargando KPIs: ' + e.message, 'error');
+        
+        tbody.innerHTML = resp.tickets.map(t => {
+            const fecha = new Date(t.fecha_creacion).toLocaleString('es-CO');
+            const prioridad = t.prioridad || 'media';
+            return `
+                <tr>
+                    <td><strong>#${t.ticket_id}</strong></td>
+                    <td>${t.nombre}</td>
+                    <td><code style="font-size:11px;color:#64748b;">${t.whatsapp_numero}</code></td>
+                    <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${t.descripcion}</td>
+                    <td><span class="badge badge-${prioridad === 'alta' ? 'red' : prioridad === 'media' ? 'yellow' : 'blue'}">${prioridad}</span></td>
+                    <td style="font-size:12px;color:#64748b;">${fecha}</td>
+                    <td>
+                        <button onclick="abrirModalTicket(${t.ticket_id})" class="btn btn-primary" style="font-size:12px;">Ver</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error('Error cargando tickets:', e);
+        document.getElementById('tbody-tickets-pendientes').innerHTML = '<tr><td colspan="7" style="text-align:center;color:#dc2626;">❌ Error cargando tickets</td></tr>';
     }
 }
 
-// ──────── COMUNIDAD ────────
-let filtroRolComunidad = '';
-
-async function loadComunidad() {
+async function loadTicketsRespondidos() {
     try {
-        const data = await VO.api('/api/admin/comunidad');
-        COMUNIDAD_DATA = data.comunidad || [];
-        renderComunidad();
-    } catch(e) {
-        document.getElementById('tbody-comunidad').innerHTML =
-            `<tr><td colspan="6" style="text-align:center;color:#dc2626;padding:24px;">Error: ${e.message}</td></tr>`;
-    }
-}
-
-function filtrarComunidad(rol) {
-    filtroRolComunidad = rol;
-    ['todos','viverista','comprador'].forEach(r => {
-        document.getElementById('fil-' + (r === '' ? 'todos' : r)).classList.remove('btn-primary');
-        document.getElementById('fil-' + (r === '' ? 'todos' : r)).classList.add('btn-ghost');
-    });
-    const activo = rol === '' ? 'fil-todos' : 'fil-' + rol;
-    document.getElementById(activo).classList.add('btn-primary');
-    document.getElementById(activo).classList.remove('btn-ghost');
-    renderComunidad();
-}
-
-function buscarComunidad() { renderComunidad(); }
-
-function renderComunidad() {
-    const q = (document.getElementById('q-comunidad').value || '').toLowerCase();
-    let data = COMUNIDAD_DATA;
-
-    if (filtroRolComunidad) data = data.filter(u => u.rol === filtroRolComunidad);
-    if (q) data = data.filter(u =>
-        (u.nombre || '').toLowerCase().includes(q) ||
-        (u.vivero?.nombre_vivero || '').toLowerCase().includes(q)
-    );
-
-    if (!data.length) {
-        document.getElementById('tbody-comunidad').innerHTML =
-            '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:24px;">Sin resultados</td></tr>';
-        return;
-    }
-
-    document.getElementById('tbody-comunidad').innerHTML = data.map(u => {
-        const rolBadge = u.rol === 'viverista' ? badge('🌿 Viverista','green')
-            : u.rol === 'comprador' ? badge('🛒 Comprador','blue')
-            : badge('🔑 Admin','gray');
-        const extra = u.vivero ? u.vivero.nombre_vivero : '—';
-        const sus = u.suscripcion
-            ? badge('⭐ Plan Inteligencia','yellow')
-            : badge('Free','gray');
-        const onb = u.onboarding_ok
-            ? badge('✓ Completo','green')
-            : badge('Pendiente','yellow');
-
-        const accionVivero = u.vivero ? `
-            <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px;" onclick="toggleVivero(${u.vivero_id}, '${u.vivero?.estado}')">
-                ${u.vivero?.estado === 'activo' ? '⏸ Suspender vivero' : '▶ Activar vivero'}
-            </button>` : '';
-
-        return `<tr>
-            <td>
-                <p style="font-weight:600;font-size:13px;">${u.nombre}</p>
-                <p style="font-size:11px;color:#94a3b8;">${fDate(u.creado_en)}</p>
-            </td>
-            <td>${rolBadge}</td>
-            <td style="font-size:12px;">${extra}</td>
-            <td>${sus}</td>
-            <td>${onb}</td>
-            <td>
-                <div style="display:flex;gap:4px;flex-wrap:wrap;">
-                    ${accionVivero}
-                    ${!u.suscripcion ? `<button class="btn btn-success" style="padding:4px 8px;font-size:11px;" onclick="darSuscripcionRapido('${u.user_id}','${u.nombre}')">⭐ Dar plan</button>` : ''}
-                </div>
-            </td>
-        </tr>`;
-    }).join('');
-}
-
-async function toggleVivero(vivero_id, estadoActual) {
-    if (!vivero_id) return;
-    const nuevoEstado = estadoActual === 'activo' ? 'suspendido' : 'activo';
-    const confirmMsg = nuevoEstado === 'suspendido'
-        ? '¿Suspender este vivero? Dejará de aparecer en el marketplace.'
-        : '¿Activar este vivero?';
-    if (!confirm(confirmMsg)) return;
-    try {
-        await VO.api(`/api/admin/vivero/${vivero_id}/estado`, {
-            method: 'PATCH',
-            body: JSON.stringify({ estado: nuevoEstado }),
-        });
-        showToast(`Vivero ${nuevoEstado} correctamente`);
-        loaded.comunidad = false;
-        await loadComunidad();
-    } catch(e) { showToast(e.message, 'error'); }
-}
-
-// ──────── CATÁLOGO ────────
-async function loadCatalogo() {
-    try {
-        const data = await VO.api('/api/admin/inventario');
-        CATALOGO_DATA = data.items || [];
-        renderCatalogo();
-    } catch(e) {
-        document.getElementById('tbody-catalogo').innerHTML =
-            `<tr><td colspan="7" style="text-align:center;color:#dc2626;padding:24px;">Error: ${e.message}</td></tr>`;
-    }
-}
-
-function buscarCatalogo() {
-    const q = (document.getElementById('q-catalogo').value || '').toLowerCase();
-    const filtered = q ? CATALOGO_DATA.filter(i =>
-        (i.nombre_comun || '').toLowerCase().includes(q) ||
-        (i.nombre_vivero || '').toLowerCase().includes(q)
-    ) : CATALOGO_DATA;
-    renderCatalogoData(filtered);
-}
-
-function renderCatalogo() { renderCatalogoData(CATALOGO_DATA); }
-
-function renderCatalogoData(data) {
-    if (!data.length) {
-        document.getElementById('tbody-catalogo').innerHTML =
-            '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:24px;">Sin resultados</td></tr>';
-        return;
-    }
-    document.getElementById('tbody-catalogo').innerHTML = data.map(item => {
-        const estadoBadge = item.estado_planta === 'disponible' ? badge('Disponible','green')
-            : item.estado_planta === 'agotado' ? badge('Agotado','yellow')
-            : badge('Descontinuado','red');
-
-        return `<tr>
-            <td>
-                <p style="font-weight:600;font-size:13px;">${item.nombre_comun}</p>
-                <p style="font-size:11px;color:#94a3b8;">ID: ${item.inventario_id}</p>
-            </td>
-            <td>
-                <p style="font-size:13px;">${item.nombre_vivero || '—'}</p>
-                <p style="font-size:11px;color:#94a3b8;">${item.ciudad || ''}</p>
-            </td>
-            <td style="font-weight:600;">${fCOP(item.precio_mayorista)}</td>
-            <td>
-                <span style="font-weight:700;color:${item.stock < 5 ? '#dc2626' : '#15803d'};">${item.stock}</span>
-                <span style="font-size:11px;color:#94a3b8;"> uds</span>
-            </td>
-            <td style="font-size:12px;">${item.altura_cm} cm</td>
-            <td>${estadoBadge}</td>
-            <td>
-                <select onchange="cambiarEstadoItem(${item.inventario_id}, this.value)" style="border:1px solid #e2e8f0;border-radius:6px;padding:4px 6px;font-size:11px;outline:none;background:#fff;">
-                    <option value="">Cambiar...</option>
-                    <option value="disponible">✓ Disponible</option>
-                    <option value="agotado">⚠ Agotado</option>
-                    <option value="descontinuado">✗ Descontinuado</option>
-                </select>
-            </td>
-        </tr>`;
-    }).join('');
-}
-
-async function cambiarEstadoItem(inv_id, estado) {
-    if (!estado) return;
-    try {
-        await VO.api(`/api/admin/inventario/${inv_id}/estado`, {
-            method: 'PATCH',
-            body: JSON.stringify({ estado_planta: estado }),
-        });
-        showToast(`Estado actualizado a: ${estado}`);
-        loaded.catalogo = false;
-        await loadCatalogo();
-    } catch(e) { showToast(e.message, 'error'); }
-}
-
-// ──────── SUSCRIPCIONES ────────
-async function loadSuscripciones() {
-    try {
-        const data = await VO.api('/api/admin/suscripciones');
-        SUS_DATA = data.suscripciones || [];
-        renderSuscripciones();
-    } catch(e) {
-        document.getElementById('tbody-sus').innerHTML =
-            `<tr><td colspan="6" style="text-align:center;color:#dc2626;padding:24px;">Error: ${e.message}</td></tr>`;
-    }
-}
-
-function renderSuscripciones() {
-    if (!SUS_DATA.length) {
-        document.getElementById('tbody-sus').innerHTML =
-            '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:24px;">Sin suscripciones registradas</td></tr>';
-        return;
-    }
-    document.getElementById('tbody-sus').innerHTML = SUS_DATA.map(s => {
-        const estadoBadge = s.estado === 'activa' ? badge('● Activa','green')
-            : s.estado === 'cancelada' ? badge('✗ Cancelada','red')
-            : badge(s.estado,'gray');
-        const vence = fDate(s.fecha_proximo_cobro);
-        const vencida = s.fecha_proximo_cobro && new Date(s.fecha_proximo_cobro) < new Date();
-        const monto = s.monto_mensual_cop === 0 ? badge('Prueba','blue') : fCOP(s.monto_mensual_cop) + '/mes';
-
-        return `<tr>
-            <td>
-                <p style="font-weight:600;font-size:13px;">${s.nombre_usuario}</p>
-                <p style="font-size:11px;color:#94a3b8;font-family:monospace;">${s.user_id?.slice(0,8)}...</p>
-            </td>
-            <td style="font-size:12px;">${s.rol_usuario}</td>
-            <td>
-                <span class="badge badge-yellow">⭐ ${s.plan || 'inteligencia'}</span>
-                <p style="font-size:11px;color:#94a3b8;margin-top:2px;">${monto}</p>
-            </td>
-            <td>${estadoBadge}</td>
-            <td>
-                <span style="font-size:13px;color:${vencida ? '#dc2626' : '#15803d'};">${vence}</span>
-                ${vencida ? '<br><span style="font-size:10px;color:#dc2626;font-weight:600;">VENCIDA</span>' : ''}
-            </td>
-            <td>
-                ${s.estado === 'activa' ? `
-                <button class="btn btn-ghost" style="padding:4px 8px;font-size:11px;" onclick="abrirGestionarSus(${s.suscripcion_id}, '${s.nombre_usuario}', '${vence}')">
-                    ✏️ Gestionar
-                </button>` : `
-                <button class="btn btn-success" style="padding:4px 8px;font-size:11px;" onclick="reactivarSus(${s.suscripcion_id})">
-                    ▶ Reactivar
-                </button>`}
-            </td>
-        </tr>`;
-    }).join('');
-}
-
-// ──────── Modal: Activar ────────
-function abrirModalActivar() {
-    SUS_USUARIO_SEL = null;
-    document.getElementById('sus-buscar').value = '';
-    document.getElementById('sus-resultados').innerHTML = '';
-    document.getElementById('sus-usuario-sel').style.display = 'none';
-    document.getElementById('sus-nota').value = '';
-    document.getElementById('modal-activar').classList.add('open');
-}
-
-async function buscarUsuarioParaSus() {
-    const q = document.getElementById('sus-buscar').value.toLowerCase().trim();
-    if (!q) { document.getElementById('sus-resultados').innerHTML = ''; return; }
-
-    let data = COMUNIDAD_DATA;
-    if (!data.length) {
-        try {
-            const r = await VO.api('/api/admin/comunidad');
-            data = r.comunidad || [];
-            COMUNIDAD_DATA = data;
-        } catch { return; }
-    }
-
-    const resultados = data.filter(u =>
-        (u.nombre || '').toLowerCase().includes(q) ||
-        (u.vivero?.nombre_vivero || '').toLowerCase().includes(q)
-    ).slice(0, 5);
-
-    if (!resultados.length) {
-        document.getElementById('sus-resultados').innerHTML =
-            '<p style="font-size:12px;color:#94a3b8;padding:8px;">Sin resultados</p>';
-        return;
-    }
-
-    document.getElementById('sus-resultados').innerHTML = resultados.map(u => `
-        <div onclick="seleccionarUsuarioSus('${u.user_id}','${u.nombre.replace(/'/g,"\\'")}','${u.suscripcion ? 'con_sus' : ''}')"
-             style="padding:8px 10px;border-radius:6px;cursor:pointer;border:1px solid #e2e8f0;margin-bottom:4px;background:#fff;"
-             onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='#fff'">
-            <p style="font-size:13px;font-weight:600;">${u.nombre}</p>
-            <p style="font-size:11px;color:#94a3b8;">${u.rol} ${u.suscripcion ? '· ⭐ Ya tiene plan activo' : ''}</p>
-        </div>`).join('');
-}
-
-function seleccionarUsuarioSus(uid, nombre, flag) {
-    if (flag === 'con_sus') {
-        showToast('Este usuario ya tiene Plan Inteligencia activo.', 'error');
-        return;
-    }
-    SUS_USUARIO_SEL = { user_id: uid, nombre };
-    document.getElementById('sus-usuario-nombre').textContent = '✓ ' + nombre;
-    document.getElementById('sus-usuario-id').textContent = uid;
-    document.getElementById('sus-usuario-sel').style.display = 'block';
-    document.getElementById('sus-resultados').innerHTML = '';
-    document.getElementById('sus-buscar').value = nombre;
-}
-
-async function confirmarActivar() {
-    if (!SUS_USUARIO_SEL) { showToast('Seleccioná un usuario primero', 'error'); return; }
-    const dias = parseInt(document.getElementById('sus-dias').value);
-    const nota = document.getElementById('sus-nota').value;
-    try {
-        await VO.api('/api/admin/suscripcion/activar', {
-            method: 'POST',
-            body: JSON.stringify({ user_id: SUS_USUARIO_SEL.user_id, dias, nota }),
-        });
-        showToast(`✅ Plan Inteligencia activado para ${SUS_USUARIO_SEL.nombre} (${dias} días)`);
-        cerrarModal('modal-activar');
-        loaded.suscripciones = false;
-        await loadSuscripciones();
-    } catch(e) { showToast(e.message, 'error'); }
-}
-
-// ──────── Modal: Gestionar suscripción ────────
-function abrirGestionarSus(sus_id, nombre, vence) {
-    SUS_ID_ACTIVO = sus_id;
-    document.getElementById('modal-sus-titulo').textContent = `Gestionar: ${nombre}`;
-    document.getElementById('modal-sus-info').textContent = `Plan Inteligencia · Vence: ${vence}`;
-    document.getElementById('modal-gestionar-sus').classList.add('open');
-}
-
-async function extenderSus() {
-    if (!SUS_ID_ACTIVO) return;
-    const dias = parseInt(document.getElementById('modal-sus-dias').value);
-    try {
-        const r = await VO.api(`/api/admin/suscripcion/${SUS_ID_ACTIVO}/extender`, {
-            method: 'PATCH',
-            body: JSON.stringify({ dias }),
-        });
-        showToast(`Extendido ${dias} días. Nueva fecha: ${r.nueva_fecha_vencimiento}`);
-        cerrarModal('modal-gestionar-sus');
-        loaded.suscripciones = false;
-        await loadSuscripciones();
-    } catch(e) { showToast(e.message, 'error'); }
-}
-
-async function cancelarSus() {
-    if (!SUS_ID_ACTIVO) return;
-    if (!confirm('¿Cancelar la suscripción? El usuario perderá acceso a la ubicación de los viveros.')) return;
-    try {
-        await VO.api(`/api/admin/suscripcion/${SUS_ID_ACTIVO}/cancelar`, { method: 'PATCH' });
-        showToast('Suscripción cancelada');
-        cerrarModal('modal-gestionar-sus');
-        loaded.suscripciones = false;
-        await loadSuscripciones();
-    } catch(e) { showToast(e.message, 'error'); }
-}
-
-async function reactivarSus(sus_id) {
-    if (!confirm('¿Reactivar esta suscripción por 30 días?')) return;
-    try {
-        await VO.api(`/api/admin/suscripcion/${sus_id}/extender`, {
-            method: 'PATCH',
-            body: JSON.stringify({ dias: 30 }),
-        });
-        showToast('Suscripción reactivada por 30 días');
-        loaded.suscripciones = false;
-        await loadSuscripciones();
-    } catch(e) { showToast(e.message, 'error'); }
-}
-
-function darSuscripcionRapido(user_id, nombre) {
-    goTo('suscripciones');
-    setTimeout(() => {
-        abrirModalActivar();
-        seleccionarUsuarioSus(user_id, nombre, '');
-    }, 300);
-}
-
-// ──────── AUDITORÍA ────────
-async function loadAuditoria() {
-    try {
-        const data = await VO.api('/api/admin/auditoria');
-        const logs = data.logs || [];
-        if (!logs.length) {
-            document.getElementById('tbody-auditoria').innerHTML =
-                '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:24px;">Sin registros aún</td></tr>';
+        const resp = await VO.api('/api/admin/tickets/respondidos');
+        const tbody = document.getElementById('tbody-tickets-respondidos');
+        
+        if (!resp.tickets || resp.tickets.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:20px;">Sin tickets respondidos</td></tr>';
             return;
         }
-        document.getElementById('tbody-auditoria').innerHTML = logs.map(l => `
-            <tr>
-                <td style="font-size:12px;white-space:nowrap;">${fDate(l.creado_en)}</td>
-                <td><span class="badge badge-blue">${l.tipo || '—'}</span></td>
-                <td style="font-size:12px;">${l.agente || '—'}</td>
-                <td style="font-size:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${JSON.stringify(l.resultado || l.datos || '').slice(0,120)}</td>
-            </tr>`).join('');
-    } catch(e) {
-        document.getElementById('tbody-auditoria').innerHTML =
-            `<tr><td colspan="4" style="text-align:center;color:#dc2626;padding:24px;">Error: ${e.message}</td></tr>`;
+        
+        tbody.innerHTML = resp.tickets.map(t => {
+            const fecha = new Date(t.fecha_confirmacion).toLocaleString('es-CO');
+            return `
+                <tr>
+                    <td><strong>#${t.ticket_id}</strong></td>
+                    <td>${t.nombre}</td>
+                    <td><span class="badge badge-green">Respondido</span></td>
+                    <td>${t.atendido_por}</td>
+                    <td style="font-size:12px;color:#64748b;">${fecha}</td>
+                </tr>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error('Error cargando respondidos:', e);
+        document.getElementById('tbody-tickets-respondidos').innerHTML = '<tr><td colspan="5" style="text-align:center;color:#dc2626;">❌ Error cargando</td></tr>';
     }
 }
 
-// ──────── SECOP ────────
-async function dispararSecop() {
-    const btn = document.getElementById('secop-disparar');
-    const btnContent = document.getElementById('secop-btn-content');
-    const resultDiv = document.getElementById('secop-resultado');
-    const dias = parseInt(document.getElementById('secop-dias').value) || 30;
-    const limit = parseInt(document.getElementById('secop-limit').value) || 5;
-    const clasificar = document.getElementById('secop-clasificar').checked;
-
-    if (clasificar && limit > 15) {
-        const seg = Math.round(limit * 2.5);
-        if (!confirm(`Clasificar ${limit} procesos con Gemini tomará ~${seg}s. Vercel puede cortar si supera 60s. ¿Continuar?`)) return;
-    }
-
-    btn.disabled = true;
-    btnContent.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;animation:spin 1s linear infinite;">progress_activity</span><span>Procesando...</span>';
-    resultDiv.style.display = 'none';
-
+async function abrirModalTicket(ticketId) {
     try {
-        const data = await VO.api('/api/ingesta/secop', {
-            method: 'POST',
-            body: JSON.stringify({ dias_atras: dias, limit, clasificar }),
+        const ticket = await VO.api(`/api/admin/ticket/${ticketId}`);
+        ticketActual = ticket;
+        
+        // Llenar modal
+        document.getElementById('modal-title').textContent = `Ticket #${ticket.ticket_id}`;
+        document.getElementById('modal-cliente').textContent = ticket.nombre;
+        document.getElementById('modal-whatsapp').textContent = ticket.whatsapp_numero;
+        document.getElementById('modal-tipo').textContent = ticket.tipo_solicitud;
+        document.getElementById('modal-fecha').textContent = new Date(ticket.fecha_creacion).toLocaleString('es-CO');
+        document.getElementById('modal-descripcion').textContent = ticket.descripcion;
+        document.getElementById('modal-notas').textContent = ticket.notas_admin || 'Sin notas';
+        document.getElementById('modal-mensaje').value = '';
+        document.getElementById('modal-notas-input').value = '';
+        
+        // Abrir modal
+        document.getElementById('modal-ticket').classList.add('open');
+    } catch (e) {
+        console.error('Error abriendo ticket:', e);
+        showToast('Error cargando detalles del ticket', 'error');
+    }
+}
+
+function closeModalTicket() {
+    document.getElementById('modal-ticket').classList.remove('open');
+    ticketActual = null;
+}
+
+async function responderTicketWhatsApp() {
+    const mensaje = document.getElementById('modal-mensaje').value.trim();
+    const notas = document.getElementById('modal-notas-input').value.trim();
+    
+    if (!mensaje) {
+        showToast('Por favor escribe un mensaje', 'error');
+        return;
+    }
+    
+    if (!ticketActual) {
+        showToast('Error: ticket no cargado', 'error');
+        return;
+    }
+    
+    try {
+        const payload = {
+            mensaje: mensaje,
+            notas: notas
+        };
+        
+        const result = await VO.api(`/api/admin/ticket/${ticketActual.ticket_id}/responder-whatsapp`, 'POST', payload);
+        
+        showToast(`✅ ${result.mensaje}`, 'success');
+        closeModalTicket();
+        await loadTicketsPendientes();
+    } catch (e) {
+        console.error('Error respondiendo:', e);
+        showToast('❌ Error al responder: ' + (e.message || 'desconocido'), 'error');
+    }
+}
+
+async function guardarNotasTicket() {
+    const notas = document.getElementById('modal-notas-input').value.trim();
+    
+    if (!notas) {
+        showToast('Por favor escribe las notas', 'error');
+        return;
+    }
+    
+    if (!ticketActual) {
+        showToast('Error: ticket no cargado', 'error');
+        return;
+    }
+    
+    try {
+        const result = await VO.api(`/api/admin/ticket/${ticketActual.ticket_id}/guardar-notas`, 'POST', {
+            notas: notas
         });
-        document.getElementById('secop-ingestados').textContent = data.ingestados ?? 0;
-        document.getElementById('secop-nuevos').textContent = data.nuevos ?? 0;
-        document.getElementById('secop-clasificados').textContent = data.clasificados ?? 0;
-        document.getElementById('secop-relevantes').textContent = data.relevantes ?? 0;
-
-        const fechaEl = document.getElementById('secop-fecha-desde');
-        if (fechaEl) fechaEl.textContent = `Buscó desde: ${data.fecha_desde} · ${data.keywords_count || 0} keywords · ${data.municipios_count || 0} municipios`;
-
-        const warn = document.getElementById('secop-warnings');
-        const warnUl = warn?.querySelector('ul');
-        if (data.warnings?.length && warnUl) {
-            warnUl.innerHTML = data.warnings.slice(0,10).map(w => `<li>${escHTML(w)}</li>`).join('');
-            warn.style.display = 'block';
-        } else if (warn) warn.style.display = 'none';
-
-        resultDiv.style.display = 'block';
-        showToast(`✓ ${data.nuevos ?? 0} procesos nuevos ingestados`);
-        setTimeout(cargarProcesosSecop, 500);
-    } catch(e) {
-        showToast('Error ingesta: ' + e.message, 'error');
-    } finally {
-        btn.disabled = false;
-        btnContent.innerHTML = '<span class="material-symbols-outlined" style="font-size:18px;">cloud_download</span><span>Disparar ingesta</span>';
+        
+        showToast('✅ Notas guardadas', 'success');
+        closeModalTicket();
+        await loadTicketsPendientes();
+    } catch (e) {
+        console.error('Error guardando notas:', e);
+        showToast('❌ Error: ' + (e.message || 'desconocido'), 'error');
     }
 }
 
-async function cargarProcesosSecop() {
-    const tabla = document.getElementById('procesos-tabla');
-    tabla.innerHTML = '<p style="text-align:center;color:#94a3b8;font-size:13px;padding:20px;">Cargando...</p>';
-    try {
-        const data = await VO.api('/api/ingesta/secop/procesos?limit=100');
-        document.getElementById('bd-total').textContent = (data.total || 0).toLocaleString('es-CO');
-        document.getElementById('bd-clasificados').textContent = (data.total_clasificados || 0).toLocaleString('es-CO');
-        document.getElementById('bd-relevantes').textContent = (data.total_relevantes || 0).toLocaleString('es-CO');
-
-        const resBlock = document.getElementById('resumen-especies-block');
-        const resTags = document.getElementById('resumen-especies-tags');
-        if (data.resumen_especies?.length) {
-            resTags.innerHTML = data.resumen_especies.map(e =>
-                `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:9999px;font-size:11px;background:#dcfce7;color:#15803d;font-weight:600;">
-                    ${escHTML(e.especie)}
-                    <span style="background:#15803d;color:#fff;padding:1px 5px;border-radius:9999px;font-size:10px;">×${e.menciones}</span>
-                </span>`
-            ).join('');
-            resBlock.style.display = 'block';
-        } else resBlock.style.display = 'none';
-
-        if (!data.procesos?.length) {
-            tabla.innerHTML = `<div style="text-align:center;padding:32px;border:2px dashed #e2e8f0;border-radius:10px;">
-                <span class="material-symbols-outlined" style="font-size:40px;color:#cbd5e1;">inbox</span>
-                <p style="color:#94a3b8;font-size:13px;margin-top:8px;">Sin procesos en BD. Disparar ingesta para traer datos.</p>
-            </div>`;
-            return;
-        }
-        tabla.innerHTML = data.procesos.map(renderProcesoCard).join('');
-    } catch(e) {
-        tabla.innerHTML = `<p style="color:#dc2626;font-size:13px;padding:16px;">Error: ${escHTML(e.message)}</p>`;
-    }
+// Cargar tickets al abrir sección
+function initTickets() {
+    loadTicketsPendientes();
 }
 
-function renderProcesoCard(p) {
-    const cuantia = p.cuantia_proceso ? fCOP(p.cuantia_proceso) : '<span style="color:#94a3b8;">Sin cuantía</span>';
-    const c = p.clasificacion;
-    let badge_html = '';
-    if (c) {
-        badge_html = c.es_relevante
-            ? '<span class="badge badge-green">● Relevante</span>'
-            : '<span class="badge badge-gray">Falso positivo</span>';
-    } else {
-        badge_html = '<span class="badge badge-yellow">Sin clasificar</span>';
-    }
-
-    let meta = '';
-    if (c) {
-        const parts = [c.tipo_proyecto, c.cantidad_estimada && `~${c.cantidad_estimada.toLocaleString('es-CO')} uds`, c.altura_estimada_cm && `~${c.altura_estimada_cm} cm`].filter(Boolean);
-        if (parts.length) meta = `<p style="font-size:11px;color:#64748b;margin-top:4px;">${parts.join(' · ')}</p>`;
-        if (c.especies_mencionadas?.length) {
-            meta += `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;">${c.especies_mencionadas.map(e =>
-                `<span style="padding:2px 8px;border-radius:9999px;background:#f0fdf4;color:#15803d;font-size:11px;font-weight:500;">${escHTML(e)}</span>`
-            ).join('')}</div>`;
-        }
-    }
-
-    return `<div style="border:1px solid #e2e8f0;border-radius:10px;padding:14px;margin-bottom:8px;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='#fff'">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
-            <div style="flex:1;min-width:0;">
-                <p style="font-weight:600;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escHTML(p.entidad || 'Sin entidad')}</p>
-                <p style="font-size:11px;color:#94a3b8;margin-top:2px;">${escHTML(p.ciudad || '?')} · ${escHTML(p.fecha_publicacion || '?')}</p>
-            </div>
-            <div style="text-align:right;flex-shrink:0;">
-                <p style="font-size:13px;font-weight:700;color:#012d1d;">${cuantia}</p>
-                ${badge_html}
-            </div>
-        </div>
-        <p style="font-size:12px;color:#475569;margin-top:8px;line-height:1.5;">${escHTML((p.objeto || '').slice(0,240))}${(p.objeto||'').length > 240 ? '…' : ''}</p>
-        ${meta}
-        ${p.url_proceso ? `<a href="${escHTML(p.url_proceso)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:4px;font-size:11px;color:#012d1d;font-weight:600;margin-top:8px;text-decoration:none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">Ver en SECOP <span class="material-symbols-outlined" style="font-size:12px;">open_in_new</span></a>` : ''}
-    </div>`;
-}
-
-function escHTML(s) {
-    return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
-// Spin animation for secop button
-const styleEl = document.createElement('style');
-styleEl.textContent = '@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }';
-document.head.appendChild(styleEl);
-
-function cerrarModal(id) {
-    document.getElementById(id).classList.remove('open');
-}
-document.querySelectorAll('.modal-bg').forEach(m => {
-    m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
-});
+// Agregar al goTo() existente:
+// if (s === 'tickets') initTickets();
 </script>
-</body>
-</html>
