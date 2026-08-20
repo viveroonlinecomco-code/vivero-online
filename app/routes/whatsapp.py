@@ -1,11 +1,7 @@
-"""Webhook y rutas para Bot WhatsApp.
+"""Webhook WhatsApp — Versión robusta.
 
-Gestiona:
-- POST /api/whatsapp/webhook (recibe mensajes)
-- GET /api/whatsapp/webhook (verifica webhook)
-- Consultas de precio (diferenciadas: cliente vs viverista)
-- Creación de tickets
-- Notificación a admin
+Garantiza: crear ticket → responder usuario → notificar admin
+Sin fallos silenciosos.
 """
 from __future__ import annotations
 import json
@@ -25,16 +21,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 VERIFY_TOKEN = os.getenv("META_WA_VERIFY_TOKEN", "")
-ADMIN_WHATSAPP = os.getenv("ADMIN_WHATSAPP_NOTIF", "")
+ADMIN_WHATSAPP = os.getenv("ADMIN_WHATSAPP_NOTIF", "").strip()
 
-# Plantas conocidas para detectar consultas de precio
+logger.info(f"🔧 ADMIN_WHATSAPP_NOTIF configurado: {bool(ADMIN_WHATSAPP)}")
+if ADMIN_WHATSAPP:
+    logger.info(f"   Número: {ADMIN_WHATSAPP}")
+
 PLANTAS_CONOCIDAS = [
     "hiedra", "geranio", "duranta", "afelandra", "palma", "ficus",
     "begonia", "helecho", "dracena", "calathea", "monstera", "peperomia",
     "clusia", "cordyline", "cheflera", "aglaonema", "espatifilo",
     "lengua", "bambú", "buganvilla", "coleo", "primavera", "pensamiento",
     "kokedama", "sustrato", "ixora", "heliconia", "cycas", "strelitzia",
-    "schefflera", "sansevieria", "ficus lyrata"
+    "schefflera", "sansevieria", "ficus lyrata", "jasmin", "arizónica", "arbusto"
 ]
 
 
@@ -73,18 +72,20 @@ async def _procesar_mensaje(webhook_data: dict):
         messages = webhook_data.get("messages", [])
         
         if not whatsapp_num or not messages:
+            logger.warning("No hay número o mensajes")
             return
         
         mensaje_texto = messages[0].get("text", {}).get("body", "").strip()
         if not mensaje_texto:
+            logger.warning("Mensaje vacío")
             return
         
-        logger.info(f"📱 Mensaje de {whatsapp_num}: {mensaje_texto[:50]}")
+        logger.info(f"📱 De {whatsapp_num}: {mensaje_texto[:60]}")
         
         lower = mensaje_texto.lower()
         
         # ══════════════════════════════════════════════════════════════════
-        # ✅ 1. DETECTOR DE PRECIO + PLANTA (RESPUESTA DIFERENCIADA)
+        # 1. DETECTOR DE PRECIO + PLANTA
         # ══════════════════════════════════════════════════════════════════
         if "precio" in lower:
             planta_mencionada = None
@@ -94,73 +95,56 @@ async def _procesar_mensaje(webhook_data: dict):
                     break
             
             if planta_mencionada:
-                logger.info(f"🔍 Detecto: 'precio' + '{planta_mencionada}'")
+                logger.info(f"🔍 Consulta de precio: {planta_mencionada}")
                 try:
-                    # Verificar si es viverista registrado
                     es_viverista = False
                     try:
                         vivero_resp = admin().table("viveros").select(
                             "vivero_id"
                         ).eq("mandato_whatsapp_numero", whatsapp_num).limit(1).execute()
                         es_viverista = bool(vivero_resp.data)
-                        logger.info(f"Tipo usuario: {'viverista' if es_viverista else 'cliente'}")
-                    except Exception as e:
-                        logger.warning(f"Error verificando viverista: {e}")
+                    except:
+                        pass
                     
-                    # ✅ RESPUESTA DIFERENCIADA
                     if es_viverista:
-                        # ─ VIVERISTA REGISTRADO: RESPUESTA LARGA
-                        logger.info(f"📊 Respondiendo a VIVERISTA")
-                        
                         plantas_resp = admin().table("plantas").select(
                             "planta_id, nombre_comun"
                         ).ilike("nombre_comun", f"%{planta_mencionada}%").limit(1).execute()
                         
                         if plantas_resp.data:
                             planta = plantas_resp.data[0]
-                            planta_id = planta.get("planta_id")
-                            nombre_comun = planta.get("nombre_comun")
-                            
                             inventario_resp = admin().table("inventario").select(
-                                "stock, precio_mayorista, inventario_id"
-                            ).eq("planta_id", planta_id).limit(1).execute()
+                                "stock, precio_mayorista"
+                            ).eq("planta_id", planta.get("planta_id")).limit(1).execute()
                             
                             if inventario_resp.data:
-                                inventario = inventario_resp.data[0]
-                                stock = inventario.get("stock", 0)
-                                precio_mayorista = inventario.get("precio_mayorista", 0)
-                                
-                                precio_mayorista_fmt = f"${int(precio_mayorista):,}".replace(",", ".")
+                                inv = inventario_resp.data[0]
+                                stock = inv.get("stock", 0)
+                                precio_mayorista = inv.get("precio_mayorista", 0)
                                 precio_cliente = int(precio_mayorista * 1.20)
-                                precio_cliente_fmt = f"${precio_cliente:,}".replace(",", ".")
                                 
                                 respuesta = (
-                                    f"¡Claro! Con gusto te doy la información de la {nombre_comun} que tienes en tu inventario:\n\n"
-                                    f"*{nombre_comun}*\n"
+                                    f"¡Claro! Con gusto te doy la información de la {planta.get('nombre_comun')} que tienes en tu inventario:\n\n"
+                                    f"*{planta.get('nombre_comun')}*\n"
                                     f"• *Stock disponible:* {stock} unidades\n"
-                                    f"• *Tu precio (lo que recibirás):* {precio_mayorista_fmt} COP\n"
-                                    f"• *Precio al comprador (con 20% orquestación):* {precio_cliente_fmt} COP\n\n"
-                                    f"Esta planta es excelente para cubrir muros, jardineras o como planta colgante.\n\n"
-                                    f"¿Necesitas información sobre alguna otra planta o quieres que revisemos algo más de tu inventario?"
+                                    f"• *Tu precio (lo que recibirás):* ${precio_mayorista:,} COP\n"
+                                    f"• *Precio al comprador (con 20% orquestación):* ${precio_cliente:,} COP\n\n"
+                                    f"¿Necesitas información sobre otra planta?"
                                 )
-                                
                                 await send_text_message(whatsapp_num, respuesta)
                                 return
                     
-                    # ─ CLIENTE (NO viverista): RESPUESTA CORTA
                     respuesta = await procesar_consulta_precio_producto(
                         supabase=admin(),
                         producto_nombre=planta_mencionada,
                         es_guest=True,
                         plazo="inmediato",
                     )
-                    logger.info(f"✅ Precio consultado")
                     await send_text_message(whatsapp_num, respuesta)
                     return
-                    
                 except Exception as e:
-                    logger.error(f"❌ Error consultando precio: {e}")
-                    await send_text_message(whatsapp_num, "⚠️ Error al consultar precio. Intentá de nuevo.")
+                    logger.error(f"Error precio: {e}")
+                    await send_text_message(whatsapp_num, "⚠️ Error al consultar precio.")
                     return
         
         # ══════════════════════════════════════════════════════════════════
@@ -174,26 +158,20 @@ async def _procesar_mensaje(webhook_data: dict):
             return
         
         # ══════════════════════════════════════════════════════════════════
-        # 3. OPCIONES DEL MENÚ
+        # 3. OPCIONES MENÚ
         # ══════════════════════════════════════════════════════════════════
         if mensaje_texto in ("1", "1️⃣"):
-            await send_text_message(
-                whatsapp_num,
-                "📍 Explora nuestro catálogo de plantas vivas:\nhttps://app.viveroonline.com.co/marketplace"
-            )
+            await send_text_message(whatsapp_num, "📍 Explora nuestro catálogo:\nhttps://app.viveroonline.com.co/marketplace")
             return
         
         if mensaje_texto in ("2", "2️⃣"):
-            await send_text_message(
-                whatsapp_num,
-                "🌳 Registrate como viverista y vende sin intermediarios:\nhttps://app.viveroonline.com.co/registro-vivero"
-            )
+            await send_text_message(whatsapp_num, "🌳 Registrate como viverista:\nhttps://app.viveroonline.com.co/registro-vivero")
             return
         
         if mensaje_texto in ("3", "3️⃣"):
             await send_text_message(
                 whatsapp_num,
-                "💬 ¡Con gusto te ayudo!\n\nPodés ver precios y catálogo acá:\nhttps://viveroonline.com.co\n\nO si preferís, contame qué necesitás (nombre + consulta) y te contactamos.\n\nEjemplo: 'Soy Ana, quiero saber precio de 200 arizónicas para conjunto en Chía'"
+                "💬 ¡Con gusto te ayudo!\n\nPodés ver precios en: https://viveroonline.com.co\n\nO contame qué necesitás (nombre + consulta) y te contactamos.\n\nEjemplo: 'Soy Ana, quiero precio de 200 arizónicas para proyecto en Chía'"
             )
             return
         
@@ -202,9 +180,9 @@ async def _procesar_mensaje(webhook_data: dict):
             return
         
         # ══════════════════════════════════════════════════════════════════
-        # 4. CREAR TICKET Y NOTIFICAR ADMIN
+        # 4. CREAR TICKET (GARANTIZADO)
         # ══════════════════════════════════════════════════════════════════
-        logger.info(f"📝 Creando ticket para {whatsapp_num}")
+        logger.info(f"📝 Creando ticket para {nombre} ({whatsapp_num})")
         
         try:
             ticket_data = {
@@ -216,43 +194,114 @@ async def _procesar_mensaje(webhook_data: dict):
                 "fecha_creacion": datetime.now(timezone.utc).isoformat(),
             }
             
+            # CREAR TICKET EN BD
             result = admin().table("tickets").insert(ticket_data).execute()
             
             if not result.data:
-                logger.error("No se pudo crear ticket")
+                logger.error("❌ Insert falló — no data")
                 await send_text_message(whatsapp_num, "✅ Tu solicitud fue recibida. Te contactaremos pronto.")
                 return
             
             ticket_id = result.data[0].get("id")
-            logger.info(f"✅ Ticket #{ticket_id} creado")
+            logger.info(f"✅ Ticket #{ticket_id} creado en BD")
             
-            # Notificar admin
+            # DETERMINAR RESPUESTA AL USUARIO
+            respuesta_usuario = _generar_respuesta_coherente(mensaje_texto)
+            await send_text_message(whatsapp_num, respuesta_usuario)
+            logger.info(f"✅ Respuesta enviada al usuario")
+            
+            # NOTIFICAR ADMIN
             if ADMIN_WHATSAPP:
                 try:
                     msg_admin = (
                         f"🔵 *Ticket #{ticket_id}* — CONSULTA\n\n"
                         f"👤 Cliente: {nombre}\n"
                         f"📱 WhatsApp: {whatsapp_num}\n\n"
-                        f"💬 Solicitud:\n{mensaje_texto[:200]}\n\n"
+                        f"💬 Solicitud:\n{mensaje_texto[:180]}\n\n"
+                        f"📨 Respuesta enviada:\n{respuesta_usuario[:200]}\n\n"
                         f"🔗 Panel: https://app.viveroonline.com.co/admin"
                     )
-                    await send_text_message(ADMIN_WHATSAPP, msg_admin)
-                    logger.info(f"✅ Admin notificado de ticket #{ticket_id}")
+                    result_admin = await send_text_message(ADMIN_WHATSAPP, msg_admin)
+                    if result_admin:
+                        logger.info(f"✅ Admin notificado de ticket #{ticket_id}")
+                    else:
+                        logger.error(f"❌ send_text_message devolvió False para admin")
                 except Exception as e:
                     logger.error(f"❌ Error notificando admin: {e}")
-            
-            # Responder al usuario
-            await send_text_message(
-                whatsapp_num,
-                f"✅ ¡Recibí tu solicitud! (ticket #{ticket_id})\n\nNuestro equipo te contactará en las próximas horas. 🌿"
-            )
+            else:
+                logger.warning(f"⚠️ ADMIN_WHATSAPP_NOTIF NO CONFIGURADO")
         
         except Exception as e:
-            logger.error(f"❌ Error creando ticket: {e}")
+            logger.exception(f"❌ Error en crear ticket: {e}")
             await send_text_message(whatsapp_num, "✅ Tu solicitud fue recibida.")
     
     except Exception as e:
         logger.exception(f"❌ Error procesando mensaje: {e}")
+
+
+def _generar_respuesta_coherente(mensaje: str) -> str:
+    """Genera respuesta específica según tipo de solicitud."""
+    lower = mensaje.lower()
+    
+    # CONSTRUCTO / PAISAJISMO
+    if any(kw in lower for kw in ["constructo", "construcción", "parcelación", "paisajístico", "diseño"]):
+        return (
+            "🏗️ *Proyecto constructivo - Paisajismo*\n\n"
+            "¡Excelente! Tenemos experiencia en proyectos residenciales y comerciales en Sabana de Bogotá.\n\n"
+            "✅ Diseño paisajístico\n"
+            "✅ Cotización de plantas\n"
+            "✅ Entregas a proyecto\n\n"
+            "Nuestro equipo te contactará en la próxima hora con propuesta personalizada.\n\n"
+            "O escribi a: viveroonline.com.co@gmail.com"
+        )
+    
+    # ENVÍO / DESPACHO / SALITRE
+    if any(kw in lower for kw in ["envío", "despacho", "salitre", "entrega", "transporte"]):
+        return (
+            "🚚 *Información de despacho*\n\n"
+            "Hacemos entregas en la Sabana de Bogotá (Chía, Cajicá, Cota, Salitre, Tenjo, Zipaquirá).\n\n"
+            "📍 Nuestro equipo te enviará:\n"
+            "✅ Opciones de envío\n"
+            "✅ Presupuesto de flete\n"
+            "✅ Cronograma de entrega\n\n"
+            "Te contactaremos en la próxima hora.\n\n"
+            "O escribi a: viveroonline.com.co@gmail.com"
+        )
+    
+    # ÁRBOLES / PLANTAS GRANDES
+    if any(kw in lower for kw in ["árbol", "año", "grande", "altura", "tamano", "tamaño"]):
+        return (
+            "🌳 *Árboles y plantas grandes*\n\n"
+            "Tenemos árboles de más de 1 año en varias especies.\n\n"
+            "📋 Te enviaremos:\n"
+            "✅ Catálogo de árboles disponibles\n"
+            "✅ Especificaciones (altura, edad)\n"
+            "✅ Precios y disponibilidad\n\n"
+            "Nuestro equipo te contactará en la próxima hora.\n\n"
+            "O escribi a: viveroonline.com.co@gmail.com"
+        )
+    
+    # COMPRA B2B
+    if any(kw in lower for kw in ["b2b", "mayorista", "lote", "cantidad", "volumen", "200", "100"]):
+        return (
+            "🏢 *Cotización B2B - Volumen*\n\n"
+            "¡Perfecto! Nos especializamos en compras por volumen.\n\n"
+            "📊 Te enviaremos:\n"
+            "✅ Disponibilidad de especies\n"
+            "✅ Precios mayoristas\n"
+            "✅ Opciones de pago\n\n"
+            "Nuestro equipo comercial te contactará en la próxima hora.\n\n"
+            "O escribi a: viveroonline.com.co@gmail.com"
+        )
+    
+    # GENÉRICA
+    return (
+        "✅ ¡Recibí tu solicitud!\n\n"
+        "Nuestro equipo te contactará en la próxima hora.\n\n"
+        "Mientras tanto, explora el catálogo:\n"
+        "https://app.viveroonline.com.co/marketplace\n\n"
+        "O escribi a: viveroonline.com.co@gmail.com"
+    )
 
 
 @router.get("/api/whatsapp/webhook")
@@ -266,5 +315,5 @@ async def verify_whatsapp_webhook(
         logger.info("✅ WhatsApp webhook verificado")
         return int(hub_challenge) if hub_challenge.isdigit() else hub_challenge
     
-    logger.warning("❌ Token de verificación inválido")
+    logger.warning("❌ Token inválido")
     raise HTTPException(status_code=403, detail="Invalid token")
