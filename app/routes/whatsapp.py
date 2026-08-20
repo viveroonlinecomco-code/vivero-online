@@ -179,7 +179,7 @@ async def _procesar_mensaje(webhook_data: dict):
             "nombre": nombre,
             "tipo_solicitud": "consulta",
             "descripcion": mensaje_texto,
-            "estado": "abierto",
+            "estado": "open",
             "fecha_creacion": datetime.now(timezone.utc).isoformat(),
         }
         
