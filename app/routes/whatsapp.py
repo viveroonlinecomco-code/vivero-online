@@ -179,8 +179,8 @@ async def _procesar_mensaje(webhook_data: dict):
             "nombre": nombre,
             "tipo_solicitud": "consulta",
             "descripcion": mensaje_texto,
-            "estado": "open",
-            "fecha_creacion": datetime.now(timezone.utc).isoformat(),
+            "prioridad": "media",
+            "estado": "pendiente",
         }
         
         # ✅ USAR NOMBRE CORRECTO: tickets_soporte
@@ -197,6 +197,7 @@ async def _procesar_mensaje(webhook_data: dict):
             
             # Generar respuesta coherente
             respuesta_usuario = _generar_respuesta_coherente(mensaje_texto)
+            logger.info(f"📨 Respuesta generada: {respuesta_usuario[:80]}...")
             
             # Enviar respuesta al usuario
             await send_text_message(whatsapp_num, respuesta_usuario)
@@ -233,9 +234,13 @@ async def _procesar_mensaje(webhook_data: dict):
 
 def _generar_respuesta_coherente(mensaje: str) -> str:
     """Respuesta específica según tipo."""
-    lower = mensaje.lower()
+    lower = mensaje.lower().strip()
+    logger.info(f"🔍 Analizando mensaje para respuesta coherente: {lower[:100]}")
     
-    if any(kw in lower for kw in ["constructo", "construcción", "parcelación", "paisajístico", "diseño"]):
+    # CONSTRUCTO / PAISAJISMO
+    constructo_kw = ["constructo", "construcción", "parcelación", "paisajístico", "diseño", "obra", "proyecto constructivo"]
+    if any(kw in lower for kw in constructo_kw):
+        logger.info(f"✅ Detectado: CONSTRUCTO/PAISAJISMO")
         return (
             "🏗️ *Proyecto constructivo - Paisajismo*\n\n"
             "¡Excelente! Tenemos experiencia en proyectos residenciales.\n\n"
@@ -246,7 +251,10 @@ def _generar_respuesta_coherente(mensaje: str) -> str:
             "viveroonline.com.co@gmail.com"
         )
     
-    if any(kw in lower for kw in ["envío", "despacho", "salitre", "entrega", "transporte"]):
+    # ENVÍO / DESPACHO
+    envio_kw = ["envío", "despacho", "salitre", "entrega", "transporte", "flete"]
+    if any(kw in lower for kw in envio_kw):
+        logger.info(f"✅ Detectado: ENVÍO/DESPACHO")
         return (
             "🚚 *Información de despacho*\n\n"
             "Hacemos entregas en Sabana de Bogotá (Chía, Cajicá, Cota, Salitre, Tenjo).\n\n"
@@ -257,7 +265,10 @@ def _generar_respuesta_coherente(mensaje: str) -> str:
             "viveroonline.com.co@gmail.com"
         )
     
-    if any(kw in lower for kw in ["árbol", "año", "grande", "altura", "tamaño"]):
+    # ÁRBOLES / PLANTAS GRANDES
+    arbol_kw = ["árbol", "año", "grande", "altura", "tamaño", "palmera", "cedro"]
+    if any(kw in lower for kw in arbol_kw):
+        logger.info(f"✅ Detectado: ÁRBOLES/PLANTAS GRANDES")
         return (
             "🌳 *Árboles y plantas grandes*\n\n"
             "Tenemos árboles de más de 1 año en varias especies.\n\n"
@@ -268,7 +279,10 @@ def _generar_respuesta_coherente(mensaje: str) -> str:
             "viveroonline.com.co@gmail.com"
         )
     
-    if any(kw in lower for kw in ["b2b", "mayorista", "lote", "cantidad", "volumen", "200", "100"]):
+    # B2B / MAYORISTA
+    b2b_kw = ["b2b", "mayorista", "lote", "cantidad", "volumen", "200", "100", "mil"]
+    if any(kw in lower for kw in b2b_kw):
+        logger.info(f"✅ Detectado: B2B/MAYORISTA")
         return (
             "🏢 *Cotización B2B - Volumen*\n\n"
             "Nos especializamos en compras por volumen.\n\n"
@@ -279,6 +293,8 @@ def _generar_respuesta_coherente(mensaje: str) -> str:
             "viveroonline.com.co@gmail.com"
         )
     
+    # GENÉRICA (sin coincidencias)
+    logger.info(f"⚠️ No se detectó patrón específico - usando respuesta genérica")
     return (
         "✅ ¡Recibí tu solicitud!\n\n"
         "Nuestro equipo te contactará en la próxima hora.\n\n"
