@@ -575,15 +575,14 @@ body { min-height: 100dvh; background: #f0f2ee; font-family: "Inter", sans-serif
             </button>
         </div>
     </div>
+</div>
 
-        <!-- ══ SECCIÓN: GESTIÓN DE TICKETS ══ -->
-        <div class="section" id="section-tickets">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
-                <div>
-                    <h1 style="font-size:22px;font-weight:800;color:#012d1d;">📞 Gestión de Tickets</h1>
-                    <p style="color:#64748b;font-size:13px;margin-top:2px;">Consultas de clientes recibidas por WhatsApp</p>
-                </div>
-            </div>
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- SECCIÓN: GESTIÓN DE TICKETS                                    -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div class="section" id="section-tickets" style="margin-left:240px;padding:24px 28px;max-width:1340px;">
+        <h1 style="font-size:22px;font-weight:800;color:#012d1d;margin-bottom:4px;">📞 Gestión de Tickets</h1>
+        <p style="color:#64748b;font-size:13px;margin:0 0 20px 0;">Consultas de clientes recibidas por WhatsApp</p>
 
         <div style="display:flex;gap:12px;margin-bottom:16px;border-bottom:1px solid #e2e8f0;">
             <button id="tab-pendientes" onclick="ticketsApp.switchTab('pendientes')"
@@ -631,9 +630,7 @@ body { min-height: 100dvh; background: #f0f2ee; font-family: "Inter", sans-serif
                 </tbody>
             </table>
         </div>
-        </div>
-
-    </div><!-- /wrapper -->
+</div>
 
 <!-- Toast -->
 <div id="toast"></div>
