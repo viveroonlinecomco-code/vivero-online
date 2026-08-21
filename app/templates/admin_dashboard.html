@@ -1277,20 +1277,17 @@ function cerrarModal(id) {
 document.querySelectorAll('.modal-bg').forEach(m => {
     m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
 });
-</script>
 
-// ──────── Gestión de Tickets ────────
+// ═════════════════════════════════════════════════════════════════════════════════
 // TICKETS APP - ROBUSTO Y COMPLETO
 // ═════════════════════════════════════════════════════════════════════════════════
 
 const ticketsApp = {
     async loadTickets() {
         console.log('[TICKETS] loadTickets() iniciando...');
-        
-        // Esperar a que VO.api esté disponible
         let intentos = 0;
         while (!window.VO || typeof window.VO.api !== 'function') {
-            if (intentos > 30) { // 30 x 100ms = 3 segundos
+            if (intentos > 30) {
                 console.error('[TICKETS] ERROR: VO.api nunca fue disponible');
                 this.mostrarSetupWarning();
                 return;
@@ -1298,7 +1295,6 @@ const ticketsApp = {
             await new Promise(r => setTimeout(r, 100));
             intentos++;
         }
-
         console.log('[TICKETS] VO.api disponible en intento', intentos);
         await this.loadTicketsPendientes();
     },
@@ -1309,42 +1305,23 @@ const ticketsApp = {
             console.error('[TICKETS] tbody-tickets-pendientes no encontrado');
             return;
         }
-
         try {
             console.log('[TICKETS] GET /api/admin/tickets/pendientes');
             const resp = await window.VO.api('/api/admin/tickets/pendientes');
             console.log('[TICKETS] Respuesta:', resp);
-
             if (!resp || !resp.tickets || resp.tickets.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#94a3b8;">
-                    <div style="text-align:center;">
-                        <div style="font-size:24px;margin-bottom:8px;">✅</div>
-                        <p style="margin:0;font-weight:600;">Sin tickets pendientes</p>
-                        <p style="margin:4px 0 0 0;font-size:12px;">Todos los clientes han sido atendidos</p>
-                    </div>
-                </td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#94a3b8;"><div style="text-align:center;"><div style="font-size:24px;margin-bottom:8px;">✅</div><p style="margin:0;font-weight:600;">Sin tickets pendientes</p><p style="margin:4px 0 0 0;font-size:12px;">Todos los clientes han sido atendidos</p></div></td></tr>`;
                 return;
             }
-
             tbody.innerHTML = resp.tickets.map(t => {
                 const fecha = new Date(t.fecha_creacion).toLocaleString('es-CO');
                 const prior = t.prioridad || 'media';
-                return `<tr>
-                    <td><strong>#${t.ticket_id}</strong></td>
-                    <td>${t.nombre || '—'}</td>
-                    <td><code style="font-size:11px;">${t.whatsapp_numero || '—'}</code></td>
-                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">${t.descripcion || '—'}</td>
-                    <td><span class="badge badge-${prior === 'alta' ? 'red' : 'yellow'}">${prior}</span></td>
-                    <td style="font-size:12px;">${fecha}</td>
-                    <td style="text-align:center;"><button onclick="ticketsApp.abrirModal(${t.ticket_id})" class="btn btn-primary" style="font-size:12px;">Ver</button></td>
-                </tr>`;
+                return `<tr><td><strong>#${t.ticket_id}</strong></td><td>${t.nombre || '—'}</td><td><code style="font-size:11px;">${t.whatsapp_numero || '—'}</code></td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">${t.descripcion || '—'}</td><td><span class="badge badge-${prior === 'alta' ? 'red' : 'yellow'}">${prior}</span></td><td style="font-size:12px;">${fecha}</td><td style="text-align:center;"><button onclick="ticketsApp.abrirModal(${t.ticket_id})" class="btn btn-primary" style="font-size:12px;">Ver</button></td></tr>`;
             }).join('');
             console.log('[TICKETS] ✅ Cargados:', resp.tickets.length, 'pendientes');
         } catch (e) {
             console.error('[TICKETS] Error:', e.message);
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#dc2626;">
-                ❌ Error cargando tickets: ${e.message || 'desconocido'}
-            </td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#dc2626;">❌ Error cargando tickets: ${e.message || 'desconocido'}</td></tr>`;
             this.mostrarSetupWarning();
         }
     },
@@ -1374,7 +1351,6 @@ const ticketsApp = {
         const tabR = document.getElementById('tab-respondidos');
         const viewP = document.getElementById('tickets-pendientes-view');
         const viewR = document.getElementById('tickets-respondidos-view');
-
         if (tab === 'pendientes') {
             tabP.style.borderBottomColor = '#012d1d';
             tabP.style.color = '#012d1d';
@@ -1395,8 +1371,7 @@ const ticketsApp = {
 
     abrirModal(id) {
         console.log('[TICKETS] Abriendo modal para ticket:', id);
-        // TODO: Implementar modal
-        alert('Modal para ticket #' + id);
+        showToast('Detalles del ticket #' + id, 'ok');
     },
 
     mostrarSetupWarning() {
@@ -1405,10 +1380,7 @@ const ticketsApp = {
     }
 };
 
-// Registrar en loadSection
-if (window.goTo) {
-    console.log('[TICKETS] Registrando en goTo handler');
-}
+console.log('[TICKETS] ✅ App inicializado');
 </script>
 </body>
 </html>
