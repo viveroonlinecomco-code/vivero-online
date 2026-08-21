@@ -124,6 +124,10 @@ class GoogleAdsMiddleware(BaseHTTPMiddleware):
         if response.status_code != 200:
             return response
 
+        # Nunca tocar respuestas de API (evita consumir streams JSON)
+        if request.url.path.startswith("/api/"):
+            return response
+
         # Leer body original
         body = b""
         async for chunk in response.body_iterator:
