@@ -494,6 +494,54 @@ body { min-height: 100dvh; background: #f0f2ee; font-family: "Inter", sans-serif
             </div>
         </div>
 
+
+        <!-- ══════════ GESTIÓN DE TICKETS ══════════ -->
+        <div class="section" id="section-tickets">
+            <div style="margin-bottom:20px;">
+                <h1 style="font-size:22px;font-weight:800;color:#012d1d;">📞 Gestión de Tickets</h1>
+                <p style="color:#64748b;font-size:13px;margin-top:2px;">Consultas de clientes recibidas por WhatsApp</p>
+            </div>
+
+            <div style="display:flex;gap:12px;margin-bottom:16px;border-bottom:1px solid #e2e8f0;">
+                <button id="tab-pendientes" onclick="ticketsApp.switchTab('pendientes')"
+                    style="padding:10px 16px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;color:#012d1d;border-bottom:3px solid #012d1d;">
+                    ⏳ Pendientes
+                </button>
+                <button id="tab-respondidos" onclick="ticketsApp.switchTab('respondidos')"
+                    style="padding:10px 16px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;color:#94a3b8;border-bottom:3px solid transparent;">
+                    ✅ Respondidos
+                </button>
+            </div>
+
+            <div id="tickets-pendientes-view" class="card">
+                <table class="tbl">
+                    <thead>
+                        <tr>
+                            <th>#</th><th>Cliente</th><th>WhatsApp</th>
+                            <th>Descripción</th><th>Prioridad</th><th>Fecha</th>
+                            <th style="text-align:center;">Acción</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-pendientes">
+                        <tr><td colspan="7" style="text-align:center;padding:40px;color:#94a3b8;">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="tickets-respondidos-view" class="card" style="display:none;">
+                <table class="tbl">
+                    <thead>
+                        <tr>
+                            <th>#</th><th>Cliente</th><th>Atendido por</th>
+                            <th>Fecha respuesta</th><th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-respondidos">
+                        <tr><td colspan="5" style="text-align:center;padding:40px;color:#94a3b8;">Cargando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
     </div><!-- /content -->
 </div><!-- /main -->
 
@@ -580,57 +628,6 @@ body { min-height: 100dvh; background: #f0f2ee; font-family: "Inter", sans-serif
 <!-- ══════════════════════════════════════════════════════════════ -->
 <!-- SECCIÓN: GESTIÓN DE TICKETS                                    -->
 <!-- ══════════════════════════════════════════════════════════════ -->
-<div class="section" id="section-tickets" style="margin-left:240px;padding:24px 28px;max-width:1340px;">
-        <h1 style="font-size:22px;font-weight:800;color:#012d1d;margin-bottom:4px;">📞 Gestión de Tickets</h1>
-        <p style="color:#64748b;font-size:13px;margin:0 0 20px 0;">Consultas de clientes recibidas por WhatsApp</p>
-
-        <div style="display:flex;gap:12px;margin-bottom:16px;border-bottom:1px solid #e2e8f0;">
-            <button id="tab-pendientes" onclick="ticketsApp.switchTab('pendientes')"
-                style="padding:10px 16px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;color:#012d1d;border-bottom:3px solid #012d1d;">
-                ⏳ Pendientes
-            </button>
-            <button id="tab-respondidos" onclick="ticketsApp.switchTab('respondidos')"
-                style="padding:10px 16px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;color:#94a3b8;border-bottom:3px solid transparent;">
-                ✅ Respondidos
-            </button>
-        </div>
-
-        <div id="tickets-pendientes-view" class="card">
-            <table class="tbl">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Cliente</th>
-                        <th>WhatsApp</th>
-                        <th>Descripción</th>
-                        <th>Prioridad</th>
-                        <th>Fecha</th>
-                        <th style="text-align:center;">Acción</th>
-                    </tr>
-                </thead>
-                <tbody id="tbody-pendientes">
-                    <tr><td colspan="7" style="text-align:center;padding:40px;color:#94a3b8;">Cargando...</td></tr>
-                </tbody>
-            </table>
-        </div>
-
-        <div id="tickets-respondidos-view" class="card" style="display:none;">
-            <table class="tbl">
-                <thead>
-                    <tr>
-                        <th>#</th>
-                        <th>Cliente</th>
-                        <th>Atendido por</th>
-                        <th>Fecha respuesta</th>
-                        <th>Estado</th>
-                    </tr>
-                </thead>
-                <tbody id="tbody-respondidos">
-                    <tr><td colspan="5" style="text-align:center;padding:40px;color:#94a3b8;">Cargando...</td></tr>
-                </tbody>
-            </table>
-        </div>
-</div>
 
 <!-- Toast -->
 <div id="toast"></div>
