@@ -574,52 +574,62 @@ body { min-height: 100dvh; background: #f0f2ee; font-family: "Inter", sans-serif
                 Cancelar acceso
             </button>
         </div>
+    </div>
+</div>
 
-        <!-- TICKETS SECTION -->
-        <div class="section" id="section-tickets">
-            <div style="margin-bottom:24px;">
-                <h1 style="font-size:22px;font-weight:800;color:#012d1d;">📞 Gestión de Tickets</h1>
-                <p style="color:#64748b;font-size:13px;margin-top:2px;">Responde consultas de clientes desde WhatsApp admin</p>
-            </div>
+<!-- ══════════════════════════════════════════════════════════════ -->
+<!-- SECCIÓN: GESTIÓN DE TICKETS                                    -->
+<!-- ══════════════════════════════════════════════════════════════ -->
+<div class="section" id="section-tickets">
+    <div style="padding:24px;">
+        <h1 style="font-size:22px;font-weight:800;color:#012d1d;margin-bottom:4px;">📞 Gestión de Tickets</h1>
+        <p style="color:#64748b;font-size:13px;margin:0 0 20px 0;">Consultas de clientes recibidas por WhatsApp</p>
 
-            <div id="tickets-setup-warning" style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:16px;margin-bottom:16px;display:none;">
-                <p style="color:#92400e;font-weight:600;margin:0 0 8px 0;">⚠️ Configuración incompleta</p>
-                <p style="color:#b45309;font-size:13px;margin:0;">Para que Gestión de Tickets funcione completamente:</p>
-                <ul style="color:#b45309;font-size:13px;margin:8px 0 0 0;padding-left:20px;">
-                    <li>Asegúrate de haber ejecutado: <code>cp admin_tickets_COMPLETO.py app/routes/admin_tickets.py</code></li>
-                    <li>Y haber hecho git push para que Vercel despliegue el backend</li>
-                    <li>Los tickets se cargarán automáticamente una vez el backend esté listo</li>
-                </ul>
-            </div>
+        <div style="display:flex;gap:12px;margin-bottom:16px;border-bottom:1px solid #e2e8f0;">
+            <button id="tab-pendientes" onclick="ticketsApp.switchTab('pendientes')"
+                style="padding:10px 16px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;color:#012d1d;border-bottom:3px solid #012d1d;">
+                ⏳ Pendientes
+            </button>
+            <button id="tab-respondidos" onclick="ticketsApp.switchTab('respondidos')"
+                style="padding:10px 16px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;color:#94a3b8;border-bottom:3px solid transparent;">
+                ✅ Respondidos
+            </button>
+        </div>
 
-            <div style="display:flex;gap:12px;margin-bottom:16px;border-bottom:1px solid #e2e8f0;">
-                <button id="tab-pendientes" onclick="ticketsApp.switchTab('pendientes')" style="padding:12px 16px;border:none;background:none;cursor:pointer;font-weight:600;color:#012d1d;border-bottom:3px solid #012d1d;">⏳ Pendientes</button>
-                <button id="tab-respondidos" onclick="ticketsApp.switchTab('respondidos')" style="padding:12px 16px;border:none;background:none;cursor:pointer;font-weight:600;color:#94a3b8;border-bottom:3px solid transparent;">✅ Respondidos</button>
-            </div>
+        <div id="tickets-pendientes-view" class="card">
+            <table class="tbl">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Cliente</th>
+                        <th>WhatsApp</th>
+                        <th>Descripción</th>
+                        <th>Prioridad</th>
+                        <th>Fecha</th>
+                        <th style="text-align:center;">Acción</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-pendientes">
+                    <tr><td colspan="7" style="text-align:center;padding:40px;color:#94a3b8;">Cargando...</td></tr>
+                </tbody>
+            </table>
+        </div>
 
-            <div id="tickets-pendientes-view" class="card">
-                <table class="tbl">
-                    <thead><tr><th>Ticket</th><th>Cliente</th><th>WhatsApp</th><th>Descripción</th><th>Prioridad</th><th>Creado</th><th style="text-align:center;">Acciones</th></tr></thead>
-                    <tbody id="tbody-tickets-pendientes">
-                        <tr><td colspan="7" style="text-align:center;padding:40px;color:#94a3b8;">
-                            <div style="text-align:center;">
-                                <div style="font-size:24px;margin-bottom:8px;">⏳</div>
-                                <p style="margin:0;font-weight:600;">Sin tickets pendientes</p>
-                                <p style="margin:4px 0 0 0;font-size:12px;">Los clientes envían tickets a través de WhatsApp</p>
-                            </div>
-                        </td></tr>
-                    </tbody>
-                </table>
-            </div>
-
-            <div id="tickets-respondidos-view" class="card" style="display:none;">
-                <table class="tbl">
-                    <thead><tr><th>Ticket</th><th>Cliente</th><th>Estado</th><th>Respondido por</th><th>Fecha</th></tr></thead>
-                    <tbody id="tbody-tickets-respondidos">
-                        <tr><td colspan="5" style="text-align:center;padding:40px;">Sin historial aún</td></tr>
-                    </tbody>
-                </table>
-            </div>
+        <div id="tickets-respondidos-view" class="card" style="display:none;">
+            <table class="tbl">
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Cliente</th>
+                        <th>Atendido por</th>
+                        <th>Fecha respuesta</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-respondidos">
+                    <tr><td colspan="5" style="text-align:center;padding:40px;color:#94a3b8;">Cargando...</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -664,13 +674,13 @@ const loaded = {};
 
 async function loadSection(s) {
     loaded[s] = true;
-    if (s === 'tickets') await ticketsApp.loadTickets();
     if (s === 'dashboard') await loadDashboard();
     if (s === 'comunidad') await loadComunidad();
     if (s === 'catalogo') await loadCatalogo();
     if (s === 'suscripciones') await loadSuscripciones();
     if (s === 'secop') await cargarProcesosSecop();
     if (s === 'auditoria') await loadAuditoria();
+    if (s === 'tickets') await ticketsApp.loadTickets();
 }
 
 // ──────── Helpers ────────
@@ -1278,109 +1288,94 @@ document.querySelectorAll('.modal-bg').forEach(m => {
     m.addEventListener('click', e => { if (e.target === m) m.classList.remove('open'); });
 });
 
-// ═════════════════════════════════════════════════════════════════════════════════
-// TICKETS APP - ROBUSTO Y COMPLETO
-// ═════════════════════════════════════════════════════════════════════════════════
-
+// ══════════════════════════════════════════════════════════════
+// TICKETS APP
+// ══════════════════════════════════════════════════════════════
 const ticketsApp = {
+
     async loadTickets() {
-        console.log('[TICKETS] loadTickets() iniciando...');
-        let intentos = 0;
-        while (!window.VO || typeof window.VO.api !== 'function') {
-            if (intentos > 30) {
-                console.error('[TICKETS] ERROR: VO.api nunca fue disponible');
-                this.mostrarSetupWarning();
-                return;
-            }
-            await new Promise(r => setTimeout(r, 100));
-            intentos++;
-        }
-        console.log('[TICKETS] VO.api disponible en intento', intentos);
-        await this.loadTicketsPendientes();
+        await this.loadPendientes();
     },
 
-    async loadTicketsPendientes() {
-        const tbody = document.getElementById('tbody-tickets-pendientes');
-        if (!tbody) {
-            console.error('[TICKETS] tbody-tickets-pendientes no encontrado');
-            return;
-        }
+    async loadPendientes() {
+        const tbody = document.getElementById('tbody-pendientes');
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:30px;color:#94a3b8;">Cargando...</td></tr>';
         try {
-            console.log('[TICKETS] GET /api/admin/tickets/pendientes');
             const resp = await window.VO.api('/api/admin/tickets/pendientes');
-            console.log('[TICKETS] Respuesta:', resp);
             if (!resp || !resp.tickets || resp.tickets.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#94a3b8;"><div style="text-align:center;"><div style="font-size:24px;margin-bottom:8px;">✅</div><p style="margin:0;font-weight:600;">Sin tickets pendientes</p><p style="margin:4px 0 0 0;font-size:12px;">Todos los clientes han sido atendidos</p></div></td></tr>`;
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:#94a3b8;"><div style="font-size:32px;margin-bottom:8px;">✅</div><p style="font-weight:600;margin:0;">Sin tickets pendientes</p><p style="font-size:12px;margin:4px 0 0;color:#cbd5e1;">Todos los clientes han sido atendidos</p></td></tr>';
                 return;
             }
             tbody.innerHTML = resp.tickets.map(t => {
-                const fecha = new Date(t.fecha_creacion).toLocaleString('es-CO');
+                const fecha = t.fecha_creacion ? new Date(t.fecha_creacion).toLocaleString('es-CO') : '—';
                 const prior = t.prioridad || 'media';
-                return `<tr><td><strong>#${t.ticket_id}</strong></td><td>${t.nombre || '—'}</td><td><code style="font-size:11px;">${t.whatsapp_numero || '—'}</code></td><td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">${t.descripcion || '—'}</td><td><span class="badge badge-${prior === 'alta' ? 'red' : 'yellow'}">${prior}</span></td><td style="font-size:12px;">${fecha}</td><td style="text-align:center;"><button onclick="ticketsApp.abrirModal(${t.ticket_id})" class="btn btn-primary" style="font-size:12px;">Ver</button></td></tr>`;
+                const color = prior === 'alta' ? 'red' : 'yellow';
+                return `<tr>
+                    <td><strong>#${t.ticket_id}</strong></td>
+                    <td>${t.nombre || '—'}</td>
+                    <td style="font-size:12px;font-family:monospace;">${t.whatsapp_numero || '—'}</td>
+                    <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.descripcion || '—'}</td>
+                    <td><span class="badge badge-${color}">${prior}</span></td>
+                    <td style="font-size:12px;">${fecha}</td>
+                    <td style="text-align:center;"><button onclick="ticketsApp.responder(${t.ticket_id}, '${(t.nombre||'').replace(/'/g,'')}')" class="btn btn-primary" style="font-size:12px;">Responder</button></td>
+                </tr>`;
             }).join('');
-            console.log('[TICKETS] ✅ Cargados:', resp.tickets.length, 'pendientes');
         } catch (e) {
-            console.error('[TICKETS] Error:', e.message);
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:40px;color:#dc2626;">❌ Error cargando tickets: ${e.message || 'desconocido'}</td></tr>`;
-            this.mostrarSetupWarning();
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:30px;color:#dc2626;">❌ Error: ${e.message}</td></tr>`;
         }
     },
 
-    async loadTicketsRespondidos() {
-        const tbody = document.getElementById('tbody-tickets-respondidos');
+    async loadRespondidos() {
+        const tbody = document.getElementById('tbody-respondidos');
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:#94a3b8;">Cargando...</td></tr>';
         try {
-            console.log('[TICKETS] GET /api/admin/tickets/respondidos');
             const resp = await window.VO.api('/api/admin/tickets/respondidos');
             if (!resp || !resp.tickets || resp.tickets.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;">Sin historial aún</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:#94a3b8;">Sin historial aún</td></tr>';
                 return;
             }
             tbody.innerHTML = resp.tickets.map(t => {
-                const fecha = new Date(t.fecha_confirmacion).toLocaleString('es-CO');
-                return `<tr><td><strong>#${t.ticket_id}</strong></td><td>${t.nombre}</td><td><span class="badge badge-green">Respondido</span></td><td style="font-size:12px;">${t.atendido_por}</td><td style="font-size:12px;">${fecha}</td></tr>`;
+                const fecha = t.fecha_confirmacion ? new Date(t.fecha_confirmacion).toLocaleString('es-CO') : '—';
+                return `<tr>
+                    <td><strong>#${t.ticket_id}</strong></td>
+                    <td>${t.nombre || '—'}</td>
+                    <td style="font-size:12px;">${t.atendido_por || '—'}</td>
+                    <td style="font-size:12px;">${fecha}</td>
+                    <td><span class="badge badge-green">Respondido</span></td>
+                </tr>`;
             }).join('');
         } catch (e) {
-            console.error('[TICKETS] Error respondidos:', e.message);
-            tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#dc2626;">Error cargando histórico</td></tr>';
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#dc2626;">❌ Error: ${e.message}</td></tr>`;
         }
     },
 
     switchTab(tab) {
-        console.log('[TICKETS] switchTab:', tab);
         const tabP = document.getElementById('tab-pendientes');
         const tabR = document.getElementById('tab-respondidos');
         const viewP = document.getElementById('tickets-pendientes-view');
         const viewR = document.getElementById('tickets-respondidos-view');
         if (tab === 'pendientes') {
-            tabP.style.borderBottomColor = '#012d1d';
-            tabP.style.color = '#012d1d';
-            tabR.style.borderBottomColor = 'transparent';
-            tabR.style.color = '#94a3b8';
+            tabP.style.cssText = 'padding:10px 16px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;color:#012d1d;border-bottom:3px solid #012d1d;';
+            tabR.style.cssText = 'padding:10px 16px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;color:#94a3b8;border-bottom:3px solid transparent;';
             viewP.style.display = 'block';
             viewR.style.display = 'none';
         } else {
-            tabP.style.borderBottomColor = 'transparent';
-            tabP.style.color = '#94a3b8';
-            tabR.style.borderBottomColor = '#012d1d';
-            tabR.style.color = '#012d1d';
+            tabP.style.cssText = 'padding:10px 16px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;color:#94a3b8;border-bottom:3px solid transparent;';
+            tabR.style.cssText = 'padding:10px 16px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;color:#012d1d;border-bottom:3px solid #012d1d;';
             viewP.style.display = 'none';
             viewR.style.display = 'block';
-            this.loadTicketsRespondidos();
+            this.loadRespondidos();
         }
     },
 
-    abrirModal(id) {
-        console.log('[TICKETS] Abriendo modal para ticket:', id);
-        showToast('Detalles del ticket #' + id, 'ok');
-    },
-
-    mostrarSetupWarning() {
-        const warning = document.getElementById('tickets-setup-warning');
-        if (warning) warning.style.display = 'block';
+    responder(id, nombre) {
+        const msg = prompt(`Respuesta para ${nombre} (Ticket #${id}):\n\n(Este mensaje se guardará en el ticket)`);
+        if (!msg || !msg.trim()) return;
+        window.VO.api(`/api/admin/ticket/${id}/responder-whatsapp`, { method: 'POST', body: JSON.stringify({ mensaje: msg }) })
+            .then(() => { showToast('✅ Ticket #' + id + ' respondido'); this.loadPendientes(); })
+            .catch(e => showToast('❌ Error: ' + e.message, 'error'));
     }
 };
-
-console.log('[TICKETS] ✅ App inicializado');
 </script>
 </body>
 </html>
