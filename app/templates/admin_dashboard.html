@@ -150,10 +150,6 @@ body { min-height: 100dvh; background: #f0f2ee; font-family: "Inter", sans-serif
             <span class="material-symbols-outlined icon">support_agent</span>
             📞 Gestión de Tickets
         </div>
-        <div class="sidebar-item" onclick="goTo('tickets')" id="nav-tickets">
-            <span class="material-symbols-outlined icon">support_agent</span>
-            📞 Gestión de Tickets
-        </div>
     </nav>
 
     <div style="padding:16px;border-top:1px solid rgba(255,255,255,.1);">
@@ -638,36 +634,6 @@ body { min-height: 100dvh; background: #f0f2ee; font-family: "Inter", sans-serif
     </div>
 </div>
 
-<!-- SECCIÓN TICKETS -->
-<div class="section" id="section-tickets">
-    <div style="padding:24px;">
-        <h1 style="font-size:22px;font-weight:800;color:#012d1d;margin-bottom:4px;">📞 Gestión de Tickets</h1>
-        <p style="color:#64748b;font-size:13px;margin:0 0 20px 0;">Consultas de clientes recibidas por WhatsApp</p>
-        <div style="display:flex;gap:12px;margin-bottom:16px;border-bottom:1px solid #e2e8f0;">
-            <button id="tab-pendientes" onclick="ticketsApp.switchTab('pendientes')"
-                style="padding:10px 16px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;color:#012d1d;border-bottom:3px solid #012d1d;">
-                ⏳ Pendientes
-            </button>
-            <button id="tab-respondidos" onclick="ticketsApp.switchTab('respondidos')"
-                style="padding:10px 16px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;color:#94a3b8;border-bottom:3px solid transparent;">
-                ✅ Respondidos
-            </button>
-        </div>
-        <div id="tickets-pendientes-view" class="card">
-            <table class="tbl">
-                <thead><tr><th>#</th><th>Cliente</th><th>WhatsApp</th><th>Descripción</th><th>Prioridad</th><th>Fecha</th><th>Acción</th></tr></thead>
-                <tbody id="tbody-pendientes"><tr><td colspan="7" style="text-align:center;padding:40px;color:#94a3b8;">Cargando...</td></tr></tbody>
-            </table>
-        </div>
-        <div id="tickets-respondidos-view" class="card" style="display:none;">
-            <table class="tbl">
-                <thead><tr><th>#</th><th>Cliente</th><th>Atendido por</th><th>Fecha</th><th>Estado</th></tr></thead>
-                <tbody id="tbody-respondidos"><tr><td colspan="5" style="text-align:center;padding:40px;color:#94a3b8;">Cargando...</td></tr></tbody>
-            </table>
-        </div>
-    </div>
-</div>
-
 <!-- Toast -->
 <div id="toast"></div>
 
@@ -714,7 +680,6 @@ async function loadSection(s) {
     if (s === 'suscripciones') await loadSuscripciones();
     if (s === 'secop') await cargarProcesosSecop();
     if (s === 'auditoria') await loadAuditoria();
-    if (s === 'tickets') await ticketsApp.loadTickets();
     if (s === 'tickets') await ticketsApp.loadTickets();
 }
 
@@ -1411,96 +1376,6 @@ const ticketsApp = {
             .catch(e => showToast('❌ Error: ' + e.message, 'error'));
     }
 };
-
-// ═══════════════════════════════════════════════════════
-// TICKETS APP
-// ═══════════════════════════════════════════════════════
-const ticketsApp = {
-    async loadTickets() {
-        await this.loadPendientes();
-    },
-
-    async loadPendientes() {
-        const tbody = document.getElementById('tbody-pendientes');
-        try {
-            const resp = await window.VO.api('/api/admin/tickets/pendientes');
-            if (!resp || !resp.tickets || resp.tickets.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;"><div style="font-size:32px;">✅</div><p style="font-weight:600;margin:8px 0 0;">Sin tickets pendientes</p></td></tr>';
-                return;
-            }
-            tbody.innerHTML = resp.tickets.map(t => {
-                const fecha = t.fecha_creacion ? new Date(t.fecha_creacion).toLocaleString('es-CO') : '—';
-                const prior = t.prioridad || 'media';
-                return `<tr>
-                    <td><strong>#${t.ticket_id}</strong></td>
-                    <td>${t.nombre || '—'}</td>
-                    <td style="font-size:12px;font-family:monospace;">${t.whatsapp_numero || '—'}</td>
-                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${(t.descripcion||'').replace(/"/g,'')}">${t.descripcion || '—'}</td>
-                    <td><span class="badge badge-${prior === 'alta' ? 'red' : 'yellow'}">${prior}</span></td>
-                    <td style="font-size:12px;">${fecha}</td>
-                    <td><button onclick="ticketsApp.responder(${t.ticket_id}, '${(t.nombre||'').replace(/'/g,'')}')" class="btn btn-primary" style="font-size:12px;">Responder</button></td>
-                </tr>`;
-            }).join('');
-        } catch(e) {
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:30px;color:#dc2626;">❌ Error: ${e.message}</td></tr>`;
-        }
-    },
-
-    async loadRespondidos() {
-        const tbody = document.getElementById('tbody-respondidos');
-        try {
-            const resp = await window.VO.api('/api/admin/tickets/respondidos');
-            if (!resp || !resp.tickets || resp.tickets.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:#94a3b8;">Sin historial aún</td></tr>';
-                return;
-            }
-            tbody.innerHTML = resp.tickets.map(t => {
-                const fecha = t.fecha_confirmacion ? new Date(t.fecha_confirmacion).toLocaleString('es-CO') : '—';
-                return `<tr>
-                    <td><strong>#${t.ticket_id}</strong></td>
-                    <td>${t.nombre || '—'}</td>
-                    <td style="font-size:12px;">${t.atendido_por || '—'}</td>
-                    <td style="font-size:12px;">${fecha}</td>
-                    <td><span class="badge badge-green">Respondido</span></td>
-                </tr>`;
-            }).join('');
-        } catch(e) {
-            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#dc2626;">❌ Error: ${e.message}</td></tr>`;
-        }
-    },
-
-    switchTab(tab) {
-        const vP = document.getElementById('tickets-pendientes-view');
-        const vR = document.getElementById('tickets-respondidos-view');
-        const tP = document.getElementById('tab-pendientes');
-        const tR = document.getElementById('tab-respondidos');
-        if (tab === 'pendientes') {
-            vP.style.display = 'block'; vR.style.display = 'none';
-            tP.style.borderBottomColor = '#012d1d'; tP.style.color = '#012d1d';
-            tR.style.borderBottomColor = 'transparent'; tR.style.color = '#94a3b8';
-        } else {
-            vP.style.display = 'none'; vR.style.display = 'block';
-            tR.style.borderBottomColor = '#012d1d'; tR.style.color = '#012d1d';
-            tP.style.borderBottomColor = 'transparent'; tP.style.color = '#94a3b8';
-            this.loadRespondidos();
-        }
-    },
-
-    responder(id, nombre) {
-        const msg = prompt(`Escribir respuesta para ${nombre} (Ticket #${id}):\n\nEste mensaje se guardará en el ticket.`);
-        if (!msg || !msg.trim()) return;
-        window.VO.api(`/api/admin/ticket/${id}/responder-whatsapp`, {
-            method: 'POST',
-            body: JSON.stringify({ mensaje: msg.trim() })
-        })
-        .then(() => {
-            showToast('✅ Ticket #' + id + ' respondido');
-            this.loadPendientes();
-        })
-        .catch(e => showToast('❌ Error: ' + e.message, 'error'));
-    }
-};
-
 </script>
 </body>
 </html>
