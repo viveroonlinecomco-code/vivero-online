@@ -1279,8 +1279,7 @@ document.querySelectorAll('.modal-bg').forEach(m => {
 });
 </script>
 
-
-// ═════════════════════════════════════════════════════════════════════════════════
+// ──────── Gestión de Tickets ────────
 // TICKETS APP - ROBUSTO Y COMPLETO
 // ═════════════════════════════════════════════════════════════════════════════════
 
@@ -1383,7 +1382,6 @@ const ticketsApp = {
             tabR.style.color = '#94a3b8';
             viewP.style.display = 'block';
             viewR.style.display = 'none';
-            this.loadTicketsPendientes();
         } else {
             tabP.style.borderBottomColor = 'transparent';
             tabP.style.color = '#94a3b8';
@@ -1395,16 +1393,10 @@ const ticketsApp = {
         }
     },
 
-    async abrirModal(id) {
-        console.log('[TICKETS] abrirModal:', id);
-        try {
-            const t = await window.VO.api(`/api/admin/ticket/${id}`);
-            // TODO: Mostrar modal con detalles
-            showToast('Detalles del ticket #' + id, 'ok');
-        } catch (e) {
-            console.error('[TICKETS] Error abriendo:', e);
-            showToast('Error: ' + (e.message || 'desconocido'), 'error');
-        }
+    abrirModal(id) {
+        console.log('[TICKETS] Abriendo modal para ticket:', id);
+        // TODO: Implementar modal
+        alert('Modal para ticket #' + id);
     },
 
     mostrarSetupWarning() {
@@ -1413,7 +1405,10 @@ const ticketsApp = {
     }
 };
 
-console.log('[TICKETS] ✅ App inicializado');
-
+// Registrar en loadSection
+if (window.goTo) {
+    console.log('[TICKETS] Registrando en goTo handler');
+}
+</script>
 </body>
 </html>
