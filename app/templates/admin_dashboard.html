@@ -583,12 +583,17 @@ body { min-height: 100dvh; background: #f0f2ee; font-family: "Inter", sans-serif
 <div class="section" id="section-tickets">
     <div style="padding:24px;">
         <h1 style="font-size:22px;font-weight:800;color:#012d1d;margin-bottom:4px;">📞 Gestión de Tickets</h1>
-        <p style="color:#64748b;font-size:13px;margin:0 0 20px 0;">Consultas de clientes recibidas por WhatsApp</p>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px;">
+            <p style="color:#64748b;font-size:13px;margin:0;">Consultas de clientes recibidas por WhatsApp</p>
+            <button onclick="ticketsApp.loadPendientes()" class="btn btn-secondary" style="font-size:12px;padding:6px 12px;white-space:nowrap;">
+                🔄 Actualizar
+            </button>
+        </div>
 
         <div style="display:flex;gap:12px;margin-bottom:16px;border-bottom:1px solid #e2e8f0;">
             <button id="tab-pendientes" onclick="ticketsApp.switchTab('pendientes')"
                 style="padding:10px 16px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;color:#012d1d;border-bottom:3px solid #012d1d;">
-                ⏳ Pendientes
+                ⏳ Pendientes <span id="badge-pendientes" style="display:none;background:#ef4444;color:white;border-radius:999px;padding:1px 7px;font-size:11px;margin-left:4px;"></span>
             </button>
             <button id="tab-respondidos" onclick="ticketsApp.switchTab('respondidos')"
                 style="padding:10px 16px;border:none;background:none;cursor:pointer;font-weight:600;font-size:13px;color:#94a3b8;border-bottom:3px solid transparent;">
@@ -1306,6 +1311,8 @@ const ticketsApp = {
                 tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:40px;color:#94a3b8;"><div style="font-size:32px;margin-bottom:8px;">✅</div><p style="font-weight:600;margin:0;">Sin tickets pendientes</p><p style="font-size:12px;margin:4px 0 0;color:#cbd5e1;">Todos los clientes han sido atendidos</p></td></tr>';
                 return;
             }
+            const badge2 = document.getElementById('badge-pendientes');
+            if (badge2) { badge2.textContent = resp.tickets.length; badge2.style.display = 'inline'; }
             tbody.innerHTML = resp.tickets.map(t => {
                 const fecha = t.fecha_creacion ? new Date(t.fecha_creacion).toLocaleString('es-CO') : '—';
                 const prior = t.prioridad || 'media';
@@ -1334,6 +1341,8 @@ const ticketsApp = {
                 tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:30px;color:#94a3b8;">Sin historial aún</td></tr>';
                 return;
             }
+            const badge2 = document.getElementById('badge-pendientes');
+            if (badge2) { badge2.textContent = resp.tickets.length; badge2.style.display = 'inline'; }
             tbody.innerHTML = resp.tickets.map(t => {
                 const fecha = t.fecha_confirmacion ? new Date(t.fecha_confirmacion).toLocaleString('es-CO') : '—';
                 return `<tr>
