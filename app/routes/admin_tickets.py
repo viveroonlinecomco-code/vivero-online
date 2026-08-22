@@ -3,6 +3,13 @@ Endpoints admin para gestión de tickets - ViveroOnline
 Columnas reales: ticket_id, whatsapp_numero, nombre, tipo_solicitud,
 descripcion, prioridad, estado, cliente_id, atendido_por (uuid),
 fecha_creacion, fecha_atencion, notas_admin
+
+FIX (22 ago): la columna `estado` tiene un CHECK constraint en Supabase
+(tickets_soporte_estado_check) que solo permite los valores 'pendiente',
+'en_proceso', 'resuelto', 'descartado'. El código usaba 'respondido', que
+no está en esa lista — eso hacía que el UPDATE fallara con error 500
+(23514, violación de constraint) cada vez que se intentaba responder un
+ticket. Se cambió a 'resuelto' en los dos lugares donde aparecía.
 """
 
 from fastapi import APIRouter
@@ -55,7 +62,7 @@ async def listar_tickets_respondidos():
         resp = (
             db.table("tickets_soporte")
             .select("ticket_id, nombre, whatsapp_numero, descripcion, estado, fecha_atencion, notas_admin")
-            .eq("estado", "respondido")
+            .eq("estado", "resuelto")
             .order("fecha_atencion", desc=True)
             .limit(50)
             .execute()
@@ -120,12 +127,12 @@ async def responder_whatsapp(ticket_id: int, payload: dict):
             notas += "\n⚠️ WhatsApp no enviado - revisar configuración"
 
         db.table("tickets_soporte").update({
-            "estado": "respondido",
+            "estado": "resuelto",
             "fecha_atencion": now,
             "notas_admin": notas,
         }).eq("ticket_id", ticket_id).execute()
 
-        logger.info(f"✅ Ticket #{ticket_id} marcado como respondido")
+        logger.info(f"✅ Ticket #{ticket_id} marcado como resuelto")
 
         return JSONResponse({
             "status": "ok",
