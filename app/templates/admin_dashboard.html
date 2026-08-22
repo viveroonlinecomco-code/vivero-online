@@ -1312,7 +1312,7 @@ const ticketsApp = {
                     <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.descripcion || '—'}</td>
                     <td><span class="badge badge-${color}">${prior}</span></td>
                     <td style="font-size:12px;">${fecha}</td>
-                    <td style="text-align:center;"><button onclick="ticketsApp.responder(${t.ticket_id}, '${(t.nombre||'').replace(/'/g,'')}')" class="btn btn-primary" style="font-size:12px;">Responder</button></td>
+                    <td style="text-align:center;"><button onclick="ticketsApp.abrirResponder(${t.ticket_id}, '${(t.nombre||'').replace(/'/g,"\\'")}', '${(t.descripcion||'').replace(/'/g,"\\'").replace(/\n/g,' ').slice(0,140)}')" class="btn btn-primary" style="font-size:12px;">Responder</button></td>
                 </tr>`;
             }).join('');
         } catch (e) {
@@ -1364,19 +1364,76 @@ const ticketsApp = {
         }
     },
 
-    responder(id, nombre) {
-        const msg = prompt(`✍️ Respuesta para ${nombre} (Ticket #${id}):\n\nEste mensaje se intentará enviar por WhatsApp:`);
-        if (!msg || !msg.trim()) return;
-        showToast('Enviando respuesta...');
-        window.VO.api(`/api/admin/ticket/${id}/responder-whatsapp`, { method: 'POST', body: JSON.stringify({ mensaje: msg.trim() }) })
-            .then(r => {
-                const ok = r && r.whatsapp_enviado;
-                showToast(ok ? '✅ Respondido y WhatsApp enviado' : '⚠️ Respondido (WhatsApp no enviado - revisar config)', ok ? 'ok' : 'error');
-                this.loadPendientes();
-            })
-            .catch(e => showToast('❌ Error: ' + e.message, 'error'));
+    // ── Estado del modal de respuesta (reemplaza el prompt() frágil) ───────
+    _ticketActivo: null,
+
+    abrirResponder(id, nombre, descripcion) {
+        this._ticketActivo = { id, nombre };
+        document.getElementById('resp-ticket-titulo').textContent = `Responder a ${nombre || 'cliente'} (Ticket #${id})`;
+        document.getElementById('resp-ticket-descripcion').textContent = descripcion || '';
+        document.getElementById('resp-ticket-mensaje').value = '';
+        document.getElementById('modal-responder-ticket').classList.add('open');
+        setTimeout(() => document.getElementById('resp-ticket-mensaje').focus(), 50);
+    },
+
+    cerrarResponder() {
+        document.getElementById('modal-responder-ticket').classList.remove('open');
+        this._ticketActivo = null;
+    },
+
+    async enviarRespuesta() {
+        if (!this._ticketActivo) return;
+        const msg = document.getElementById('resp-ticket-mensaje').value.trim();
+        if (!msg) {
+            showToast('Escribí un mensaje antes de enviar', 'error');
+            return;
+        }
+        const { id } = this._ticketActivo;
+        const btn = document.getElementById('resp-ticket-enviar');
+        btn.disabled = true;
+        btn.textContent = 'Enviando...';
+        try {
+            const r = await window.VO.api(`/api/admin/ticket/${id}/responder-whatsapp`, {
+                method: 'POST',
+                body: JSON.stringify({ mensaje: msg }),
+            });
+            const ok = r && r.whatsapp_enviado;
+            showToast(ok ? '✅ Respondido y WhatsApp enviado' : '⚠️ Respondido, pero el WhatsApp no se pudo enviar (revisar config o ventana de 24h)', ok ? 'ok' : 'error');
+            this.cerrarResponder();
+            this.loadPendientes();
+        } catch (e) {
+            console.error('Error respondiendo ticket', e);
+            showToast('❌ Error: ' + e.message, 'error');
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Enviar respuesta';
+        }
     }
 };
 </script>
+
+<!-- ══════════ MODAL: Responder ticket ══════════ -->
+<div class="modal-bg" id="modal-responder-ticket">
+    <div class="modal">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+            <h3 id="resp-ticket-titulo" style="font-weight:800;font-size:15px;color:#012d1d;">Responder ticket</h3>
+            <button onclick="ticketsApp.cerrarResponder()" style="border:none;background:none;cursor:pointer;">
+                <span class="material-symbols-outlined" style="color:#94a3b8;">close</span>
+            </button>
+        </div>
+
+        <p id="resp-ticket-descripcion" style="font-size:12px;color:#64748b;background:#f8fafc;border-radius:8px;padding:8px 10px;margin-bottom:14px;max-height:70px;overflow-y:auto;"></p>
+
+        <label style="display:block;font-size:12px;font-weight:600;color:#64748b;margin-bottom:6px;">Mensaje (se manda por WhatsApp)</label>
+        <textarea id="resp-ticket-mensaje" rows="4"
+            style="width:100%;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;font-size:13px;outline:none;resize:vertical;font-family:inherit;margin-bottom:16px;"
+            placeholder="Escribí la respuesta para el cliente..."></textarea>
+
+        <button id="resp-ticket-enviar" class="btn btn-primary" style="width:100%;justify-content:center;" onclick="ticketsApp.enviarRespuesta()">
+            Enviar respuesta
+        </button>
+    </div>
+</div>
+
 </body>
 </html>
