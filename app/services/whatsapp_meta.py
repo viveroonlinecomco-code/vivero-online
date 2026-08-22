@@ -91,7 +91,17 @@ async def send_template_message(
 
 
 async def download_media_bytes(media_id: str) -> bytes:
-    """Descarga media de Meta."""
+    """Descarga media de Meta.
+
+    Proceso 2 pasos:
+    1. GET /v25.0/{media_id} → obtiene URL real firmada
+    2. GET URL real → bytes del archivo
+
+    FIX (22 ago): al paso 2 le faltaba el header Authorization. Meta lo
+    exige en AMBAS llamadas, no solo en la primera — sin él, la descarga
+    real desde lookaside.fbsbx.com devuelve 401 Unauthorized aunque el
+    paso 1 (pedir la URL) funcione bien.
+    """
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
         meta_resp = await client.get(
             f"{_GRAPH_API}/{media_id}",
@@ -102,7 +112,10 @@ async def download_media_bytes(media_id: str) -> bytes:
         if not media_url:
             raise ValueError("No URL")
 
-        media_resp = await client.get(media_url)
+        media_resp = await client.get(
+            media_url,
+            headers={"Authorization": f"Bearer {_access_token()}"},
+        )
         media_resp.raise_for_status()
         return media_resp.content
 
@@ -133,7 +146,7 @@ async def procesar_consulta_precio_producto(
     plazo: str = "inmediato",
 ) -> str:
     """✅ ESTRUCTURA CORRECTA: Busca en plantas → inventario → precio.
-    
+
     Pasos:
     1. Busca en tabla 'plantas' por nombre_comun
     2. Obtiene planta_id
@@ -143,38 +156,38 @@ async def procesar_consulta_precio_producto(
     """
     try:
         logger.info(f"🔍 Buscando: {producto_nombre}")
-        
+
         # 1. BUSCAR EN TABLA 'plantas' por nombre_comun
         plantas_resp = supabase.table("plantas").select(
             "planta_id, nombre_comun"
         ).ilike("nombre_comun", f"%{producto_nombre}%").limit(1).execute()
-        
+
         if not plantas_resp.data:
             logger.warning(f"Planta no encontrada: {producto_nombre}")
             return f"No encontré '{producto_nombre}'. Intenta con: Hiedra, Geranio, Duranta, Afelandra"
-        
+
         planta = plantas_resp.data[0]
         planta_id = planta.get("planta_id")
         nombre_comun = planta.get("nombre_comun")
         logger.info(f"✅ Planta encontrada: {nombre_comun} (id={planta_id})")
-        
+
         # 2. BUSCAR EN TABLA 'inventario' por planta_id
         inventario_resp = supabase.table("inventario").select(
             "inventario_id, precio_mayorista, stock"
         ).eq("planta_id", planta_id).limit(1).execute()
-        
+
         if not inventario_resp.data:
             logger.warning(f"Inventario no encontrado para planta_id={planta_id}")
             return f"'{nombre_comun}' no está disponible en inventario"
-        
+
         inventario = inventario_resp.data[0]
         precio_mayorista = inventario.get("precio_mayorista", 0)
         inventario_id = inventario.get("inventario_id")
         logger.info(f"✅ Inventario encontrado: inventario_id={inventario_id}, precio=${precio_mayorista}")
-        
+
         if not precio_mayorista:
             return "Error: precio no disponible"
-        
+
         # 3. CALCULAR PRECIO CON MATRIZ COMERCIAL
         resultado_precios = calcular_precios_pedido(
             cliente={
@@ -189,10 +202,10 @@ async def procesar_consulta_precio_producto(
             plazo=plazo,
             forzar_canal=None,
         )
-        
+
         precio_cliente = resultado_precios["totales"]["precio_final_cliente"]
         logger.info(f"✅ Precio cliente: ${precio_cliente}")
-        
+
         # 4. CONSTRUIR MENSAJE
         precio_fmt = f"${int(precio_cliente):,.0f}".replace(",", ".")
         mensaje = (
@@ -202,7 +215,7 @@ async def procesar_consulta_precio_producto(
         )
         logger.info(f"✅ Respuesta: {mensaje[:80]}")
         return mensaje
-        
+
     except Exception as e:
         logger.exception(f"❌ Error: {e}")
         return f"⚠️ Error: {str(e)[:100]}"
@@ -217,25 +230,25 @@ async def obtener_recomendacion_producto(
     """Obtiene recomendación de producto."""
     try:
         inventario = supabase.table("inventario").select("*").eq("id", producto_id).single().execute()
-        
+
         if not inventario.data:
             return {"error": "No encontrado"}
-        
+
         datos = inventario.data
         precio = datos.get("precio_mayorista", 0)
-        
+
         if not precio:
             return {"error": "Sin precio"}
-        
+
         resultado_precios = calcular_precios_pedido(
             cliente={"es_guest": es_guest, "cliente_id": None},
             items=[{"inventario_id": producto_id, "cantidad": 1, "precio_unitario": precio}],
             plazo=plazo,
             forzar_canal=None,
         )
-        
+
         precio_cliente = resultado_precios["totales"]["precio_final_cliente"]
-        
+
         return {
             "id": producto_id,
             "nombre": "Producto",
@@ -243,7 +256,7 @@ async def obtener_recomendacion_producto(
             "precio_mayorista_cop": precio,
             "error": None
         }
-        
+
     except Exception as e:
         logger.exception(f"Error: {e}")
         return {"error": str(e)}
@@ -263,7 +276,11 @@ async def notify_viverista_nueva_cotizacion(
     ciudad_entrega: str,
     horas_para_responder: int = 2,
 ) -> Dict[str, Any]:
-    """Notifica viverista."""
+    """⚠️ PENDIENTE (ver Hallazgo 2): esta es la versión simplificada actual,
+    sin tocar todavía. La versión del 18 jul usaba send_template_message()
+    con la plantilla aprobada 'notif_viverista_nueva_cotizacion'. No la
+    reconstruyo en este archivo hasta revisar send_template_message,
+    ADMIN_WHATSAPP_NOTIF y _ensure_plus_prefix — pendiente para la próxima."""
     msg = f"🌿 Nueva solicitud\n{proyecto}\n💰 ${tu_parte_cop:,}"
     result = await send_text_message(to, msg)
     return {"ok": result}
@@ -277,7 +294,7 @@ async def notify_viverista_recordatorio(
     numero_recordatorio: int,
     minutos_restantes: int,
 ) -> Dict[str, Any]:
-    """Recordatorio viverista."""
+    """⚠️ PENDIENTE (ver Hallazgo 2) — mismo caso que la función anterior."""
     msg = f"⏰ Recordatorio {numero_recordatorio}\n{proyecto}"
     result = await send_text_message(to, msg)
     return {"ok": result}
@@ -290,7 +307,7 @@ async def notify_comprador_pedido_parcial(
     monto_disponible_cop: int,
     detalle_no_confirmado: str,
 ) -> Dict[str, Any]:
-    """Notifica comprador."""
+    """⚠️ PENDIENTE (ver Hallazgo 2) — mismo caso que las dos anteriores."""
     msg = f"📋 {proyecto}\n✅ ${monto_disponible_cop:,}"
     result = await send_text_message(to, msg)
     return {"ok": result}
