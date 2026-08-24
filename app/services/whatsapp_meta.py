@@ -276,37 +276,18 @@ async def notify_viverista_nueva_cotizacion(
     ciudad_entrega: str,
     horas_para_responder: int = 2,
 ) -> Dict[str, Any]:
-    """Notifica al viverista sobre nueva cotización con mensaje COMPLETO.
+    """Notifica al viverista sobre nueva cotización.
     
-    Genera mensaje detallado que incluye:
-    - Nombre proyecto
-    - Solicitante
-    - Viverista
-    - Precio del viverista
-    - Zona de entrega
-    - Tiempo de respuesta
-    - Instrucciones de acción
+    FIX (19 ago 2026): Esta función YA NO se usa directamente desde pedidos.py
+    El nuevo flujo construye el mensaje DETALLADO en pedidos.py con:
+    - Lista de plantas con precio unitario mayorista cada una
+    - Total mayorista que recibirá
+    - SIN mostrar precio al comprador (es info interna del sistema)
     
-    FIX (19 ago 2026): Mejora del mensaje simplificado anterior.
-    Ahora genera mensaje profesional y detallado que el viverista puede
-    entender completamente.
+    Nota: Esta función se mantiene aquí por compatibilidad con
+    otros flujos (recordatorios, etc).
     """
-    
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # MENSAJE COMPLETO — Detallado y profesional
-    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    msg = (
-        f"🌿 *Nueva solicitud — ViveroOnline*\n\n"
-        f"Proyecto: *{proyecto}*\n"
-        f"Solicitante: *{cliente}*\n"
-        f"📦 {nombre_viverista}\n"
-        f"💰 Tu precio: ${tu_parte_cop:,} COP\n"
-        f"Zona: {ciudad_entrega}\n"
-        f"⏰ Responde en {horas_para_responder}h\n\n"
-        f"¿Confirmás disponibilidad?\n"
-        f"Respondé *APROBAR* o *RECHAZAR*"
-    )
-    
+    msg = f"🌿 Nueva solicitud\n{proyecto}\n💰 ${tu_parte_cop:,}"
     result = await send_text_message(to, msg)
     return {"ok": result}
 
@@ -319,7 +300,7 @@ async def notify_viverista_recordatorio(
     numero_recordatorio: int,
     minutos_restantes: int,
 ) -> Dict[str, Any]:
-    """⚠️ PENDIENTE (ver Hallazgo 2) — mismo caso que la función anterior."""
+    """⚠️ PENDIENTE — Mejorar con estructura similar a nueva_cotizacion."""
     msg = f"⏰ Recordatorio {numero_recordatorio}\n{proyecto}"
     result = await send_text_message(to, msg)
     return {"ok": result}
@@ -332,7 +313,7 @@ async def notify_comprador_pedido_parcial(
     monto_disponible_cop: int,
     detalle_no_confirmado: str,
 ) -> Dict[str, Any]:
-    """⚠️ PENDIENTE (ver Hallazgo 2) — mismo caso que las dos anteriores."""
+    """⚠️ PENDIENTE — Implementar flujo completo."""
     msg = f"📋 {proyecto}\n✅ ${monto_disponible_cop:,}"
     result = await send_text_message(to, msg)
     return {"ok": result}
