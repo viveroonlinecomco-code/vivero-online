@@ -276,12 +276,37 @@ async def notify_viverista_nueva_cotizacion(
     ciudad_entrega: str,
     horas_para_responder: int = 2,
 ) -> Dict[str, Any]:
-    """⚠️ PENDIENTE (ver Hallazgo 2): esta es la versión simplificada actual,
-    sin tocar todavía. La versión del 18 jul usaba send_template_message()
-    con la plantilla aprobada 'notif_viverista_nueva_cotizacion'. No la
-    reconstruyo en este archivo hasta revisar send_template_message,
-    ADMIN_WHATSAPP_NOTIF y _ensure_plus_prefix — pendiente para la próxima."""
-    msg = f"🌿 Nueva solicitud\n{proyecto}\n💰 ${tu_parte_cop:,}"
+    """Notifica al viverista sobre nueva cotización con mensaje COMPLETO.
+    
+    Genera mensaje detallado que incluye:
+    - Nombre proyecto
+    - Solicitante
+    - Viverista
+    - Precio del viverista
+    - Zona de entrega
+    - Tiempo de respuesta
+    - Instrucciones de acción
+    
+    FIX (19 ago 2026): Mejora del mensaje simplificado anterior.
+    Ahora genera mensaje profesional y detallado que el viverista puede
+    entender completamente.
+    """
+    
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # MENSAJE COMPLETO — Detallado y profesional
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    msg = (
+        f"🌿 *Nueva solicitud — ViveroOnline*\n\n"
+        f"Proyecto: *{proyecto}*\n"
+        f"Solicitante: *{cliente}*\n"
+        f"📦 {nombre_viverista}\n"
+        f"💰 Tu precio: ${tu_parte_cop:,} COP\n"
+        f"Zona: {ciudad_entrega}\n"
+        f"⏰ Responde en {horas_para_responder}h\n\n"
+        f"¿Confirmás disponibilidad?\n"
+        f"Respondé *APROBAR* o *RECHAZAR*"
+    )
+    
     result = await send_text_message(to, msg)
     return {"ok": result}
 
