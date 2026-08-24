@@ -141,13 +141,24 @@ async def solicitar_aprobacion(
         nombre_proyecto = cot.get("prompt_original") or f"Cotización #{cotizacion_id}"
         notas = cot.get("notas_cliente", "")
 
-        # Agrupar items por vivero
+        # Agrupar items por vivero — FIX 19 ago: Buscar precio_mayorista y plantas para cada inventario
         inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
         if inv_ids:
             inv_resp = db.table("inventario").select(
-                "inventario_id, vivero_id"
+                "inventario_id, vivero_id, precio_mayorista, plantas(nombre_comun)"
             ).in_("inventario_id", inv_ids).execute()
-            inv_vivero_map = {r["inventario_id"]: r["vivero_id"] for r in (inv_resp.data or [])}
+            
+            # Crear 3 mapas: vivero, precio_mayorista, nombre_planta
+            inv_vivero_map = {}
+            inv_precio_mayorista_map = {}
+            inv_planta_map = {}
+            
+            for r in (inv_resp.data or []):
+                inv_id = r["inventario_id"]
+                inv_vivero_map[inv_id] = r["vivero_id"]
+                inv_precio_mayorista_map[inv_id] = float(r.get("precio_mayorista") or 0)
+                planta_data = r.get("plantas") or {}
+                inv_planta_map[inv_id] = planta_data.get("nombre_comun", "Planta")
 
             # Agrupar items por vivero_id
             items_por_vivero: dict[int, list] = {}
@@ -158,14 +169,31 @@ async def solicitar_aprobacion(
 
             # Crear sub-cotización y notificar a cada vivero
             for vivero_id, vitems in items_por_vivero.items():
-                total_vivero = sum(float(it.get("subtotal") or 0) for it in vitems)
+                # FIX 19 ago: Calcular total_vivero con precio_mayorista REAL, no subtotal comprador
+                total_mayorista_vivero = 0.0
+                plantas_detalle = []  # Para detallar en mensaje
+                
+                for it in vitems:
+                    inv_id = it.get("inventario_id")
+                    cantidad = it.get("cantidad", 0)
+                    precio_unit_mayorista = inv_precio_mayorista_map.get(inv_id, 0)
+                    subtotal_item = precio_unit_mayorista * cantidad
+                    total_mayorista_vivero += subtotal_item
+                    
+                    nombre_planta = inv_planta_map.get(inv_id, "Planta")
+                    plantas_detalle.append({
+                        "nombre": nombre_planta,
+                        "cantidad": cantidad,
+                        "precio_unitario": precio_unit_mayorista,
+                        "subtotal": subtotal_item
+                    })
 
                 # Crear sub-cotización
                 db.table("sub_cotizaciones").insert({
                     "cotizacion_id": cotizacion_id,
                     "vivero_id": vivero_id,
                     "items": vitems,
-                    "total_estimado": total_vivero,
+                    "total_estimado": total_mayorista_vivero,
                     "estado": "pendiente",
                 }).execute()
 
@@ -189,47 +217,43 @@ async def solicitar_aprobacion(
                 if not v.data or not v.data[0].get("whatsapp_numero"):
                     continue
 
-                resumen = _resumir_items(db, vitems)
+                # FIX 19 ago: Construir mensaje DETALLADO con plantas individuales y precio mayorista
+                lineas_plantas = []
+                for planta in plantas_detalle:
+                    linea = f"  • {planta['nombre']} × {planta['cantidad']} → ${planta['precio_unitario']:,.0f} COP"
+                    lineas_plantas.append(linea)
+                
+                plantas_msg = "\n".join(lineas_plantas)
 
-                # ── FIX 21 jul: viverista NO ve el precio del comprador ──
-                # Solo mostramos su precio (el mayorista que él publicó).
-                # El motor matricial se usa en el checkout para calcular el
-                # precio real del comprador, pero eso no viaja acá.
+                # Mensaje FINAL: Solo precio mayorista, sin precio comprador
                 msg = (
                     f"🌿 *Nueva solicitud — ViveroOnline*\n\n"
-                    f"Proyecto: *{nombre_proyecto}*\n\n"
-                    f"📦 *Tus plantas solicitadas:*\n{resumen}\n\n"
-                    f"💰 Tu precio: ${int(total_vivero):,} COP\n"
+                    f"Proyecto: *{nombre_proyecto}*\n"
+                    f"Solicitante: *Cliente ViveroOnline*\n\n"
+                    f"📦 *Plantas solicitadas:*\n{plantas_msg}\n\n"
+                    f"💰 *Tu precio total (lo que recibirás):* ${total_mayorista_vivero:,.0f} COP\n\n"
+                    f"Zona: Sabana de Bogotá\n"
+                    f"⏰ Responde en 2h\n\n"
+                    f"¿Confirmás disponibilidad?\n"
+                    f"Respondé *APROBAR* o *RECHAZAR*"
                 )
-                if notas:
-                    msg += f"\n📝 Notas: {notas}\n"
-                msg += f"\n¿Confirmás disponibilidad?\nRespondé *APROBAR* o *RECHAZAR*"
 
-                # ── CAMBIO 12 ago: usar template Meta en lugar de texto libre ──
-                # Esto permite que la notificación llegue INCLUSO sin ventana 24h abierta
+                # ── CAMBIO 12 ago + FIX 19 ago: Enviar mensaje detallado por WhatsApp ──
                 import logging
                 logger = logging.getLogger(__name__)
                 wa_viverista = v.data[0]["whatsapp_numero"]
                 nombre_vivero = v.data[0].get("nombre_vivero", "Viverista")
                 
-                logger.info(f"📤 Notificando viverista {vivero_id} ({nombre_vivero}) - WA: {wa_viverista} - Proyecto: {nombre_proyecto} - Total: ${int(total_vivero):,}")
+                logger.info(f"📤 Notificando viverista {vivero_id} ({nombre_vivero}) - WA: {wa_viverista} - Proyecto: {nombre_proyecto} - Total mayorista: ${total_mayorista_vivero:,.0f}")
                 
                 try:
-                    resultado = await notify_viverista_nueva_cotizacion(
-                        to=wa_viverista,
-                        nombre_viverista=nombre_vivero,
-                        proyecto=nombre_proyecto,
-                        cliente="Cliente ViveroOnline",
-                        tu_parte_cop=int(total_vivero),
-                        ciudad_entrega="Sabana de Bogotá",
-                        horas_para_responder=2
-                    )
-                    if resultado.get("ok"):
+                    resultado = await send_text_message(wa_viverista, msg)
+                    if resultado:
                         logger.info(f"✅ Notificación enviada a {wa_viverista}")
                     else:
-                        logger.error(f"❌ Error notificando viverista: {resultado}")
+                        logger.error(f"❌ send_text_message devolvió False para {wa_viverista}")
                 except Exception as e:
-                    logger.error(f"❌ Exception notificando viverista {vivero_id}: {e}", exc_info=True)
+                    logger.error(f"❌ Exception enviando WhatsApp a vivero {vivero_id}: {e}", exc_info=True)
 
                 # Guardar acción pendiente en sesión del viverista
                 accion = {
@@ -238,7 +262,7 @@ async def solicitar_aprobacion(
                     "params": {
                         "cotizacion_id": cotizacion_id,
                         "nombre_proyecto": nombre_proyecto,
-                        "total_base": int(total_vivero),
+                        "total_base": int(total_mayorista_vivero),
                     }
                 }
                 sesion = db.table("sesiones_agente").select(
