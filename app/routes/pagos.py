@@ -146,29 +146,59 @@ async def iniciar_pago(req: IniciarPagoRequest, user: UserContext = Depends(requ
     # 🔴 FASE 10.4: Descuento B2B temporal 12% (24 ago 2026)
     # ═══════════════════════════════════════════════════════════════════════
     # ANTES: monto_cop = precio_total (sin descuento)
-    # AHORA: Si B2B + fintech_activa=False → aplica 12% descuento
+    # AHORA: Si B2B + fintech_activa=False + monto >= 5 SMLMV
+    #        → aplica 12% descuento
+    # VALIDACIÓN: Descuentos solo para compras >= umbral SMLMV (igual a precios.py)
     # REVERTIR: Cuando fintech esté confirmada, activa fintech_activa=true
     #          en tabla configuracion_global y el descuento se desactiva automático
     # ═════════════════════════════════════════════════════════════════════════
     
+    import logging
+    logger = logging.getLogger(__name__)
+    
     es_b2b = not cliente.get("es_guest", False)
     fintech_activa = bool(get_config("fintech_activa", default=False))
+    
+    # Leer umbral SMLMV de config (mismo que precios.py línea 124-125)
+    smlmv = float(get_config("smlmv_actual", default=1_750_905))
+    umbral_smlmv = int(get_config("umbral_descuento_b2b_smlmv", default=5))
+    umbral_pesos = smlmv * umbral_smlmv
     
     monto_original = monto_cop
     descuento_aplicado = False
     
     if es_b2b and not fintech_activa:
-        # Aplicar descuento 12% sobre el monto total
-        descuento_pesos = int(monto_cop * 0.12)
-        monto_cop = monto_cop - descuento_pesos
-        descuento_aplicado = True
-        
-        import logging
-        logger = logging.getLogger(__name__)
+        # VALIDACIÓN: Solo aplicar descuento si supera umbral SMLMV
+        if monto_cop >= umbral_pesos:
+            # Aplicar descuento 12% sobre el monto total
+            descuento_pesos = int(monto_cop * 0.12)
+            monto_cop = monto_cop - descuento_pesos
+            descuento_aplicado = True
+            
+            logger.info(
+                f"[Fase 10.4] Descuento B2B 12% aplicado: "
+                f"Monto ${monto_original:,} >= Umbral ${umbral_pesos:,} (5 SMLMV × ${smlmv:,.0f}) "
+                f"→ ${monto_original:,} → ${monto_cop:,} "
+                f"(ahorro: ${descuento_pesos:,})"
+            )
+        else:
+            # Compra por debajo del umbral — NO aplica descuento
+            logger.info(
+                f"[Fase 10.4] Descuento B2B NO aplicado: "
+                f"Monto ${monto_original:,} < Umbral ${umbral_pesos:,} (5 SMLMV × ${smlmv:,.0f}) "
+                f"Cliente B2B pero compra pequeña → Sin descuento"
+            )
+    elif es_b2b and fintech_activa:
+        # Fintech activa — descuento será manejado por calcular_precios_pedido()
         logger.info(
-            f"[Fase 10.4] Descuento B2B 12% aplicado: "
-            f"${monto_original:,} → ${monto_cop:,} "
-            f"(ahorro: ${descuento_pesos:,})"
+            f"[Fase 10.4] Descuento B2B delegado a fintech: "
+            f"fintech_activa=true → Usar descuentos de financiamiento"
+        )
+    else:
+        # Cliente guest o no B2B — sin descuento
+        logger.info(
+            f"[Fase 10.4] Descuento B2B NO aplicado: "
+            f"Cliente es guest={not es_b2b} → Sin descuento"
         )
     
     # ═════════════════════════════════════════════════════════════════════════
