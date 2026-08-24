@@ -4,6 +4,9 @@ Fase 4 (21 jul 2026): eliminado el hardcoded `monto_plataforma = monto_cop * 0.0
 El monto_plataforma ahora se lee de la transaccion_b2b correspondiente
 (que YA guardó el desglose calculado con el motor matricial de precios.py).
 Si por alguna razón no está disponible, se recalcula al vuelo desde el modelo.
+
+Fase 10.4 (24 ago 2026): Agregado descuento B2B temporal 12% + ePayco
+(reversible automáticamente cuando fintech_activa=true en configuracion_global).
 """
 from __future__ import annotations
 from typing import Optional
@@ -19,6 +22,7 @@ from app.services.epayco import (
 )
 from app.services.supabase import admin
 from app.services.precios import calcular_precios_pedido
+from app.services.config_global import get_config
 
 
 router = APIRouter(prefix="/api/pagos", tags=["pagos"])
@@ -50,6 +54,10 @@ def _obtener_desglose_pago(db, transaccion_id: int, monto_cop: int) -> tuple[flo
       3. Fallback conservador: monto_plataforma = 0, monto_viverista = monto_cop.
          Preferible dejar al viverista con todo que cobrarle una comisión mal
          calculada; la conciliación admin lo detecta y corrige.
+    
+    NOTA FASE 10.4: Este desglose se calcula DESPUÉS de aplicar el descuento B2B
+    temporal en iniciar_pago(). Por eso el monto_cop que recibe aquí es el
+    DESCUENTO YA APLICADO si es B2B.
     """
     # Estrategia 1 — Usar el desglose YA calculado por el motor
     try:
@@ -100,6 +108,14 @@ def _obtener_desglose_pago(db, transaccion_id: int, monto_cop: int) -> tuple[flo
 
 @router.post("/iniciar", response_model=IniciarPagoResponse)
 async def iniciar_pago(req: IniciarPagoRequest, user: UserContext = Depends(require_user)):
+    """Inicia pago de una transacción B2B vía ePayco.
+    
+    Fase 10.4 (24 ago 2026):
+    - Si cliente es B2B (no guest) Y fintech_activa=False en config
+      → Aplica descuento temporal 12% al monto a cobrar
+    - Cuando fintech esté confirmada, activa fintech_activa=true en Supabase
+      → Descuento se desactiva automáticamente (sin cambiar código)
+    """
     s = get_settings()
     epayco = get_epayco()
     if not epayco.is_configured:
@@ -109,7 +125,7 @@ async def iniciar_pago(req: IniciarPagoRequest, user: UserContext = Depends(requ
 
     txn_resp = db.table("transacciones_b2b").select(
         "transaccion_id, cliente_id, precio_total, estado, "
-        "clientes(nombre_empresa, nombre_representante, whatsapp_numero)"
+        "clientes(nombre_empresa, nombre_representante, whatsapp_numero, es_guest)"
     ).eq("transaccion_id", req.transaccion_id).limit(1).execute()
     if not txn_resp.data:
         raise HTTPException(404, detail="Transacción no encontrada")
@@ -126,6 +142,37 @@ async def iniciar_pago(req: IniciarPagoRequest, user: UserContext = Depends(requ
     monto_cop = int(float(txn["precio_total"]))
     cliente = txn.get("clientes") or {}
 
+    # ═══════════════════════════════════════════════════════════════════════
+    # 🔴 FASE 10.4: Descuento B2B temporal 12% (24 ago 2026)
+    # ═══════════════════════════════════════════════════════════════════════
+    # ANTES: monto_cop = precio_total (sin descuento)
+    # AHORA: Si B2B + fintech_activa=False → aplica 12% descuento
+    # REVERTIR: Cuando fintech esté confirmada, activa fintech_activa=true
+    #          en tabla configuracion_global y el descuento se desactiva automático
+    # ═════════════════════════════════════════════════════════════════════════
+    
+    es_b2b = not cliente.get("es_guest", False)
+    fintech_activa = bool(get_config("fintech_activa", default=False))
+    
+    monto_original = monto_cop
+    descuento_aplicado = False
+    
+    if es_b2b and not fintech_activa:
+        # Aplicar descuento 12% sobre el monto total
+        descuento_pesos = int(monto_cop * 0.12)
+        monto_cop = monto_cop - descuento_pesos
+        descuento_aplicado = True
+        
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(
+            f"[Fase 10.4] Descuento B2B 12% aplicado: "
+            f"${monto_original:,} → ${monto_cop:,} "
+            f"(ahorro: ${descuento_pesos:,})"
+        )
+    
+    # ═════════════════════════════════════════════════════════════════════════
+
     response_url = f"{s.app_base_url}/pagos/resultado"
     confirmation_url = f"{s.app_base_url}/api/pagos/confirmacion"
     checkout_req = CheckoutRequest(
@@ -139,11 +186,12 @@ async def iniciar_pago(req: IniciarPagoRequest, user: UserContext = Depends(requ
     referencia = payload["invoice"]
 
     # ── Fase 4: desglose desde el motor matricial (no más hardcoded 0.05) ──
+    # NOTA: El monto_cop ya tiene descuento aplicado si es B2B sin fintech
     monto_viverista, monto_plataforma = _obtener_desglose_pago(db, req.transaccion_id, monto_cop)
 
     pago_resp = db.table("pagos").insert({
         "transaccion_id": req.transaccion_id,
-        "monto_total": monto_cop,
+        "monto_total": monto_cop,  # CON descuento B2B si aplica
         "moneda": "COP",
         "estado_pago": "pendiente",
         "metodo": "epayco",
@@ -178,6 +226,11 @@ async def confirmar_pago(
     x_signature: str = Form(""),
     x_id_invoice: Optional[str] = Form(None),
 ):
+    """Webhook de confirmación de ePayco.
+    
+    Recibe la notificación de pago aprobado/rechazado/pendiente
+    y actualiza el estado en Supabase.
+    """
     epayco = get_epayco()
     db = admin()
 
@@ -262,6 +315,7 @@ async def confirmar_pago(
 
 @router.get("/estado/{pago_id}")
 async def estado_pago(pago_id: int, user: UserContext = Depends(require_user)):
+    """Retorna el estado actual de un pago."""
     db = admin()
     resp = db.table("pagos").select(
         "pago_id, transaccion_id, monto_total, estado_pago, "
