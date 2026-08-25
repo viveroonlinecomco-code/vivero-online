@@ -5,6 +5,7 @@ Endpoints públicos SIN autenticación para el flujo de compra guest.
 Fase 10.2 (26 jul): validate-cart + calcular-flete
 Fase 10.3 (29 jul): create-order — crea cliente_guest + cotización + payment intent ePayco
 Fase 10.4 (24 ago): Descuento B2B 12% sobre SUBTOTAL (no flete) con validación SMLMV
+FASE 10.4 FIX (24 ago): Detectar cliente registrado B2B (no guest) si ya existe por email
 
 Reglas B2C guest:
 - Solo tier S+M
@@ -14,6 +15,7 @@ Reglas B2C guest:
 - Reserva stock 15 min al iniciar pago
 - Post-pago: reusa webhook /api/pagos/confirmacion existente
 - NUEVO: Descuento 12% B2B si cliente registrado + compra >= 5 SMLMV + fintech_activa=false
+- FIX: Si email pertenece a cliente registrado (es_guest=false), usar ese cliente (no crear guest)
 """
 from __future__ import annotations
 from typing import Optional
@@ -324,7 +326,7 @@ async def calcular_flete(req: CalcularFleteRequest):
 
 
 # ═══════════════════════════════════════════════════════════
-# Endpoint 3: CREATE ORDER (Fase 10.3 + 10.4)
+# Endpoint 3: CREATE ORDER (Fase 10.3 + 10.4 + 10.4 FIX)
 # ═══════════════════════════════════════════════════════════
 
 def _liberar_reservas_expiradas(db) -> int:
@@ -434,12 +436,6 @@ def _upsert_cliente_guest(
         return (cliente_id, es_recurrente)
 
     # Crear cliente_guest nuevo con documento en columnas dedicadas
-    # NOTA IMPORTANTE:
-    # - tipo_cliente="particular" es el valor válido para guest B2C según el CHECK
-    #   constraint clientes_tipo_cliente_check. Los otros valores válidos son:
-    #   paisajista | constructora | jardineria | empresa | particular
-    # - habeas_data=True porque el guest lo aceptó explícitamente en el checkout
-    #   (checkbox obligatorio validado en el endpoint create-order antes de acá)
     new_resp = db.table("clientes").insert({
         "es_guest": True,
         "activo": True,
@@ -466,14 +462,14 @@ async def create_order(req: CreateOrderRequest):
     Flujo:
     1. Validar aceptaciones legales
     2. Limpieza pasiva de reservas expiradas
-    3. Re-validar cart (guardrail contra cambios de stock/precio)
+    3. Re-validar cart
     4. Calcular flete
-    5. Upsert cliente_guest
-    6. Marcar conversión si es recurrente (Fase 13)
-    7. Crear cotización (fecha_vencimiento = NOW + 15 min)
+    5. NUEVO FIX (10.4): Detectar cliente registrado B2B si existe por email
+    6. Marcar conversión si es recurrente
+    7. Crear cotización
     8. Reservar stock atómicamente por item
     9. Crear transaccion_b2b + pago
-    10. NUEVO (Fase 10.4): Aplicar descuento 12% B2B sobre SUBTOTAL si aplica
+    10. FASE 10.4: Aplicar descuento 12% B2B sobre SUBTOTAL
     11. Generar payload ePayco
     12. Devolver todo al frontend
     """
@@ -515,24 +511,47 @@ async def create_order(req: CreateOrderRequest):
         raise HTTPException(400, detail="Ciudad requerida")
     flete_cop = _calcular_flete_por_tarifa(db, ciudad_norm, tier_logistico)
 
-    # 5. Upsert cliente
-    cliente_id, es_recurrente = _upsert_cliente_guest(
-        db,
-        nombre=req.nombre,
-        tipo_documento=req.tipo_documento,
-        num_documento=req.num_documento,
-        email=req.email,
-        whatsapp=req.whatsapp,
-    )
-
-    # Obtener datos de cliente para validar si es B2B
-    cliente_resp = db.table("clientes").select(
-        "cliente_id, es_guest"
-    ).eq("cliente_id", cliente_id).limit(1).execute()
-    cliente_data = cliente_resp.data[0] if cliente_resp.data else {"es_guest": True}
+    # ═══════════════════════════════════════════════════════════════════════
+    # 5. NUEVO FIX (Fase 10.4): Detectar cliente registrado B2B
+    # ═══════════════════════════════════════════════════════════════════════
+    email_norm = req.email.strip().lower()
+    
+    # Buscar cliente REGISTRADO (no guest) con este email
+    cliente_registrado = db.table("clientes").select(
+        "cliente_id, es_guest, nombre_representante"
+    ).eq("email", email_norm).eq("es_guest", False).limit(1).execute()
+    
+    if cliente_registrado.data:
+        # Usar cliente registrado B2B existente
+        cliente_id = cliente_registrado.data[0]["cliente_id"]
+        es_recurrente = True
+        
+        logger.info(
+            f"[Fase 10.4 FIX] Cliente registrado B2B encontrado: "
+            f"{cliente_id} ({cliente_registrado.data[0].get('nombre_representante')})"
+        )
+        
+        # Obtener datos del cliente registrado
+        cliente_data = {"es_guest": False}
+    else:
+        # No existe registrado → crear/usar guest
+        cliente_id, es_recurrente = _upsert_cliente_guest(
+            db,
+            nombre=req.nombre,
+            tipo_documento=req.tipo_documento,
+            num_documento=req.num_documento,
+            email=req.email,
+            whatsapp=req.whatsapp,
+        )
+        
+        # Obtener datos del cliente (ya sea nuevo guest o guest existente)
+        cliente_resp = db.table("clientes").select(
+            "cliente_id, es_guest"
+        ).eq("cliente_id", cliente_id).limit(1).execute()
+        cliente_data = cliente_resp.data[0] if cliente_resp.data else {"es_guest": True}
 
     # 6. Marcar conversión si es 2da+ compra
-    if es_recurrente:
+    if es_recurrente and cliente_data.get("es_guest") == False:
         try:
             db.table("clientes").update({
                 "necesita_conversion_b2b": True,
@@ -759,6 +778,7 @@ async def create_order(req: CreateOrderRequest):
         f"cot={cotizacion_id}, txn={transaccion_id}, pago={pago_id}, "
         f"monto_epayco=${monto_total_epayco:,}, "
         f"descuento_aplicado={descuento_aplicado} (${descuento_pesos:,}), "
+        f"cliente_b2b={es_b2b}, "
         f"ref={referencia}"
     )
 
