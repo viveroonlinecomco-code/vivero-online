@@ -52,7 +52,6 @@ from pydantic import BaseModel
 from app.auth.deps import UserContext, require_comprador, require_viverista
 from app.config import get_settings
 from app.services.supabase import admin as db_admin
-from app.services.whatsapp_meta import send_text_message, notify_viverista_nueva_cotizacion
 from app.services.onboarding_wa import marcar_primera_cotizacion
 from app.services.precios import calcular_precios_pedido
 from app.services.auto_timeout import procesar_recordatorios_y_timeouts
