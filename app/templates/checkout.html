@@ -79,6 +79,7 @@ tailwind.config = {
                     <span>Subtotal plantas</span>
                     <span id="subtotal-plantas">—</span>
                 </div>
+                <!-- FASE 10.4: Fila de descuento B2B -->
                 <div id="descuento-row" class="hidden flex justify-between text-sm">
                     <span class="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
                         <span class="material-symbols-outlined text-base">local_offer</span>
@@ -86,6 +87,7 @@ tailwind.config = {
                     </span>
                     <span id="descuento-valor" class="font-semibold text-emerald-600 dark:text-emerald-400">-$XXX.XXX</span>
                 </div>
+                <!-- FIN FASE 10.4 -->
                 <div id="flete-row" class="flex justify-between text-sm text-slate-500">
                     <span class="flex items-center gap-1">
                         Flete estimado
@@ -204,6 +206,7 @@ tailwind.config = {
 <script src="/static/js/vivero.js"></script>
 <script>
 (async function() {
+    // FASE 4 + FASE 10.4: Checkout B2B con descuento integrado
     const match = window.location.pathname.match(/\/checkout\/(\d+)/);
     if (!match) { showError('URL inválida'); return; }
     const cotizacionId = parseInt(match[1]);
@@ -404,6 +407,19 @@ tailwind.config = {
                 }),
             });
             if (payload.pago_id) localStorage.setItem('vivero_pago_id', String(payload.pago_id));
+            
+            // ═══════════════════════════════════════════════════════════════
+            // FASE 10.4: LEER descuento del backend y actualizar UI
+            // ═══════════════════════════════════════════════════════════════
+            if (payload.descuento_pesos !== undefined && payload.descuento_pesos > 0) {
+                descuentoPesos = payload.descuento_pesos;
+                descuentoPorcentaje = payload.descuento_porcentaje || 0;
+                montoConDescuento = payload.monto_con_descuento || (totalPlantas - descuentoPesos);
+                actualizarTotales();
+                console.log(`[Fase 10.4] Descuento B2B mostrado: $${descuentoPesos} (${descuentoPorcentaje}%)`);
+            }
+            // ═════════════════════════════════════════════════════════════════
+            
             const cp = payload.checkout_payload;
             if (!cp) throw new Error('No se recibió el payload de pago.');
             const handler = ePayco.checkout.configure({
