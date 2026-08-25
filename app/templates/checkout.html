@@ -58,7 +58,6 @@ tailwind.config = {
         </a>
     </div>
     <div id="state-content" class="hidden space-y-5">
-        <!-- Badge aprobado -->
         <div class="flex items-center gap-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl px-4 py-3">
             <span class="material-symbols-outlined text-emerald-600 text-xl">verified</span>
             <div>
@@ -66,7 +65,6 @@ tailwind.config = {
                 <p class="text-xs text-emerald-600 dark:text-emerald-400">El stock está reservado. Completá el pago para confirmar.</p>
             </div>
         </div>
-        <!-- Resumen del pedido -->
         <div class="bg-white dark:bg-slate-800 rounded-xl border border-primary/10 shadow-sm overflow-hidden">
             <div class="px-5 pt-5 pb-3 border-b border-slate-100 dark:border-slate-700">
                 <h2 class="font-bold text-base flex items-center gap-2">
@@ -80,6 +78,13 @@ tailwind.config = {
                 <div class="flex justify-between text-sm text-slate-500">
                     <span>Subtotal plantas</span>
                     <span id="subtotal-plantas">—</span>
+                </div>
+                <div id="descuento-row" class="hidden flex justify-between text-sm">
+                    <span class="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                        <span class="material-symbols-outlined text-base">local_offer</span>
+                        Descuento B2B <span id="descuento-porcentaje" class="text-xs">(12%)</span>
+                    </span>
+                    <span id="descuento-valor" class="font-semibold text-emerald-600 dark:text-emerald-400">-$XXX.XXX</span>
                 </div>
                 <div id="flete-row" class="flex justify-between text-sm text-slate-500">
                     <span class="flex items-center gap-1">
@@ -103,14 +108,12 @@ tailwind.config = {
                 </div>
             </div>
         </div>
-        <!-- Datos de entrega -->
         <div class="bg-white dark:bg-slate-800 rounded-xl border border-primary/10 shadow-sm p-5 space-y-4">
             <h2 class="font-bold text-base flex items-center gap-2">
                 <span class="material-symbols-outlined text-primary text-lg">local_shipping</span>
                 Datos de entrega en obra
             </h2>
             <p class="text-xs text-slate-500 -mt-2">Campos con * son obligatorios. El flete se calcula automáticamente al seleccionar la ciudad.</p>
-            <!-- Aviso tiempo de entrega -->
             <div id="aviso-entrega" class="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3">
                 <p class="text-xs text-amber-800 dark:text-amber-200 font-semibold flex items-start gap-2">
                     <span class="material-symbols-outlined text-sm mt-0.5">schedule</span>
@@ -119,8 +122,7 @@ tailwind.config = {
             </div>
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Ciudad de entrega *</label>
-                <select id="ciudad-entrega"
-                    class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
+                <select id="ciudad-entrega" class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
                     <option value="">Seleccioná la ciudad</option>
                     <optgroup label="Sabana de Bogotá">
                         <option>Cajicá</option><option>Chía</option><option>Zipaquirá</option>
@@ -138,8 +140,7 @@ tailwind.config = {
             </div>
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Dirección exacta de entrega *</label>
-                <input type="text" id="direccion-entrega"
-                    placeholder="Ej: Cra 15 #80-20, Conjunto Las Palmas, Portería Norte"
+                <input type="text" id="direccion-entrega" placeholder="Ej: Cra 15 #80-20, Conjunto Las Palmas, Portería Norte"
                     class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm">
             </div>
             <div class="grid grid-cols-2 gap-3">
@@ -176,8 +177,7 @@ tailwind.config = {
             </div>
             <div>
                 <label class="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">Notas para el vivero</label>
-                <textarea id="notas-entrega" rows="2" maxlength="500"
-                    placeholder="Ej: Ingresar por portería norte, no tienen montacargas..."
+                <textarea id="notas-entrega" rows="2" maxlength="500" placeholder="Ej: Ingresar por portería norte, no tienen montacargas..."
                     class="w-full px-4 py-3 bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/40 text-sm resize-none"></textarea>
             </div>
             <div class="bg-primary/5 border border-primary/10 rounded-xl px-4 py-3">
@@ -187,17 +187,14 @@ tailwind.config = {
                 </p>
             </div>
         </div>
-        <!-- Error checkout -->
         <div id="checkout-error" class="hidden bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl px-4 py-3">
             <p class="text-sm text-red-700 dark:text-red-300 font-semibold" id="checkout-error-msg"></p>
         </div>
     </div>
 </main>
-<!-- Footer sticky -->
 <div id="sticky-footer" class="hidden fixed bottom-0 left-0 right-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-t border-slate-200 dark:border-slate-800 p-4 z-40">
     <div class="max-w-lg mx-auto">
-        <button id="btn-pagar"
-            class="w-full bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-lg py-4 rounded-full flex items-center justify-center gap-3 shadow-lg shadow-primary/25 transition active:scale-95">
+        <button id="btn-pagar" class="w-full bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed text-white font-black text-lg py-4 rounded-full flex items-center justify-center gap-3 shadow-lg shadow-primary/25 transition active:scale-95">
             <span class="material-symbols-outlined text-2xl">credit_card</span>
             <span id="btn-pagar-text">Pagar con ePayco</span>
         </button>
@@ -207,17 +204,6 @@ tailwind.config = {
 <script src="/static/js/vivero.js"></script>
 <script>
 (async function() {
-    // ═══════════════════════════════════════════════════════════════════
-    // FASE 4 (22 jul 2026): eliminado const MARKUP = 0.18 hardcoded.
-    //
-    // Los precios comprador ahora vienen calculados desde el backend usando
-    // el motor matricial por categoría (17% sustrato, 20% plantas, 25% materas).
-    //
-    // Campos que consume este template desde el endpoint:
-    //   - cotizacion.total_comprador           = total plantas con markup
-    //   - cotizacion.items[].precio_comprador_unitario
-    //   - cotizacion.items[].subtotal_comprador
-    // ═══════════════════════════════════════════════════════════════════
     const match = window.location.pathname.match(/\/checkout\/(\d+)/);
     if (!match) { showError('URL inválida'); return; }
     const cotizacionId = parseInt(match[1]);
@@ -227,7 +213,10 @@ tailwind.config = {
     if (me.rol !== 'comprador' && me.rol !== 'admin') {
         window.location.href = '/comprador'; return;
     }
-    let totalPlantas = 0;  // total_comprador desde backend (motor matricial)
+    let totalPlantas = 0;
+    let descuentoPesos = 0;
+    let descuentoPorcentaje = 0.0;
+    let montoConDescuento = 0;
     let fleteCop = 0;
     function fmt(v) { return '$' + Math.round(parseFloat(v) || 0).toLocaleString('es-CO'); }
     function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -240,8 +229,16 @@ tailwind.config = {
         setState('state-error');
     }
     function actualizarTotales() {
-        const totalFinal = totalPlantas + fleteCop;
+        const totalFinal = montoConDescuento + fleteCop;
         document.getElementById('subtotal-plantas').textContent = fmt(totalPlantas);
+        const descuentoRow = document.getElementById('descuento-row');
+        if (descuentoPesos > 0) {
+            document.getElementById('descuento-valor').textContent = '-' + fmt(descuentoPesos);
+            document.getElementById('descuento-porcentaje').textContent = `(${descuentoPorcentaje}%)`;
+            descuentoRow.classList.remove('hidden');
+        } else {
+            descuentoRow.classList.add('hidden');
+        }
         if (fleteCop > 0) {
             document.getElementById('flete-valor').textContent = fmt(fleteCop);
             document.getElementById('flete-valor').className = 'font-semibold text-slate-700';
@@ -249,21 +246,19 @@ tailwind.config = {
         } else {
             document.getElementById('flete-valor').textContent = 'Seleccioná la ciudad';
             document.getElementById('flete-valor').className = 'font-semibold text-amber-600';
-            document.getElementById('total').textContent = fmt(totalPlantas) + ' + flete';
+            document.getElementById('total').textContent = fmt(montoConDescuento) + ' + flete';
         }
     }
-    // ── Calcular días hábiles (lunes a viernes) ───────────────
     function agregarDiasHabiles(fecha, dias) {
         let contador = 0;
         let d = new Date(fecha);
         while (contador < dias) {
             d.setDate(d.getDate() + 1);
             const dia = d.getDay();
-            if (dia !== 0 && dia !== 6) contador++; // 0=domingo, 6=sábado
+            if (dia !== 0 && dia !== 6) contador++;
         }
         return d;
     }
-    // ── Detectar si hay materas/kokedamas en los items ────────
     function tieneMateras(items) {
         const palabrasMatera = ['matera', 'maceta', 'kokedama', 'kit kokedama'];
         return items.some(it => {
@@ -271,7 +266,6 @@ tailwind.config = {
             return palabrasMatera.some(p => nombre.includes(p));
         });
     }
-    // ── Configurar fecha mínima según tipo de items ───────────
     function configurarFechaMinima(items) {
         const conMateras = tieneMateras(items);
         const diasMinimos = conMateras ? 10 : 5;
@@ -302,8 +296,8 @@ tailwind.config = {
         showError(`Estado "${cotizacion.estado}". Solo los pedidos aprobados se pueden pagar.`);
         return;
     }
-    // ── Fase 4: total_comprador desde backend (con markup por categoría) ──
     totalPlantas = parseInt(cotizacion.total_comprador || 0);
+    montoConDescuento = totalPlantas;
     document.getElementById('nombre-proyecto').textContent = cotizacion.nombre_proyecto || `Pedido #${cotizacionId}`;
     const items = cotizacion.items || [];
     document.getElementById('lista-items').innerHTML = items.map(it => `
@@ -324,7 +318,6 @@ tailwind.config = {
     actualizarTotales();
     setState('state-content');
     document.getElementById('sticky-footer').classList.remove('hidden');
-    // ── Calcular flete al seleccionar ciudad ──────────────────
     document.getElementById('ciudad-entrega').addEventListener('change', async (e) => {
         const ciudad = e.target.value;
         const fleRow  = document.getElementById('flete-row');
@@ -360,7 +353,6 @@ tailwind.config = {
             actualizarTotales();
         }
     });
-    // ── Botón pagar ───────────────────────────────────────────
     document.getElementById('btn-pagar').addEventListener('click', async () => {
         const ciudad    = document.getElementById('ciudad-entrega').value;
         const direccion = document.getElementById('direccion-entrega').value.trim();
@@ -423,8 +415,7 @@ tailwind.config = {
                 description:  cp.description || 'Pedido ViveroOnline',
                 invoice:      cp.invoice,
                 currency:     cp.currency    || 'cop',
-                // ── Fase 4: monto correcto desde backend (motor matricial + flete) ──
-                amount:       String(cp.amount || (totalPlantas + fleteCop)),
+                amount:       String(cp.amount || (montoConDescuento + fleteCop)),
                 tax_base:     String(cp.tax_base || 0),
                 tax:          String(cp.tax || 0),
                 country:      cp.country     || 'co',
