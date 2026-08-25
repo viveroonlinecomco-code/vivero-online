@@ -6,6 +6,7 @@ Fase 10.2 (26 jul): validate-cart + calcular-flete
 Fase 10.3 (29 jul): create-order — crea cliente_guest + cotización + payment intent ePayco
 Fase 10.4 (24 ago): Descuento B2B 12% sobre SUBTOTAL (no flete) con validación SMLMV
 FASE 10.4 FIX (24 ago): Detectar cliente registrado B2B (no guest) si ya existe por email
+FASE 10.4 SHOW (25 ago): Devolver descuento en respuesta para mostrar al cliente ANTES de pagar
 
 Reglas B2C guest:
 - Solo tier S+M
@@ -16,6 +17,7 @@ Reglas B2C guest:
 - Post-pago: reusa webhook /api/pagos/confirmacion existente
 - NUEVO: Descuento 12% B2B si cliente registrado + compra >= 5 SMLMV + fintech_activa=false
 - FIX: Si email pertenece a cliente registrado (es_guest=false), usar ese cliente (no crear guest)
+- SHOW: Devolver descuento_pesos, descuento_porcentaje en respuesta para mostrar al cliente
 """
 from __future__ import annotations
 from typing import Optional
@@ -82,6 +84,11 @@ class CreateOrderResponse(BaseModel):
     pago_id: int
     referencia: str
     monto_total: int
+    # ═══ NUEVO (Fase 10.4 SHOW): Descuento para mostrar al cliente ═══
+    descuento_pesos: int
+    descuento_porcentaje: float
+    monto_con_descuento: int
+    # ═══════════════════════════════════════════════════════════════
     checkout_payload: dict
     expires_at: str  # ISO string
 
@@ -326,7 +333,7 @@ async def calcular_flete(req: CalcularFleteRequest):
 
 
 # ═══════════════════════════════════════════════════════════
-# Endpoint 3: CREATE ORDER (Fase 10.3 + 10.4 + 10.4 FIX)
+# Endpoint 3: CREATE ORDER (Fase 10.3 + 10.4 + 10.4 FIX + 10.4 SHOW)
 # ═══════════════════════════════════════════════════════════
 
 def _liberar_reservas_expiradas(db) -> int:
@@ -471,7 +478,8 @@ async def create_order(req: CreateOrderRequest):
     9. Crear transaccion_b2b + pago
     10. FASE 10.4: Aplicar descuento 12% B2B sobre SUBTOTAL
     11. Generar payload ePayco
-    12. Devolver todo al frontend
+    12. FASE 10.4 SHOW: Devolver descuento en respuesta
+    13. Devolver todo al frontend
     """
     s = get_settings()
     epayco = get_epayco()
@@ -582,6 +590,7 @@ async def create_order(req: CreateOrderRequest):
     
     subtotal_con_descuento = total_comprador
     descuento_pesos = 0
+    descuento_porcentaje = 0.0
     descuento_aplicado = False
     
     if es_b2b and not fintech_activa:
@@ -589,6 +598,7 @@ async def create_order(req: CreateOrderRequest):
         if total_comprador >= umbral_pesos:
             descuento_pesos = int(total_comprador * 0.12)
             subtotal_con_descuento = total_comprador - descuento_pesos
+            descuento_porcentaje = 12.0
             descuento_aplicado = True
             
             logger.info(
@@ -782,6 +792,9 @@ async def create_order(req: CreateOrderRequest):
         f"ref={referencia}"
     )
 
+    # ═══════════════════════════════════════════════════════════════════════
+    # 🟢 FASE 10.4 SHOW: Devolver descuento en respuesta
+    # ═══════════════════════════════════════════════════════════════════════
     return CreateOrderResponse(
         ok=True,
         cotizacion_id=cotizacion_id,
@@ -789,6 +802,9 @@ async def create_order(req: CreateOrderRequest):
         pago_id=pago_id,
         referencia=referencia,
         monto_total=monto_total_epayco,
+        descuento_pesos=descuento_pesos,  # ← NUEVO
+        descuento_porcentaje=descuento_porcentaje,  # ← NUEVO
+        monto_con_descuento=subtotal_con_descuento,  # ← NUEVO
         checkout_payload=payload,
         expires_at=fecha_venc.isoformat(),
     )
