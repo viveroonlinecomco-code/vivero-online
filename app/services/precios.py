@@ -52,9 +52,12 @@ from pydantic import BaseModel
 from app.auth.deps import UserContext, require_comprador, require_viverista
 from app.config import get_settings
 from app.services.supabase import admin as db_admin
-from app.services.onboarding_wa import marcar_primera_cotizacion
 from app.services.precios import calcular_precios_pedido
 from app.services.auto_timeout import procesar_recordatorios_y_timeouts
+from app.services.whatsapp_meta import send_text_message
+
+# FIX: Import local dentro de solicitar_aprobacion para evitar circular import
+# from app.services.onboarding_wa import marcar_primera_cotizacion
 
 router = APIRouter(prefix="/api/pedidos", tags=["pedidos"])
 
@@ -208,7 +211,8 @@ async def solicitar_aprobacion(
                 # si primera_cotizacion_at está NULL. Errores acá NO bloquean
                 # el flujo principal (best-effort).
                 try:
-                    marcar_primera_cotizacion(vivero_id)
+                    from app.services.onboarding_wa import marcar_primera_cotizacion as marcar
+                    marcar(vivero_id)
                 except Exception as e:
                     import logging
                     logging.getLogger(__name__).warning(
