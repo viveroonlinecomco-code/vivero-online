@@ -93,6 +93,16 @@
                     <span>Subtotal (<span data-vo="resumen-count"></span>)</span>
                     <span data-vo="resumen-subtotal" class="font-semibold text-slate-800 dark:text-slate-100"></span>
                 </div>
+                
+                <!-- 🟢 FASE 10.4: Fila de descuento B2B (OCULTA POR DEFECTO) -->
+                <div data-vo="descuento-row" class="hidden justify-between text-sm">
+                    <span class="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                        <span class="material-symbols-outlined text-base">local_offer</span>
+                        Descuento B2B <span data-vo="descuento-porcentaje" class="text-xs">(12%)</span>
+                    </span>
+                    <span data-vo="descuento-valor" class="font-semibold text-emerald-600 dark:text-emerald-400">-$0</span>
+                </div>
+
                 <div id="flete-row" class="flex justify-between text-sm text-slate-500">
                     <span class="flex items-center gap-1">
                         <span class="material-symbols-outlined text-base">local_shipping</span>
@@ -305,7 +315,7 @@
 <script src="/static/js/vivero.js"></script>
 <script>
 // ═══════════════════════════════════════════════════════════════════
-// FASE 10.3 — Checkout guest completo con activación ePayco
+// FASE 10.3 + FASE 10.4 — Checkout guest con descuento B2B dinámico
 // ═══════════════════════════════════════════════════════════════════
 
 const CART_KEY = 'vivero_guest_cart';
@@ -397,6 +407,12 @@ function agregarDiasHabiles(fecha, dias) {
     const tieneMateras = validated.tiene_materas;
     const diasMin = validated.dias_entrega_minimos;
 
+    // 🟢 FASE 10.4: Variables para descuento B2B
+    let descuentoPesos = 0;
+    let descuentoPorcentaje = 0.0;
+    let montoConDescuento = totalCop;
+    let fleteCop = 0;
+
     $('[data-vo="resumen-items"]').innerHTML = items.map(it => `
         <div class="flex items-center gap-3 px-5 py-3">
             <img src="${esc(it.foto_ia_url || 'https://placehold.co/48x48/e2e8f0/64748b?text=%F0%9F%8C%B1')}"
@@ -429,9 +445,6 @@ function agregarDiasHabiles(fecha, dias) {
 
     setState('content');
     $('[data-vo="cta-bar"]').classList.remove('hidden');
-
-    let fleteCop = 0;
-    let fleteTier = '';
 
     $('[data-vo="f-ciudad"]').addEventListener('change', async (e) => {
         const ciudad = e.target.value;
@@ -467,7 +480,6 @@ function agregarDiasHabiles(fecha, dias) {
             const data = await resp.json();
             if (resp.ok && data.ok) {
                 fleteCop = data.flete_cop;
-                fleteTier = data.tier;
                 const tierLabels = { S: 'Tier S', M: 'Tier M' };
                 fleteTierBadge.textContent = tierLabels[data.tier] || data.tier;
                 fleteTierBadge.classList.remove('hidden');
@@ -491,12 +503,26 @@ function agregarDiasHabiles(fecha, dias) {
     });
 
     function actualizarTotal() {
-        const total = totalCop + fleteCop;
+        const total = montoConDescuento + fleteCop;
+
         if (fleteCop > 0) {
             $('[data-vo="total"]').textContent = fmtCOP(total);
         } else {
-            $('[data-vo="total"]').textContent = fmtCOP(totalCop) + ' + flete';
+            $('[data-vo="total"]').textContent = fmtCOP(total) + ' + flete';
         }
+
+        // 🟢 FASE 10.4: Mostrar/ocultar fila de descuento
+        const descRow = $('[data-vo="descuento-row"]');
+        if (descuentoPesos > 0) {
+            $('[data-vo="descuento-porcentaje"]').textContent = `(${descuentoPorcentaje}%)`;
+            $('[data-vo="descuento-valor"]').textContent = '-' + fmtCOP(descuentoPesos);
+            descRow.classList.remove('hidden');
+            descRow.classList.add('flex');
+        } else {
+            descRow.classList.add('hidden');
+            descRow.classList.remove('flex');
+        }
+
         actualizarBtnPagar();
     }
 
@@ -569,7 +595,7 @@ function agregarDiasHabiles(fecha, dias) {
         const ok = formularioValido();
         btn.disabled = !ok;
         if (ok) {
-            const total = totalCop + fleteCop;
+            const total = montoConDescuento + fleteCop;
             txt.textContent = `Pagar con ePayco · ${fmtCOP(total)}`;
         } else {
             txt.textContent = 'Completá los datos';
@@ -580,10 +606,6 @@ function agregarDiasHabiles(fecha, dias) {
         el.addEventListener('input', actualizarBtnPagar);
         el.addEventListener('change', actualizarBtnPagar);
     });
-
-    // ═══════════════════════════════════════════════════════════
-    // FASE 10.3 — HANDLER DEL BOTÓN PAGAR (integración ePayco real)
-    // ═══════════════════════════════════════════════════════════
 
     $('[data-vo="btn-pagar"]').addEventListener('click', async () => {
         if (!formularioValido()) return;
@@ -642,10 +664,18 @@ function agregarDiasHabiles(fecha, dias) {
                 throw new Error(msg);
             }
 
-            // Pedido creado + payload ePayco listo. Vaciar carrito localStorage.
+            // 🟢 FASE 10.4: Leer descuento devuelto por backend
+            if (data.descuento_pesos !== undefined && data.descuento_pesos > 0) {
+                descuentoPesos = data.descuento_pesos;
+                descuentoPorcentaje = data.descuento_porcentaje || 0;
+                montoConDescuento = data.monto_con_descuento || (totalCop - descuentoPesos);
+                
+                actualizarTotal();
+                console.log(`[Fase 10.4] Descuento B2B mostrado: $${descuentoPesos} (${descuentoPorcentaje}%)`);
+            }
+
             cartClear();
 
-            // Abrir modal ePayco con el payload devuelto por el backend
             if (!window.ePayco) {
                 throw new Error('No se pudo cargar ePayco. Revisá tu conexión.');
             }
@@ -657,7 +687,6 @@ function agregarDiasHabiles(fecha, dias) {
             });
             handler.open(epaycoConfig);
 
-            // Reset visual del botón
             txt.textContent = 'Esperando confirmación de pago...';
 
         } catch (e) {
@@ -665,7 +694,7 @@ function agregarDiasHabiles(fecha, dias) {
             errMsg.textContent = e.message || 'Error inesperado. Volvé a intentarlo.';
             errBox.classList.remove('hidden');
             btn.disabled = false;
-            txt.textContent = `Pagar con ePayco · ${fmtCOP(totalCop + fleteCop)}`;
+            txt.textContent = `Pagar con ePayco · ${fmtCOP(montoConDescuento + fleteCop)}`;
         }
     });
 
