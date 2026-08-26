@@ -873,15 +873,26 @@ async def iniciar_checkout(
     porcentaje_efectivo   = totales["porcentaje_comision_efectivo"]
 
     # ═══════════════════════════════════════════════════════════════════════
-    # FASE 10.4 FIX: CALCULAR DESCUENTO Y DEVOLVER EN LA RESPUESTA
+    # FASE 10.4 FIX: CALCULAR DESCUENTO B2B DESDE MOTOR + REGLA DEL PRODUCTOR
     # ═══════════════════════════════════════════════════════════════════════
-    precio_vitrina_total = float(totales.get("precio_vitrina_total", 0))
-    precio_final_cliente = float(totales.get("precio_final_cliente", 0))
-    descuento_pesos = int(precio_vitrina_total - precio_final_cliente)
+    # Si aplica_descuento_b2b = True:
+    #   - Viverista SIEMPRE recibe 80% (monto_viverista_real)
+    #   - Descuento 12% se aplica sobre el precio SIN descuento (vitrina)
+    #   - Plataforma absorbe el costo del descuento (comisión NO se reduce)
+    # ─────────────────────────────────────────────────────────────────────
+    aplica_descuento = calc.get("aplica_descuento_b2b", False)
+    descuento_pesos = 0
     descuento_porcentaje = 0.0
-    if precio_vitrina_total > 0:
-        descuento_porcentaje = (descuento_pesos / precio_vitrina_total) * 100
-    monto_con_descuento = precio_final_cliente
+    
+    if aplica_descuento:
+        # Reversión matemática: si viverista = 80% del precio_vitrina
+        # entonces: precio_vitrina = monto_viverista / 0.8
+        precio_vitrina = monto_viverista_real / 0.8
+        descuento_porcentaje = 12.0
+        descuento_pesos = int(precio_vitrina * (descuento_porcentaje / 100))
+        monto_con_descuento = monto_plantas - descuento_pesos
+    else:
+        monto_con_descuento = monto_plantas
     # ═════════════════════════════════════════════════════════════════════════
 
     flete_cop = int(req.flete_cop or 0)
