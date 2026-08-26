@@ -303,6 +303,25 @@ tailwind.config = {
     montoConDescuento = totalPlantas;
     document.getElementById('nombre-proyecto').textContent = cotizacion.nombre_proyecto || `Pedido #${cotizacionId}`;
     const items = cotizacion.items || [];
+    
+    // ═══════════════════════════════════════════════════════════════════════════════
+    // FASE 10.4: Cargar descuento B2B estimado AL CARGAR LA PÁGINA (antes de pagar)
+    // ═══════════════════════════════════════════════════════════════════════════════
+    (async () => {
+        try {
+            const estDesc = await VO.api(`/api/pedidos/${cotizacionId}/estimar-descuento`);
+            if (estDesc && estDesc.ok && estDesc.aplica_descuento_b2b) {
+                descuentoPesos = estDesc.descuento_pesos || 0;
+                descuentoPorcentaje = estDesc.descuento_porcentaje || 0;
+                montoConDescuento = estDesc.monto_con_descuento || (totalPlantas - descuentoPesos);
+                console.log(`[Fase 10.4] Descuento B2B cargado en resumen: $${descuentoPesos} (${descuentoPorcentaje}%)`);
+                actualizarTotales();  // Actualizar UI inmediatamente
+            }
+        } catch (err) {
+            console.log('[Fase 10.4] No hay descuento o error al estimar:', err.message);
+        }
+    })();
+    // ═════════════════════════════════════════════════════════════════════════════════
     document.getElementById('lista-items').innerHTML = items.map(it => `
         <div class="flex items-center gap-3 px-5 py-3">
             <img src="${esc(it.foto_ia_url || 'https://placehold.co/64x64/e2e8f0/64748b?text=%F0%9F%8C%B1')}"
