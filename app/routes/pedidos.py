@@ -820,6 +820,61 @@ class CheckoutReq(BaseModel):
     plazo:                    Optional[str] = "inmediato"  # Fase 4: soporte plazos B2B
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# FASE 10.4: GET Estimar Descuento B2B (muestra descuento ANTES de hacer click)
+# ═══════════════════════════════════════════════════════════════════════════════
+@router.get("/{cotizacion_id}/estimar-descuento")
+async def estimar_descuento(
+    cotizacion_id: int, user: UserContext = Depends(require_comprador)
+):
+    """
+    Devuelve estimación de descuento B2B SIN crear transacción.
+    El frontend lo usa para mostrar descuento en resumen al cargar /checkout/{id}
+    
+    Devuelve:
+    - aplica_descuento_b2b: bool
+    - descuento_pesos: monto en $ (12% si aplica)
+    - descuento_porcentaje: % (12.0 si aplica)
+    - monto_con_descuento: total - descuento
+    """
+    db = db_admin()
+    cot = _get_cotizacion(db, cotizacion_id)
+    
+    if cot["cliente_id"] != user.cliente_id:
+        raise HTTPException(403, "No podés ver esta cotización")
+    
+    items = cot.get("items") or []
+    total_viverista = float(cot.get("total_estimado") or 0)
+    
+    # Usar motor de precios para determinar si aplica descuento
+    calc = _calcular_para_cotizacion(db, user.cliente_id, items, plazo="inmediato")
+    
+    aplica_descuento = calc.get("aplica_descuento_b2b", False)
+    monto_viverista_real = calc["totales"]["monto_viverista_total"]
+    
+    descuento_pesos = 0
+    descuento_porcentaje = 0.0
+    
+    if aplica_descuento:
+        # Reversión: viverista = 80%, así que vitrina = monto_viverista / 0.8
+        precio_vitrina = monto_viverista_real / 0.8
+        descuento_porcentaje = 12.0
+        descuento_pesos = int(precio_vitrina * 0.12)
+    
+    monto_con_descuento = total_viverista - descuento_pesos
+    
+    return {
+        "ok": True,
+        "cotizacion_id": cotizacion_id,
+        "aplica_descuento_b2b": aplica_descuento,
+        "descuento_pesos": descuento_pesos,
+        "descuento_porcentaje": round(descuento_porcentaje, 2),
+        "monto_con_descuento": int(monto_con_descuento),
+        "subtotal": int(total_viverista),
+    }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+
 @router.post("/{cotizacion_id}/checkout")
 async def iniciar_checkout(
     cotizacion_id: int, req: CheckoutReq, user: UserContext = Depends(require_comprador)
