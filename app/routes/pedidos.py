@@ -978,6 +978,12 @@ async def iniciar_checkout(
             "porcentaje_comision": porcentaje_efectivo,  # Fase 4: calculado por motor
             "estado":              "pendiente",
             "cotizacion_id":       cotizacion_id,
+            # ═══════════════════════════════════════════════════════════
+            # FASE 10.5: Desglose de precios para auditoría y análisis
+            # ═══════════════════════════════════════════════════════════
+            "flete_cop":           flete_cop,
+            "subtotal_plantas":    monto_plantas,
+            "descuento_pesos":     descuento_pesos,
         }).execute()
 
         if not txn_resp.data:
