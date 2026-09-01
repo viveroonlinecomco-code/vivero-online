@@ -32,6 +32,7 @@ from app.routes.pedidos import router as pedidos_router
 from app.routes.suscripcion import router as suscripciones_router
 from app.services.google_ads_middleware import GoogleAdsMiddleware
 from app.routes import onboarding as onboarding_routes
+from app.routes.webhooks_meta import router as webhooks_router
 
 settings = get_settings()
 STATIC_DIR = Path(__file__).parent / "static"
@@ -151,6 +152,7 @@ app.include_router(fintech_router)
 app.include_router(pedidos_router)
 app.include_router(checkout_guest_router)
 app.include_router(onboarding_routes.router)
+app.include_router(webhooks_router)
 # HTML pages (deben ir al final para no capturar /api/*)
 app.include_router(pages_routes.router)
 
