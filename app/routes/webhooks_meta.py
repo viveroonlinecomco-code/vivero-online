@@ -20,27 +20,17 @@ router = APIRouter(prefix="/api/whatsapp", tags=["webhooks"])
 
 @router.get("/status")
 async def webhook_verify(request: Request):
-    """
-    Verificación inicial de webhook por Meta.
-    Meta envía challenge que debe retornar como texto plano.
-    """
-    try:
-        mode = request.query_params.get("hub.mode")
-        token = request.query_params.get("hub.verify_token")
-        challenge = request.query_params.get("hub.challenge")
-        
-        verify_token = os.getenv("WEBHOOK_VERIFY_TOKEN", "vivero_webhook_secure_token")
-        
-        if mode == "subscribe" and token == verify_token:
-            logger.info("✅ Webhook Meta verificado correctamente")
-            return PlainTextResponse(challenge)
-        
-        logger.warning(f"❌ Verificación fallida: token inválido o modo incorrecto")
-        raise HTTPException(status_code=403, detail="Token inválido")
-        
-    except Exception as e:
-        logger.exception(f"❌ Error en verificación de webhook: {e}")
-        raise HTTPException(status_code=500, detail="Error en verificación")
+    """Verificación de webhook Meta - devuelve challenge como texto plano"""
+    mode = request.query_params.get("hub.mode")
+    token = request.query_params.get("hub.verify_token")
+    challenge = request.query_params.get("hub.challenge")
+    verify_token = os.getenv("WEBHOOK_VERIFY_TOKEN", "vivero_webhook_secure_token")
+    logger.info(f"🔍 GET /status: mode={mode}, token_ok={token==verify_token}")
+    if mode == "subscribe" and token == verify_token:
+        logger.info("✅ Webhook verificado")
+        return PlainTextResponse(challenge)
+    logger.warning(f"❌ Verificación fallida")
+    return PlainTextResponse("", status_code=403)
 
 
 @router.post("/status")
