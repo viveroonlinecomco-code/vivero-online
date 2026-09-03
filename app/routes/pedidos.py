@@ -1,830 +1,1394 @@
-"""Checkout guest B2C — Fase 10.2 + 10.3 + FASE 10.4 (Descuento B2B)
+"""Flujo de aprobación y pago de cotizaciones.
 
-Endpoints públicos SIN autenticación para el flujo de compra guest.
+Flujo de estados:
+  borrador → enviada (comprador solicita)
+           → aceptada (viverista aprueba)  → checkout → pagada
+           → rechazada (viverista rechaza)
 
-Fase 10.2 (26 jul): validate-cart + calcular-flete
-Fase 10.3 (29 jul): create-order — crea cliente_guest + cotización + payment intent ePayco
-Fase 10.4 (24 ago): Descuento B2B 12% sobre SUBTOTAL (no flete) con validación SMLMV
-FASE 10.4 FIX (24 ago): Detectar cliente registrado B2B (no guest) si ya existe por email
-FASE 10.4 SHOW (25 ago): Devolver descuento en respuesta para mostrar al cliente ANTES de pagar
+═══════════════════════════════════════════════════════════════════════════
+Fase 4 RESTAURADA (6 ago 2026) — Modelo comercial matricial por categoría:
 
-FASE 11 (03 sep): INTEGRACIÓN HUELLA DE PISO
-  - Cálculo dinámico de tier basado en altura + área
-  - Fórmula unificada: Fee 9% (L/XL) + Recargo 12% × (viveros-1)
-  - Mismo modelo B2C y B2B
+Antes: MARKUP_PLATAFORMA = 0.20 hardcoded (versión anterior aplicaba 20% a
+       todo, ignorando categoría).
+Ahora: Motor matricial en app/services/precios.py que calcula item-por-item
+       según categoria_producto de cada SKU, respetando:
+  - Regla del Productor v2: viverista siempre recibe su precio mayorista
+  - Descuentos B2B ≥ 5 SMLMV: solo aplicables si compra >= umbral
+  - Plazos 30/60/90d: solo si fintech_activa=true en configuracion_global
 
-Reglas B2C guest:
-- Solo tier S+M
-- Máx 10 unidades por producto
-- Máx 120 plantas total
-- Precios via motor matricial por categoría
-- Reserva stock 15 min al iniciar pago
-- Post-pago: reusa webhook /api/pagos/confirmacion existente
-- NUEVO: Descuento 12% B2B si cliente registrado + compra >= 5 SMLMV + fintech_activa=false
-- FIX: Si email pertenece a cliente registrado (es_guest=false), usar ese cliente (no crear guest)
-- SHOW: Devolver descuento_pesos, descuento_porcentaje en respuesta para mostrar al cliente
-- FASE 11: Tier calculado dinámicamente con huella de piso
+Todos los cálculos de precio_comprador se hacen con calcular_precios_pedido().
+
+REGLA DE NEGOCIO — VISIBILIDAD DEL PRECIO COMPRADOR:
+El viverista NUNCA debe ver cuánto paga el comprador. Solo ve SU precio
+(el precio mayorista que él mismo publicó). Motivo: proteger el modelo
+comercial. En este archivo:
+  - Mensaje WhatsApp al viverista: solo "Tu precio"
+  - Endpoint /pendientes: NO incluye total_comprador (solo total_estimado)
+El comprador SÍ ve su total (en el mensaje de aprobación y en el checkout).
+
+═══════════════════════════════════════════════════════════════════════════
+FASE 11 (03 sep 2026):
+  - Integración de huella de piso: tier dinámico basado en área + altura
+  - Fórmula unificada: Fee 0% (S/M), 9% (L/XL) + Recargo 12% × (viveros-1) × BASE
+  - Ambos checkouts (B2C + B2B) usan misma lógica de cálculo de flete
+
+FEATURE AUTO-TIMEOUT (6 ago 2026):
+  - Cron vencer-cotizaciones extendido para procesar recordatorios + timeout
+  - Endpoint POST /aceptar-parcial para cotizaciones parciales
+  - Ver app/services/auto_timeout.py para la lógica completa
+═══════════════════════════════════════════════════════════════════════════
+
+FASE 10.4 FIX (25 ago 2026):
+  - Endpoint POST /{cotizacion_id}/checkout ahora DEVUELVE:
+    * descuento_pesos: monto en pesos del descuento B2B (si aplica)
+    * descuento_porcentaje: % de descuento (ej. 12.0)
+    * monto_con_descuento: total plantas DESPUÉS del descuento
+  - Frontend checkout.html lee estos valores y muestra la fila de descuento
+
+Deuda técnica resuelta en este commit:
+  - Función confirmar_vivero_alternativo estaba duplicada al final del archivo.
+    Se dejó una sola copia.
 """
 from __future__ import annotations
+from datetime import datetime
 from typing import Optional
-from datetime import datetime, timedelta, timezone
-import logging
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field, EmailStr
-
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+from app.auth.deps import UserContext, require_comprador, require_viverista
 from app.config import get_settings
-from app.services.epayco import CheckoutRequest, get_epayco
-from app.services.supabase import admin
-from app.services.config_global import get_matriz_comercial, get_config
+from app.services.supabase import admin as db_admin
+from app.services.whatsapp_meta import send_text_message, notify_viverista_nueva_cotizacion
+# from app.services.onboarding_wa import marcar_primera_cotizacion  # FIX 25 ago: Import local en solicitar_aprobacion()
+from app.services.precios import calcular_precios_pedido
+from app.services.auto_timeout import procesar_recordatorios_y_timeouts
+# FASE 11: Importar funciones de huella de piso
 from app.services.logistica_huella_piso import (
     calcular_tier_viaje_con_huella_piso,
-    calcular_flete_correcto,
+    calcular_flete_correcto
 )
 
-logger = logging.getLogger(__name__)
-
-router = APIRouter(prefix="/api/public/checkout-guest", tags=["checkout-guest"])
+router = APIRouter(prefix="/api/pedidos", tags=["pedidos"])
 
 
-# ═══════════════════════════════════════════════════════════
-# Schemas
-# ═══════════════════════════════════════════════════════════
-
-class CartItem(BaseModel):
-    inventario_id: int
-    cantidad: int = Field(ge=1, le=10, description="Máximo 10 por producto")
-
-
-class ValidateCartRequest(BaseModel):
-    items: list[CartItem] = Field(min_length=1, max_length=60)
+def _obtener_cliente(db, cliente_id: int) -> dict:
+    """Lee los datos del cliente necesarios para el motor de precios."""
+    resp = db.table("clientes").select(
+        "cliente_id, es_guest, tipo_cliente, activo, nombre_empresa, "
+        "nombre_representante, whatsapp_numero"
+    ).eq("cliente_id", cliente_id).limit(1).execute()
+    return resp.data[0] if resp.data else {"cliente_id": cliente_id, "es_guest": False}
 
 
-class CalcularFleteRequest(BaseModel):
-    ciudad: str = Field(min_length=2, max_length=100)
-    items: list[CartItem] = Field(min_length=1)
-
-
-class CreateOrderRequest(BaseModel):
-    # Items
-    items: list[CartItem] = Field(min_length=1, max_length=60)
-    # Datos comprador (para factura)
-    nombre: str = Field(min_length=3, max_length=150)
-    tipo_documento: str = Field(pattern="^(CC|NIT|CE|PP)$")
-    num_documento: str = Field(min_length=5, max_length=20)
-    email: EmailStr
-    whatsapp: str = Field(pattern="^3\\d{9}$", description="10 dígitos Colombia empezando con 3")
-    # Datos entrega
-    ciudad: str = Field(min_length=2, max_length=100)
-    direccion: str = Field(min_length=10, max_length=300)
-    referencia: Optional[str] = Field(default=None, max_length=200)
-    mismo_receptor: bool = True
-    receptor_nombre: Optional[str] = Field(default=None, max_length=150)
-    receptor_telefono: Optional[str] = Field(default=None, max_length=20)
-    fecha_entrega: Optional[str] = Field(default=None, description="ISO date YYYY-MM-DD")
-    notas: Optional[str] = Field(default=None, max_length=500)
-    # Aceptaciones legales
-    acepta_perecedero: bool
-    acepta_habeas_data: bool
-
-
-class CreateOrderResponse(BaseModel):
-    ok: bool
-    cotizacion_id: int
-    transaccion_id: int
-    pago_id: int
-    referencia: str
-    monto_total: int
-    # ═══ Descuento B2B (Fase 10.4 SHOW) ═══
-    descuento_pesos: int
-    descuento_porcentaje: float
-    monto_con_descuento: int
-    # ═══ Nuevos campos FASE 11 (huella de piso) ═══
-    tier_dinamico: str
-    area_m2: float
-    altura_cm: int
-    advertencias: list[str]
-    # ═══════════════════════════════════════════
-    checkout_payload: dict
-    expires_at: str  # ISO string
-
-
-# ═══════════════════════════════════════════════════════════
-# Helpers de flete y categorías
-# ═══════════════════════════════════════════════════════════
-
-_TIER_ORDER = {"S": 1, "M": 2, "L": 3, "XL": 4}
-
-_ZONA_1 = {"Chía", "Cajicá", "Cota", "Tenjo", "Tabio", "Sopó", "Bogotá Norte"}
-_ZONA_2 = {"Zipaquirá", "La Calera", "Facatativá", "Madrid", "Mosquera",
-           "Funza", "Tocancipá", "Bogotá Centro", "Bogotá Sur", "Otro"}
-
-_FLETE_STUB = {
-    ("S", 1): 25_000, ("S", 2): 40_000,
-    ("M", 1): 35_000, ("M", 2): 55_000,
-    ("L", 1): 65_000, ("L", 2): 95_000,
-    ("XL", 1): 95_000, ("XL", 2): 140_000,
-}
-
-
-def _resolver_zona(ciudad: str) -> int:
-    if ciudad in _ZONA_1:
-        return 1
-    return 2
-
-
-def _tier_mayor(tiers: list[str]) -> str:
-    tiers_validos = [t for t in tiers if t in _TIER_ORDER]
-    if not tiers_validos:
-        return "M"
-    return max(tiers_validos, key=lambda t: _TIER_ORDER[t])
-
-
-def _calcular_flete_por_tarifa(db, ciudad: str, tier: str) -> int:
-    """Fallback: obtiene tarifa de BD o usa stub."""
-    try:
-        resp = db.table("tarifas_logistica").select(
-            "tarifa_cop"
-        ).eq("ciudad", ciudad).eq("tier", tier).limit(1).execute()
-        if resp.data and resp.data[0].get("tarifa_cop"):
-            return int(resp.data[0]["tarifa_cop"])
-    except Exception:
-        pass
-    zona = _resolver_zona(ciudad)
-    return _FLETE_STUB.get((tier, zona), 55_000)
-
-
-def _resolver_categorias_batch(db, inventario_ids: list[int]) -> dict[int, str]:
-    if not inventario_ids:
-        return {}
-    resp = db.table("inventario").select(
-        "inventario_id, categoria_producto, plantas(categoria_producto)"
-    ).in_("inventario_id", inventario_ids).execute()
-    resultado = {}
-    for row in resp.data or []:
-        override = row.get("categoria_producto")
-        default = (row.get("plantas") or {}).get("categoria_producto")
-        resultado[row["inventario_id"]] = override or default or "plantas_ornamentales"
-    return resultado
-
-
-def _validar_y_calcular_carrito(db, items_req: list[CartItem]) -> dict:
-    """Valida items + calcula precio_comprador y precio_mayorista.
-
-    Retorna dict con items validados, totales, errores.
+def _calcular_para_cotizacion(
+    db,
+    cliente_id: int,
+    items: list[dict],
+    plazo: str = "inmediato",
+) -> dict:
+    """Wrapper que resuelve el cliente y llama al motor matricial.
+    Devuelve el dict completo de calcular_precios_pedido().
     """
-    total_unidades = sum(it.cantidad for it in items_req)
-    if total_unidades > 120:
-        return {
-            "ok": False,
-            "error_code": "limite_total",
-            "mensaje": f"Máximo 120 plantas por compra (tenés {total_unidades})",
-        }
-
-    inv_ids = [it.inventario_id for it in items_req]
-    inv_resp = db.table("inventario").select(
-        "inventario_id, precio_mayorista, stock, estado_planta, "
-        "logistics_tier, foto_ia_url, categoria_producto, "
-        "plantas(nombre_comun, categoria_producto), "
-        "viveros(nombre_vivero, ciudad)"
-    ).in_("inventario_id", inv_ids).execute()
-    inv_map = {r["inventario_id"]: r for r in (inv_resp.data or [])}
-
-    matriz = get_matriz_comercial()
-    markups_b2c = matriz.get("markup_b2c", {})
-
-    items_validados = []
-    errores = []
-    total_plantas = 0
-    total_comprador = 0
-    total_mayorista = 0
-    tiers_presentes = []
-
-    for req_item in items_req:
-        inv = inv_map.get(req_item.inventario_id)
-
-        if not inv:
-            errores.append({"inventario_id": req_item.inventario_id, "error": "no_existe"})
-            continue
-
-        tier = inv.get("logistics_tier", "M")
-        if tier not in ("S", "M"):
-            errores.append({"inventario_id": req_item.inventario_id, "error": "tier_no_permitido"})
-            continue
-
-        if inv.get("estado_planta") != "disponible":
-            errores.append({"inventario_id": req_item.inventario_id, "error": "no_disponible"})
-            continue
-
-        stock = inv.get("stock") or 0
-        if stock < req_item.cantidad:
-            errores.append({
-                "inventario_id": req_item.inventario_id,
-                "error": "stock_insuficiente",
-                "stock_disponible": stock,
-            })
-            continue
-
-        override_inv = inv.get("categoria_producto")
-        default_planta = (inv.get("plantas") or {}).get("categoria_producto")
-        categoria = override_inv or default_planta or "plantas_ornamentales"
-        markup = float(markups_b2c.get(categoria, 0.20))
-        precio_mayorista = float(inv.get("precio_mayorista") or 0)
-        precio_comprador = round(precio_mayorista * (1 + markup))
-        subtotal_comprador = precio_comprador * req_item.cantidad
-        subtotal_mayorista = round(precio_mayorista) * req_item.cantidad
-
-        planta = inv.get("plantas") or {}
-        vivero = inv.get("viveros") or {}
-
-        items_validados.append({
-            "inventario_id": req_item.inventario_id,
-            "cantidad": req_item.cantidad,
-            "nombre": planta.get("nombre_comun", "Planta"),
-            "nombre_vivero": vivero.get("nombre_vivero"),
-            "municipio": vivero.get("ciudad"),
-            "foto_ia_url": inv.get("foto_ia_url"),
-            "precio_comprador_unitario": precio_comprador,
-            "precio_mayorista_unitario": round(precio_mayorista),
-            "precio_unitario": round(precio_mayorista),
-            "subtotal": subtotal_comprador,
-            "subtotal_comprador": subtotal_comprador,
-            "subtotal_mayorista": subtotal_mayorista,
-            "categoria": categoria,
-            "logistics_tier": tier,
-        })
-        total_plantas += req_item.cantidad
-        total_comprador += subtotal_comprador
-        total_mayorista += subtotal_mayorista
-        tiers_presentes.append(tier)
-
-    tiene_materas = any(it.get("categoria") == "materas" for it in items_validados)
-    dias_entrega_minimos = 10 if tiene_materas else 5
-
-    return {
-        "ok": len(errores) == 0,
-        "errores": errores,
-        "items": items_validados,
-        "total_plantas": total_plantas,
-        "total_comprador": total_comprador,
-        "total_mayorista": total_mayorista,
-        "tier_logistico": _tier_mayor(tiers_presentes),
-        "tiene_materas": tiene_materas,
-        "dias_entrega_minimos": dias_entrega_minimos,
-    }
+    cliente = _obtener_cliente(db, cliente_id)
+    return calcular_precios_pedido(
+        cliente=cliente,
+        items=items or [],
+        plazo=plazo,
+    )
 
 
-# ═══════════════════════════════════════════════════════════
-# Endpoint 1: VALIDATE CART (Fase 10.2)
-# ═══════════════════════════════════════════════════════════
-
-@router.post("/validate-cart")
-async def validate_cart(req: ValidateCartRequest):
-    """Re-valida items del carrito guest contra la BD."""
-    db = admin()
-    resultado = _validar_y_calcular_carrito(db, req.items)
-
-    if resultado.get("error_code") == "limite_total":
-        raise HTTPException(400, detail={
-            "error": "limite_total",
-            "mensaje": resultado["mensaje"],
-        })
-
-    if not resultado["ok"]:
-        return {
-            "ok": False,
-            "errores": resultado["errores"],
-            "items_validados": resultado["items"],
-            "total_plantas": resultado["total_plantas"],
-            "total_cop": resultado["total_comprador"],
-        }
-
-    return {
-        "ok": True,
-        "items": resultado["items"],
-        "total_plantas": resultado["total_plantas"],
-        "total_cop": resultado["total_comprador"],
-        "tier_logistico": resultado["tier_logistico"],
-        "tiene_materas": resultado["tiene_materas"],
-        "dias_entrega_minimos": resultado["dias_entrega_minimos"],
-    }
+def _get_cotizacion(db, cotizacion_id: int) -> dict:
+    r = db.table("cotizaciones").select(
+        "cotizacion_id, cliente_id, estado, items, total_estimado, "
+        "prompt_original, notas_cliente, ciudad_entrega, fecha_entrega_deseada"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+    if not r.data:
+        raise HTTPException(404, "Cotización no encontrada")
+    return r.data[0]
 
 
-# ═══════════════════════════════════════════════════════════
-# Endpoint 2: CALCULAR FLETE (Fase 10.2)
-# ═══════════════════════════════════════════════════════════
-
-@router.post("/calcular-flete")
-async def calcular_flete(req: CalcularFleteRequest):
-    """Calcula flete usando tier DINÁMICO con huella de piso (FASE 11)."""
-    db = admin()
+def _resumir_items(db, items: list[dict]) -> str:
+    """Genera resumen legible de los items para el mensaje WhatsApp."""
+    if not items:
+        return "Sin items"
+    inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
+    inv_map = {}
+    if inv_ids:
+        resp = db.table("inventario").select(
+            "inventario_id, plantas(nombre_comun)"
+        ).in_("inventario_id", inv_ids).execute()
+        inv_map = {r["inventario_id"]: (r.get("plantas") or {}).get("nombre_comun", "Planta") 
+                   for r in (resp.data or [])}
     
-    ciudad = req.ciudad.strip()
-    if not ciudad:
-        raise HTTPException(400, detail="Ciudad requerida")
+    lineas = []
+    for it in items[:5]:  # máximo 5 items en el mensaje
+        nombre = inv_map.get(it.get("inventario_id"), "Planta")
+        cantidad = it.get("cantidad", 0)
+        lineas.append(f"  • {nombre} × {cantidad}")
+    
+    if len(items) > 5:
+        lineas.append(f"  • ... y {len(items) - 5} más")
+    
+    return "\n".join(lineas)
 
-    # FASE 11: Usar función dinámica en lugar de tier estático
+
+# ═══════════ 1. COMPRADOR: Solicitar al vivero ═══════════
+
+@router.post("/{cotizacion_id}/solicitar")
+async def solicitar_aprobacion(
+    cotizacion_id: int,
+    user: UserContext = Depends(require_comprador),
+):
+    """Comprador envía el borrador al viverista para aprobación."""
+    db = db_admin()
+    cot = _get_cotizacion(db, cotizacion_id)
+
+    if cot["cliente_id"] != user.cliente_id:
+        raise HTTPException(403, "No podés solicitar esta cotización")
+    if cot["estado"] != "borrador":
+        raise HTTPException(400, f"Solo los borradores se pueden enviar. Estado actual: {cot['estado']}")
+    if not cot.get("items"):
+        raise HTTPException(400, "El carrito está vacío")
+
+    db.table("cotizaciones").update({"estado": "enviada"}).eq("cotizacion_id", cotizacion_id).execute()
+
+    # ── Crear sub-cotizaciones por vivero y notificar ─────────────────────────
     try:
-        tier_resultado = calcular_tier_viaje_con_huella_piso(db, req.items, es_b2b=False)
-        
-        if not tier_resultado['ok']:
-            logger.warning(f"Error calculando tier dinámico: {tier_resultado.get('error')}")
-            # Fallback a tier estático
-            inv_ids = [it.inventario_id for it in req.items]
-            tier_resp = db.table("inventario").select(
-                "inventario_id, logistics_tier"
+        base = get_settings().app_base_url
+        items = cot.get("items") or []
+        nombre_proyecto = cot.get("prompt_original") or f"Cotización #{cotizacion_id}"
+        notas = cot.get("notas_cliente", "")
+
+        # Agrupar items por vivero — FIX 19 ago: Buscar precio_mayorista y plantas para cada inventario
+        inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
+        if inv_ids:
+            inv_resp = db.table("inventario").select(
+                "inventario_id, vivero_id, precio_mayorista, plantas(nombre_comun)"
             ).in_("inventario_id", inv_ids).execute()
-            tiers = [r.get("logistics_tier", "M") for r in (tier_resp.data or [])]
-            tier_mayor = _tier_mayor(tiers) if tiers else "M"
-        else:
-            tier_mayor = tier_resultado['tier_final']
+            
+            # Crear 3 mapas: vivero, precio_mayorista, nombre_planta
+            inv_vivero_map = {}
+            inv_precio_mayorista_map = {}
+            inv_planta_map = {}
+            
+            for r in (inv_resp.data or []):
+                inv_id = r["inventario_id"]
+                inv_vivero_map[inv_id] = r["vivero_id"]
+                inv_precio_mayorista_map[inv_id] = float(r.get("precio_mayorista") or 0)
+                planta_data = r.get("plantas") or {}
+                inv_planta_map[inv_id] = planta_data.get("nombre_comun", "Planta")
 
-        if tier_mayor not in ("S", "M"):
-            raise HTTPException(400, detail="Este pedido requiere cuenta empresa")
+            # Agrupar items por vivero_id
+            items_por_vivero: dict[int, list] = {}
+            for it in items:
+                vid = inv_vivero_map.get(it.get("inventario_id"))
+                if vid:
+                    items_por_vivero.setdefault(vid, []).append(it)
 
-        # Calcular flete con función nueva (FASE 11)
-        flete_resultado = calcular_flete_correcto(db, ciudad, req.items, es_b2b=False)
-        
-        if flete_resultado['ok']:
-            flete_cop = flete_resultado['total_flete']
-            zona = flete_resultado['zona']
-        else:
-            logger.warning(f"Error calculando flete: {flete_resultado.get('error')}")
-            # Fallback
-            zona = _resolver_zona(ciudad)
-            flete_cop = _calcular_flete_por_tarifa(db, ciudad, tier_mayor)
+            # Crear sub-cotización y notificar a cada vivero
+            for vivero_id, vitems in items_por_vivero.items():
+                # FIX 19 ago: Calcular total_vivero con precio_mayorista REAL, no subtotal comprador
+                total_mayorista_vivero = 0.0
+                plantas_detalle = []  # Para detallar en mensaje
+                
+                for it in vitems:
+                    inv_id = it.get("inventario_id")
+                    cantidad = it.get("cantidad", 0)
+                    precio_unit_mayorista = inv_precio_mayorista_map.get(inv_id, 0)
+                    subtotal_item = precio_unit_mayorista * cantidad
+                    total_mayorista_vivero += subtotal_item
+                    
+                    nombre_planta = inv_planta_map.get(inv_id, "Planta")
+                    plantas_detalle.append({
+                        "nombre": nombre_planta,
+                        "cantidad": cantidad,
+                        "precio_unitario": precio_unit_mayorista,
+                        "subtotal": subtotal_item
+                    })
+
+                # Crear sub-cotización
+                db.table("sub_cotizaciones").insert({
+                    "cotizacion_id": cotizacion_id,
+                    "vivero_id": vivero_id,
+                    "items": vitems,
+                    "total_estimado": total_mayorista_vivero,
+                    "estado": "pendiente",
+                }).execute()
+
+                # ── Tracking onboarding: marcar primera cotización si corresponde ─
+                # La función marcar_primera_cotizacion es IDEMPOTENTE: solo guarda
+                # si primera_cotizacion_at está NULL. Errores acá NO bloquean
+                # el flujo principal (best-effort).
+                # FIX 25 ago: Import LOCAL para evitar circular import
+                try:
+                    from app.services.onboarding_wa import marcar_primera_cotizacion as marcar
+                    marcar(vivero_id)
+                except Exception as e:
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        f"No se pudo marcar primera_cotizacion vivero {vivero_id}: {e}"
+                    )
+
+                # Notificar al viverista
+                v = db.table("viveros").select(
+                    "whatsapp_numero, nombre_vivero"
+                ).eq("vivero_id", vivero_id).limit(1).execute()
+
+                if not v.data or not v.data[0].get("whatsapp_numero"):
+                    continue
+
+                # FIX 19 ago: Construir mensaje DETALLADO con plantas individuales y precio mayorista
+                lineas_plantas = []
+                for planta in plantas_detalle:
+                    linea = f"  • {planta['nombre']} × {planta['cantidad']} → ${planta['precio_unitario']:,.0f} COP"
+                    lineas_plantas.append(linea)
+                
+                plantas_msg = "\n".join(lineas_plantas)
+
+                # Mensaje FINAL: Solo precio mayorista, sin precio comprador
+                msg = (
+                    f"🌿 *Nueva solicitud — ViveroOnline*\n\n"
+                    f"Proyecto: *{nombre_proyecto}*\n"
+                    f"Solicitante: *Cliente ViveroOnline*\n\n"
+                    f"📦 *Plantas solicitadas:*\n{plantas_msg}\n\n"
+                    f"💰 *Tu precio total (lo que recibirás):* ${total_mayorista_vivero:,.0f} COP\n\n"
+                    f"Zona: Sabana de Bogotá\n"
+                    f"⏰ Responde en 2h\n\n"
+                    f"¿Confirmás disponibilidad?\n"
+                    f"Respondé *APROBAR* o *RECHAZAR*"
+                )
+
+                # ── CAMBIO 12 ago + FIX 19 ago: Enviar mensaje detallado por WhatsApp ──
+                import logging
+                logger = logging.getLogger(__name__)
+                wa_viverista = v.data[0]["whatsapp_numero"]
+                nombre_vivero = v.data[0].get("nombre_vivero", "Viverista")
+                
+                logger.info(f"📤 Notificando viverista {vivero_id} ({nombre_vivero}) - WA: {wa_viverista} - Proyecto: {nombre_proyecto} - Total mayorista: ${total_mayorista_vivero:,.0f}")
+                
+                try:
+                    resultado = await send_text_message(wa_viverista, msg)
+                    if resultado:
+                        logger.info(f"✅ Notificación enviada a {wa_viverista}")
+                    else:
+                        logger.error(f"❌ send_text_message devolvió False para {wa_viverista}")
+                except Exception as e:
+                    logger.error(f"❌ Exception enviando WhatsApp a vivero {vivero_id}: {e}", exc_info=True)
+
+                # Guardar acción pendiente en sesión del viverista
+                accion = {
+                    "type": "aprobar_rechazar_cotizacion",
+                    "confirmed": False,
+                    "params": {
+                        "cotizacion_id": cotizacion_id,
+                        "nombre_proyecto": nombre_proyecto,
+                        "total_base": int(total_mayorista_vivero),
+                    }
+                }
+                sesion = db.table("sesiones_agente").select(
+                    "sesion_id"
+                ).eq("whatsapp_numero", v.data[0]["whatsapp_numero"]).eq(
+                    "estado", "activa"
+                ).limit(1).execute()
+
+                if sesion.data:
+                    db.table("sesiones_agente").update({
+                        "accion_pendiente": accion
+                    }).eq("sesion_id", sesion.data[0]["sesion_id"]).execute()
+                else:
+                    perfil = db.table("perfiles").select("id").eq(
+                        "whatsapp_numero", v.data[0]["whatsapp_numero"]
+                    ).eq("rol", "viverista").limit(1).execute()
+                    if perfil.data:
+                        db.table("sesiones_agente").insert({
+                            "whatsapp_numero": v.data[0]["whatsapp_numero"],
+                            "tipo_usuario": "viverista",
+                            "vivero_id": vivero_id,
+                            "estado": "activa",
+                            "flujo_actual": "chat",
+                            "contexto_json": {"historial": []},
+                            "mensajes_count": 0,
+                            "fotos_procesadas": 0,
+                            "accion_pendiente": accion,
+                        }).execute()
+
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"No se pudo notificar a los viveristas: {e}")
+
+    return {"ok": True, "estado": "enviada", "cotizacion_id": cotizacion_id}
+
+
+# ═══════════ 2. VIVERISTA: Ver cotizaciones pendientes ═══════════
+
+@router.get("/pendientes")
+async def listar_pendientes(user: UserContext = Depends(require_viverista)):
+    db = db_admin()
+    if not user.vivero_id:
+        raise HTTPException(400, "Tu perfil no está vinculado a un vivero")
+
+    r = db.table("cotizaciones").select(
+        "cotizacion_id, cliente_id, estado, items, total_estimado, "
+        "prompt_original, notas_cliente, fecha_creacion"
+    ).eq("estado", "enviada").execute()
+
+    pendientes = []
+    for cot in (r.data or []):
+        items = cot.get("items") or []
+        if not items:
+            continue
+
+        inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
+        if not inv_ids:
+            continue
+
+        inv_resp = db.table("inventario").select(
+            "inventario_id, vivero_id, plantas(nombre_comun)"
+        ).in_("inventario_id", inv_ids).execute()
+        inv_map = {row["inventario_id"]: row for row in (inv_resp.data or [])}
+
+        mis_items = []
+        for it in items:
+            inv = inv_map.get(it.get("inventario_id"))
+            if not inv or inv.get("vivero_id") != user.vivero_id:
+                continue
+            planta = inv.get("plantas") or {}
+            mis_items.append({
+                **it,
+                "vivero_id": user.vivero_id,
+                "nombre_comun": planta.get("nombre_comun") or f"Item #{it.get('inventario_id')}",
+            })
+
+        if not mis_items:
+            continue
+
+        cliente = db.table("clientes").select(
+            "nombre_empresa, nombre_representante"
+        ).eq("cliente_id", cot["cliente_id"]).limit(1).execute()
+        nombre_comprador = "Comprador"
+        if cliente.data:
+            nombre_comprador = (
+                cliente.data[0].get("nombre_representante") or
+                cliente.data[0].get("nombre_empresa") or
+                "Comprador"
+            )
+
+        total_base = float(cot.get("total_estimado") or 0)
+
+        # ── FIX 21 jul: NO enviar total_comprador al viverista ──
+        # El viverista NO debe ver cuánto paga el comprador. Solo su total_estimado
+        # (precio mayorista que publicó).
+        pendientes.append({
+            "cotizacion_id": cot["cotizacion_id"],
+            "nombre_proyecto": cot.get("prompt_original") or f"Cotización #{cot['cotizacion_id']}",
+            "nombre_comprador": nombre_comprador,
+            "estado": cot["estado"],
+            "items": mis_items,
+            "total_estimado": total_base,  # SU precio (mayorista)
+            "notas_cliente": cot.get("notas_cliente"),
+            "fecha_creacion": str(cot.get("fecha_creacion") or ""),
+        })
+
+    return {"ok": True, "pendientes": pendientes, "total": len(pendientes)}
+
+
+# ═══════════ 3. VIVERISTA: Aprobar cotización ═══════════
+
+class RechazarReq(BaseModel):
+    motivo: Optional[str] = None
+
+
+async def aprobar_subcotizacion_vivero(db, cotizacion_id: int, vivero_id: int) -> dict:
+    """Lógica de negocio compartida para aprobar la parte de un vivero dentro
+    de una cotización (multi-vivero o legacy de un solo vivero).
+
+    Usada tanto por el endpoint HTTP /aprobar como por el handler de WhatsApp
+    APROBAR, para que ambos caminos respeten exactamente las mismas reglas
+    de sub_cotizaciones (AJUSTE 18 jun: antes el camino de WhatsApp duplicaba
+    esta lógica sin tocar sub_cotizaciones, rompiendo el flujo multi-vivero).
+
+    GUARD CLAUSE (AJUSTE 18 jun): el UPDATE de la cotización principal es
+    condicional y atómico — incluye `.eq("estado", "enviada")` en la cláusula
+    del propio UPDATE, no solo en una validación previa. Esto cierra la
+    ventana de carrera entre el SELECT de validación y el UPDATE (ej. el cron
+    de vencimiento corriendo justo cuando el viverista aprueba): si otro
+    proceso ya cambió el estado entre medio, este UPDATE no afecta ninguna
+    fila y `resp.data` viene vacío, así que lo detectamos y devolvemos un
+    resultado claro en vez de pisar silenciosamente el cambio del otro proceso.
+
+    Retorna dict con "ok": False y "motivo" si no se pudo aplicar (cotización
+    no encontrada, no tiene items de este vivero, o ya cambió de estado).
+    """
+    from datetime import datetime, timezone, timedelta
+
+    cot = db.table("cotizaciones").select(
+        "cotizacion_id, cliente_id, estado, items, total_estimado, prompt_original"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+    if not cot.data:
+        return {"ok": False, "motivo": "no_encontrada"}
+    cot = cot.data[0]
+
+    items = cot.get("items") or []
+    inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
+    if inv_ids:
+        inv_resp = db.table("inventario").select("inventario_id, vivero_id").in_(
+            "inventario_id", inv_ids
+        ).execute()
+        if not any(r.get("vivero_id") == vivero_id for r in (inv_resp.data or [])):
+            return {"ok": False, "motivo": "sin_items_de_este_vivero"}
+
+    # ── Actualizar sub-cotización de este vivero (atómico: solo si seguía pendiente) ──
+    sub_update = db.table("sub_cotizaciones").update({
+        "estado": "aprobada",
+        "fecha_respuesta": datetime.now(timezone.utc).isoformat(),
+    }).eq("cotizacion_id", cotizacion_id).eq("vivero_id", vivero_id).eq(
+        "estado", "pendiente"
+    ).execute()
+
+    hubo_sub = bool(sub_update.data)
+    if not hubo_sub:
+        # Puede ser flujo legacy sin sub_cotizaciones, o ya fue procesada antes.
+        existe_sub = db.table("sub_cotizaciones").select("sub_cotizacion_id, estado").eq(
+            "cotizacion_id", cotizacion_id
+        ).eq("vivero_id", vivero_id).limit(1).execute()
+        if existe_sub.data and existe_sub.data[0]["estado"] != "pendiente":
+            return {"ok": False, "motivo": "ya_procesada", "estado_actual": existe_sub.data[0]["estado"]}
+
+    # ── Verificar si TODAS las sub-cotizaciones están aprobadas ──────────────
+    pendientes = db.table("sub_cotizaciones").select("sub_cotizacion_id").eq(
+        "cotizacion_id", cotizacion_id
+    ).in_("estado", ["pendiente", "rechazada"]).execute()
+
+    todas_aprobadas = len(pendientes.data or []) == 0
+
+    if todas_aprobadas:
+        fecha_vencimiento = (datetime.now(timezone.utc) + timedelta(hours=48)).isoformat()
+        # UPDATE condicional atómico: solo aplica si la cotización seguía en
+        # "enviada". Si ya la venció el cron o la cerró otro proceso, esto no
+        # afecta ninguna fila y lo detectamos por resp.data vacío.
+        update_resp = db.table("cotizaciones").update({
+            "estado": "aceptada",
+            "fecha_vencimiento": fecha_vencimiento,
+        }).eq("cotizacion_id", cotizacion_id).eq("estado", "enviada").execute()
+
+        if not update_resp.data:
+            return {
+                "ok": False,
+                "motivo": "estado_cambio_antes_del_update",
+                "cotizacion_id": cotizacion_id,
+            }
+
+        # Notificar al comprador solo cuando TODOS aprobaron
+        try:
+            base = get_settings().app_base_url
+            cliente = db.table("clientes").select("whatsapp_numero").eq(
+                "cliente_id", cot["cliente_id"]
+            ).limit(1).execute()
+
+            if cliente.data and cliente.data[0].get("whatsapp_numero"):
+                # ── Fase 4: el comprador ve su total REAL calculado por
+                #    el motor matricial (respeta markups por categoría) ──
+                items_cot = cot.get("items") or []
+                calc = _calcular_para_cotizacion(db, cot["cliente_id"], items_cot)
+                total_comprador = int(calc["totales"]["precio_final_cliente"])
+                nombre_proyecto = cot.get("prompt_original") or f"Cotización #{cotizacion_id}"
+                msg = (
+                    f"✅ *¡Tu solicitud fue aprobada! — ViveroOnline*\n\n"
+                    f"Proyecto: *{nombre_proyecto}*\n"
+                    f"Total a pagar: *${total_comprador:,} COP*\n\n"
+                    f"Todos los viveros confirmaron disponibilidad.\n"
+                    f"Ingresá a tu panel para completar el pago:\n"
+                    f"{base}/comprador"
+                )
+                await send_text_message(cliente.data[0]["whatsapp_numero"], msg)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"No se pudo notificar al comprador: {e}")
 
         return {
             "ok": True,
-            "ciudad": ciudad,
-            "tier": tier_mayor,
-            "zona": zona,
-            "flete_cop": flete_cop,
-            "dias_entrega_estimados": 5 if zona == "sabana_entre_municipios" else 7,
+            "estado": "aceptada",
+            "cotizacion_id": cotizacion_id,
+            "nombre_proyecto": cot.get("prompt_original") or f"Cotización #{cotizacion_id}",
         }
-    
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"Error calculando flete: {e}")
-        raise HTTPException(500, detail=f"Error calculando flete: {e}")
+    else:
+        # Hay sub-cotizaciones aún pendientes
+        aprobadas = db.table("sub_cotizaciones").select("sub_cotizacion_id").eq(
+            "cotizacion_id", cotizacion_id
+        ).eq("estado", "aprobada").execute()
+        total_aprobadas = len(aprobadas.data or [])
+        total_subs = db.table("sub_cotizaciones").select("sub_cotizacion_id").eq(
+            "cotizacion_id", cotizacion_id
+        ).execute()
+        total = len(total_subs.data or [])
+        return {
+            "ok": True,
+            "estado": "parcialmente_aprobada",
+            "aprobadas": total_aprobadas,
+            "total_viveros": total,
+            "cotizacion_id": cotizacion_id,
+            "nombre_proyecto": cot.get("prompt_original") or f"Cotización #{cotizacion_id}",
+        }
 
 
-# ═══════════════════════════════════════════════════════════
-# Endpoint 3: CREATE ORDER (Fase 10.3 + 10.4 + 10.4 FIX + 10.4 SHOW + FASE 11)
-# ═══════════════════════════════════════════════════════════
+@router.post("/{cotizacion_id}/aprobar")
+async def aprobar_cotizacion(cotizacion_id: int, user: UserContext = Depends(require_viverista)):
+    db = db_admin()
+    resultado = await aprobar_subcotizacion_vivero(db, cotizacion_id, user.vivero_id)
 
-def _liberar_reservas_expiradas(db) -> int:
-    """Limpieza pasiva: libera stock de cotizaciones guest expiradas sin pago."""
-    try:
-        ahora_iso = datetime.now(timezone.utc).isoformat()
-        cot_resp = db.table("cotizaciones").select(
-            "cotizacion_id, items, estado"
-        ).eq("estado", "convertida").lt("fecha_vencimiento", ahora_iso).execute()
+    if not resultado["ok"]:
+        motivo = resultado.get("motivo")
+        if motivo == "no_encontrada":
+            raise HTTPException(404, "Cotización no encontrada")
+        if motivo == "sin_items_de_este_vivero":
+            raise HTTPException(403, "Esta cotización no contiene items de tu vivero")
+        if motivo == "ya_procesada":
+            raise HTTPException(
+                400, f"Esta cotización ya fue procesada. Estado: {resultado.get('estado_actual')}"
+            )
+        if motivo == "estado_cambio_antes_del_update":
+            raise HTTPException(
+                409, "La cotización cambió de estado justo antes de confirmar tu aprobación "
+                     "(por ejemplo, venció). Revisá el estado actual antes de reintentar."
+            )
+        raise HTTPException(400, "No se pudo aprobar la cotización")
 
-        if not cot_resp.data:
-            return 0
+    return resultado
 
-        cot_ids = [c["cotizacion_id"] for c in cot_resp.data]
 
-        txn_resp = db.table("transacciones_b2b").select(
-            "cotizacion_id, transaccion_id"
-        ).in_("cotizacion_id", cot_ids).execute()
-        cot_txn_map = {t["cotizacion_id"]: t["transaccion_id"] for t in (txn_resp.data or [])}
+# ═══════════ 4. VIVERISTA: Rechazar cotización ═══════════
 
-        expiradas_sin_pago = []
-        for cot in cot_resp.data:
-            cot_id = cot["cotizacion_id"]
-            txn_id = cot_txn_map.get(cot_id)
-            if not txn_id:
-                expiradas_sin_pago.append(cot)
+async def rechazar_subcotizacion_vivero(db, cotizacion_id: int, vivero_id: int, motivo: str | None = None) -> dict:
+    """Lógica de negocio compartida para rechazar la parte de un vivero
+    dentro de una cotización. Misma lógica usada por el endpoint HTTP
+    /rechazar y por el handler de WhatsApp RECHAZAR (AJUSTE 18 jun, ver
+    docstring de aprobar_subcotizacion_vivero para el contexto completo).
+
+    GUARD CLAUSE: el UPDATE de sub_cotizaciones es condicional (.eq("estado",
+    "pendiente")) para no rechazar dos veces ni pisar una aprobación que ya
+    haya ocurrido. El UPDATE final de la cotización principal a "rechazada"
+    también es condicional sobre que no haya quedado ninguna sub-cotización
+    aprobada (evita marcar como rechazada una cotización que en paralelo
+    fue aprobada por todos los demás viveros).
+    """
+    from datetime import datetime, timezone
+
+    cot = db.table("cotizaciones").select(
+        "cotizacion_id, cliente_id, estado, items, prompt_original"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+    if not cot.data:
+        return {"ok": False, "motivo": "no_encontrada"}
+    cot = cot.data[0]
+
+    items = cot.get("items") or []
+    inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
+    if inv_ids:
+        inv_resp = db.table("inventario").select("inventario_id, vivero_id").in_(
+            "inventario_id", inv_ids
+        ).execute()
+        if not any(r.get("vivero_id") == vivero_id for r in (inv_resp.data or [])):
+            return {"ok": False, "motivo": "sin_items_de_este_vivero"}
+
+    # ── Marcar sub-cotización de este vivero como rechazada (atómico) ────────
+    # FIX 30 jul 2026: quitar .select("items") encadenado tras update.
+    # En supabase-py actual, update().eq() retorna un SyncFilterRequestBuilder
+    # que NO tiene método .select() — tiraba error 500 al viverista al rechazar.
+    # execute() de update() YA devuelve la fila con TODAS las columnas por default.
+    sub_update = db.table("sub_cotizaciones").update({
+        "estado": "rechazada",
+        "notas_rechazo": motivo or "Rechazada por el viverista",
+        "fecha_respuesta": datetime.now(timezone.utc).isoformat(),
+    }).eq("cotizacion_id", cotizacion_id).eq("vivero_id", vivero_id).eq(
+        "estado", "pendiente"
+    ).execute()
+
+    if sub_update.data:
+        items_rechazados = sub_update.data[0].get("items") or []
+        alternativas = []
+
+        for it in items_rechazados:
+            inv_id = it.get("inventario_id")
+            cantidad = it.get("cantidad", 1)
+            if not inv_id:
                 continue
-            pago = db.table("pagos").select("estado_pago").eq(
-                "transaccion_id", txn_id
-            ).eq("estado_pago", "aprobado").limit(1).execute()
-            if not pago.data:
-                expiradas_sin_pago.append(cot)
 
-        liberadas = 0
-        for cot in expiradas_sin_pago:
-            for it in cot.get("items") or []:
+            alt = db.rpc("buscar_vivero_alternativo", {
+                "p_inventario_id": inv_id,
+                "p_cantidad": cantidad,
+                "p_vivero_excluir": vivero_id,
+            }).execute()
+
+            if alt.data:
+                alternativas.append({
+                    "inventario_original": inv_id,
+                    "inventario_alternativo": alt.data[0]["inventario_id"],
+                    "vivero_alternativo_id": alt.data[0]["vivero_id"],
+                    "nombre_vivero": alt.data[0]["nombre_vivero"],
+                    "precio_mayorista": float(alt.data[0]["precio_mayorista"]),
+                })
+
+        nombre_proyecto = cot.get("prompt_original") or f"Cotización #{cotizacion_id}"
+
+        # ── Notificar al comprador con alternativa si existe ──────────────────
+        try:
+            base = get_settings().app_base_url
+            cliente = db.table("clientes").select("whatsapp_numero").eq(
+                "cliente_id", cot["cliente_id"]
+            ).limit(1).execute()
+
+            if cliente.data and cliente.data[0].get("whatsapp_numero"):
+                if alternativas:
+                    nombres_alt = list({a["nombre_vivero"] for a in alternativas})
+                    msg = (
+                        f"⚠️ *Un vivero no tiene disponibilidad — ViveroOnline*\n\n"
+                        f"Proyecto: *{nombre_proyecto}*\n\n"
+                        f"Encontramos las mismas plantas en: *{', '.join(nombres_alt)}*\n\n"
+                        f"Ingresá a tu panel para confirmar el cambio:\n"
+                        f"{base}/comprador"
+                    )
+                else:
+                    motivo_txt = f"\nMotivo: {motivo}" if motivo else ""
+                    msg = (
+                        f"❌ *Solicitud no disponible — ViveroOnline*\n\n"
+                        f"Proyecto: {nombre_proyecto}{motivo_txt}\n\n"
+                        f"No encontramos stock disponible en otro vivero.\n"
+                        f"Podés buscar alternativas en el marketplace:\n"
+                        f"{base}/marketplace"
+                    )
+                await send_text_message(cliente.data[0]["whatsapp_numero"], msg)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"No se pudo notificar al comprador: {e}")
+
+        # Si no hay más sub-cotizaciones pendientes y ninguna fue aprobada
+        # → marcar cotización principal como rechazada (condicional: solo si
+        # sigue en "enviada", para no pisar un estado que ya cambió en paralelo)
+        otras_pendientes = db.table("sub_cotizaciones").select("sub_cotizacion_id").eq(
+            "cotizacion_id", cotizacion_id
+        ).eq("estado", "pendiente").execute()
+
+        if not otras_pendientes.data:
+            aprobadas = db.table("sub_cotizaciones").select("sub_cotizacion_id").eq(
+                "cotizacion_id", cotizacion_id
+            ).eq("estado", "aprobada").execute()
+            if not aprobadas.data:
+                db.table("cotizaciones").update({
+                    "estado": "rechazada",
+                    "notas_agente": motivo or "Rechazada por todos los viveristas",
+                    # Guardar alternativas para que el frontend del comprador
+                    # pueda mostrar el botón "Confirmar vivero alternativo"
+                    # en vez de un link genérico al marketplace.
+                    "alternativas_vivero": alternativas if alternativas else None,
+                }).eq("cotizacion_id", cotizacion_id).eq("estado", "enviada").execute()
+
+        return {
+            "ok": True,
+            "estado": "rechazada",
+            "alternativas": alternativas,
+            "cotizacion_id": cotizacion_id,
+            "nombre_proyecto": nombre_proyecto,
+        }
+
+    # No se pudo actualizar ninguna sub-cotización pendiente: o no existe
+    # (flujo legacy de un solo vivero) o ya fue procesada antes.
+    existe_sub = db.table("sub_cotizaciones").select("sub_cotizacion_id, estado").eq(
+        "cotizacion_id", cotizacion_id
+    ).eq("vivero_id", vivero_id).limit(1).execute()
+
+    if existe_sub.data:
+        return {"ok": False, "motivo": "ya_procesada", "estado_actual": existe_sub.data[0]["estado"]}
+
+    # Flujo legacy sin sub_cotizaciones — UPDATE condicional sobre "enviada"
+    update_resp = db.table("cotizaciones").update({
+        "estado": "rechazada",
+        "notas_agente": motivo or "Rechazada por el viverista",
+    }).eq("cotizacion_id", cotizacion_id).eq("estado", "enviada").execute()
+
+    if not update_resp.data:
+        return {"ok": False, "motivo": "estado_cambio_antes_del_update", "cotizacion_id": cotizacion_id}
+
+    return {
+        "ok": True,
+        "estado": "rechazada",
+        "alternativas": [],
+        "cotizacion_id": cotizacion_id,
+        "nombre_proyecto": cot.get("prompt_original") or f"Cotización #{cotizacion_id}",
+    }
+
+
+@router.post("/{cotizacion_id}/rechazar")
+async def rechazar_cotizacion(
+    cotizacion_id: int, req: RechazarReq, user: UserContext = Depends(require_viverista)
+):
+    db = db_admin()
+    resultado = await rechazar_subcotizacion_vivero(db, cotizacion_id, user.vivero_id, req.motivo)
+
+    if not resultado["ok"]:
+        motivo = resultado.get("motivo")
+        if motivo == "no_encontrada":
+            raise HTTPException(404, "Cotización no encontrada")
+        if motivo == "sin_items_de_este_vivero":
+            raise HTTPException(403, "Esta cotización no contiene items de tu vivero")
+        if motivo == "ya_procesada":
+            raise HTTPException(
+                400, f"Esta cotización ya fue procesada. Estado: {resultado.get('estado_actual')}"
+            )
+        if motivo == "estado_cambio_antes_del_update":
+            raise HTTPException(
+                409, "La cotización cambió de estado justo antes de confirmar tu rechazo "
+                     "(por ejemplo, venció). Revisá el estado actual antes de reintentar."
+            )
+        raise HTTPException(400, "No se pudo rechazar la cotización")
+
+    return resultado
+
+
+# ═══════════ 5. COMPRADOR: Calcular flete antes del pago ═══════════
+
+@router.get("/{cotizacion_id}/calcular-flete")
+async def calcular_flete_cotizacion(
+    cotizacion_id: int,
+    ciudad: str,
+    user: UserContext = Depends(require_comprador),
+):
+    db = db_admin()
+
+    cot = db.table("cotizaciones").select(
+        "cotizacion_id, cliente_id, estado"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+
+    if not cot.data:
+        raise HTTPException(404, "Cotización no encontrada")
+    if cot.data[0]["cliente_id"] != user.cliente_id:
+        raise HTTPException(403, "No podés ver esta cotización")
+
+    FALLBACK = {
+        "ok": True, "tier": "M", "zona": "sabana_entre_municipios",
+        "precio_base": 180000, "fee_carga_viva": 18000, "total_flete": 198000, "detalle": [],
+    }
+
+    try:
+        db = db_admin()
+
+        # 1. Obtener zona de la ciudad
+        zona_resp = db.table("ciudades_zonas").select("zona").eq("ciudad", ciudad).limit(1).execute()
+        zona = zona_resp.data[0]["zona"] if zona_resp.data else "sabana_entre_municipios"
+
+        # 2. Obtener tier dinámico con HUELLA DE PISO (FASE 11)
+        cot_items = db.table("cotizaciones").select("items").eq("cotizacion_id", cotizacion_id).limit(1).execute()
+        items = cot_items.data[0].get("items", []) if cot_items.data else []
+        inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
+
+        tier = "M"
+        num_viveros = 1
+        area_total = 0.0
+        altura_max = 0
+        
+        if inv_ids:
+            # FASE 11: Usar función dinámica en lugar del max() estático
+            items_dict = [{"inventario_id": it.get("inventario_id"), "cantidad": it.get("cantidad", 1)} 
+                         for it in items]
+            tier_resultado = calcular_tier_viaje_con_huella_piso(db, items_dict, es_b2b=True)
+            
+            if tier_resultado['ok']:
+                tier = tier_resultado['tier_final']
+                area_total = tier_resultado['area_total']
+                altura_max = tier_resultado['altura_max']
+                import logging
+                logging.getLogger(__name__).debug(
+                    f"Tier dinámico calculado: {tier} (área: {area_total}m², altura: {altura_max}cm)"
+                )
+            else:
+                # Fallback: calcular manualmente
+                inv_resp = db.table("inventario").select("logistics_tier, vivero_id").in_("inventario_id", inv_ids).execute()
+                tier_orden = {"XL": 4, "L": 3, "M": 2, "S": 1}
+                tiers = [r.get("logistics_tier", "M") for r in (inv_resp.data or [])]
+                if tiers:
+                    tier = max(tiers, key=lambda t: tier_orden.get(t, 2))
+                viveros = {r.get("vivero_id") for r in (inv_resp.data or []) if r.get("vivero_id")}
+                num_viveros = len(viveros) if viveros else 1
+                import logging
+                logging.getLogger(__name__).warning(
+                    f"Error calculando tier dinámico, fallback: {tier_resultado.get('error')}"
+                )
+            
+            # Contar viveros si no lo hizo la función dinámica
+            if num_viveros == 1 and inv_ids:
                 try:
-                    db.rpc("liberar_stock", {
-                        "p_inventario_id": it.get("inventario_id"),
-                        "p_cantidad": it.get("cantidad"),
-                    }).execute()
-                except Exception as e:
-                    logger.warning(f"Error liberando stock cot {cot['cotizacion_id']}: {e}")
+                    inv_resp = db.table("inventario").select("vivero_id").in_("inventario_id", inv_ids).execute()
+                    viveros = {r.get("vivero_id") for r in (inv_resp.data or []) if r.get("vivero_id")}
+                    num_viveros = len(viveros) if viveros else 1
+                except:
+                    num_viveros = 1
 
-            db.table("cotizaciones").update({
-                "estado": "vencida",
-            }).eq("cotizacion_id", cot["cotizacion_id"]).execute()
-            liberadas += 1
+        # 3. Calcular flete con FÓRMULA UNIFICADA (FASE 11)
+        # Fee: 0% (S/M), 9% (L/XL)
+        # Recargo: 12% × BASE × (viveros - 1)
+        tarifa_resp = db.table("tarifas_logistica").select("precio_cop").eq("zona", zona).eq("tier_base", tier).limit(1).execute()
+        precio_base = tarifa_resp.data[0]["precio_cop"] if tarifa_resp.data else 180000
 
-        return liberadas
+        # FASE 11: Usar fórmula unificada
+        flete_resultado = calcular_flete_correcto(db, ciudad, items_dict if inv_ids else [], es_b2b=True)
+        
+        if flete_resultado['ok']:
+            precio_base = flete_resultado['costo_base']
+            fee = flete_resultado['fee_9pct']
+            recargo = flete_resultado['recargo_12pct']
+            total = flete_resultado['total_flete']
+            import logging
+            logging.getLogger(__name__).info(
+                f"Flete dinámico calculado: ${total:,} "
+                f"(Base: ${precio_base:,}, Fee: ${fee:,}, Recargo: ${recargo:,})"
+            )
+        else:
+            # Fallback: usar lógica anterior
+            fee = round(precio_base * 0.09) if tier in ("L", "XL") else 0
+            recargos = {"S": 40000, "M": 60000, "L": 90000, "XL": 120000}
+            recargo = (num_viveros - 1) * recargos.get(tier, 60000) if num_viveros > 1 else 0
+            total = precio_base + fee + recargo
+            import logging
+            logging.getLogger(__name__).warning(
+                f"Error calculando flete dinámico, fallback: {flete_resultado.get('error')}"
+            )
+
+        return {
+            "ok":             True,
+            "tier":           tier,
+            "zona":           zona,
+            "precio_base":    precio_base,
+            "fee_carga_viva": fee,
+            "total_flete":    total,
+            "area_total":     area_total,
+            "altura_max":     altura_max,
+            "detalle":        [],
+        }
+        return {
+            "ok":             True,
+            "tier":           tier,
+            "zona":           zona,
+            "precio_base":    precio_base,
+            "fee_carga_viva": fee,
+            "total_flete":    total,
+            "detalle":        [],
+        }
     except Exception as e:
-        logger.exception(f"Error en limpieza pasiva: {e}")
-        return 0
+        import logging
+        logging.getLogger(__name__).exception(f"Error calculando flete ciudad={ciudad}: {e}")
+        return FALLBACK
 
 
-def _upsert_cliente_guest(
-    db,
-    nombre: str,
-    tipo_documento: str,
-    num_documento: str,
-    email: str,
-    whatsapp: str,
-) -> tuple[int, bool]:
-    """Crea o reutiliza cliente guest.
-    
-    Retorna (cliente_id, es_recurrente).
+# ═══════════ 6. COMPRADOR: Iniciar pago ═══════════
+
+class CheckoutReq(BaseModel):
+    ciudad_entrega:           Optional[str] = None
+    fecha_entrega_deseada:    Optional[str] = None
+    notas:                    Optional[str] = None
+    direccion_entrega_exacta: Optional[str] = None
+    contacto_nombre:          Optional[str] = None
+    contacto_telefono:        Optional[str] = None
+    tipo_vehiculo:            Optional[str] = None
+    ventana_inicio:           Optional[str] = None
+    ventana_fin:              Optional[str] = None
+    flete_cop:                Optional[int] = None
+    plazo:                    Optional[str] = "inmediato"  # Fase 4: soporte plazos B2B
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# FASE 10.4: GET Estimar Descuento B2B (muestra descuento ANTES de hacer click)
+# ═══════════════════════════════════════════════════════════════════════════════
+@router.get("/{cotizacion_id}/estimar-descuento")
+async def estimar_descuento(
+    cotizacion_id: int, user: UserContext = Depends(require_comprador)
+):
     """
-    email_norm = email.strip().lower()
+    Devuelve estimación de descuento B2B SIN crear transacción.
+    El frontend lo usa para mostrar descuento en resumen al cargar /checkout/{id}
     
-    # Buscar guest existente
-    resp = db.table("clientes").select(
-        "cliente_id"
-    ).eq("email", email_norm).eq("es_guest", True).limit(1).execute()
-    
-    if resp.data:
-        es_recurrente = True
-        logger.info(
-            f"[Fase 10.3] Cliente guest existente encontrado: "
-            f"{resp.data[0]['cliente_id']}"
-        )
-        return (resp.data[0]["cliente_id"], es_recurrente)
-    
-    es_recurrente = False
-    new_resp = db.table("clientes").insert({
-        "es_guest": True,
-        "nombre_representante": nombre.strip(),
-        "nombre_empresa": f"Compra particular - {nombre.strip()}",
-        "email": email_norm,
-        "whatsapp_numero": whatsapp.strip(),
-        "tipo_documento": tipo_documento,
-        "numero_documento": num_documento.strip(),
-        "habeas_data": True,
-    }).execute()
-
-    if not new_resp.data:
-        raise HTTPException(500, detail="No se pudo crear el cliente")
-
-    return (new_resp.data[0]["cliente_id"], False)
-
-
-@router.post("/create-order", response_model=CreateOrderResponse)
-async def create_order(req: CreateOrderRequest):
-    """Crea el pedido guest completo + payment intent ePayco.
-
-    Flujo:
-    1. Validar aceptaciones legales
-    2. Limpieza pasiva de reservas expiradas
-    3. Re-validar cart
-    4. Calcular flete DINÁMICO con huella de piso (FASE 11)
-    5. Detectar cliente registrado B2B si existe por email
-    6. Marcar conversión si es recurrente
-    7. Crear cotización
-    8. Reservar stock atómicamente por item
-    9. Crear transaccion_b2b + pago
-    10. Aplicar descuento 12% B2B sobre SUBTOTAL
-    11. Generar payload ePayco
-    12. Devolver respuesta con datos FASE 11
+    Devuelve:
+    - aplica_descuento_b2b: bool
+    - descuento_pesos: monto en $ (12% si aplica)
+    - descuento_porcentaje: % (12.0 si aplica)
+    - monto_con_descuento: total - descuento
     """
+    db = db_admin()
+    cot = _get_cotizacion(db, cotizacion_id)
+    
+    if cot["cliente_id"] != user.cliente_id:
+        raise HTTPException(403, "No podés ver esta cotización")
+    
+    items = cot.get("items") or []
+    total_viverista = float(cot.get("total_estimado") or 0)
+    
+    # Usar motor de precios para determinar si aplica descuento
+    calc = _calcular_para_cotizacion(db, user.cliente_id, items, plazo="inmediato")
+    
+    aplica_descuento = calc.get("aplica_descuento_b2b", False)
+    monto_viverista_real = calc["totales"]["monto_viverista_total"]
+    
+    descuento_pesos = 0
+    descuento_porcentaje = 0.0
+    
+    if aplica_descuento:
+        # Reversión: viverista = 80%, así que vitrina = monto_viverista / 0.8
+        precio_vitrina = monto_viverista_real / 0.8
+        descuento_porcentaje = 12.0
+        descuento_pesos = int(precio_vitrina * 0.12)
+    
+    monto_con_descuento = total_viverista - descuento_pesos
+    
+    return {
+        "ok": True,
+        "cotizacion_id": cotizacion_id,
+        "aplica_descuento_b2b": aplica_descuento,
+        "descuento_pesos": descuento_pesos,
+        "descuento_porcentaje": round(descuento_porcentaje, 2),
+        "monto_con_descuento": int(monto_con_descuento),
+        "subtotal": int(total_viverista),
+    }
+
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/{cotizacion_id}/checkout")
+async def iniciar_checkout(
+    cotizacion_id: int, req: CheckoutReq, user: UserContext = Depends(require_comprador)
+):
+    from app.services.epayco import get_epayco, CheckoutRequest
+
+    db = db_admin()
+    cot = _get_cotizacion(db, cotizacion_id)
+
+    if cot["cliente_id"] != user.cliente_id:
+        raise HTTPException(403, "No podés pagar esta cotización")
+
+    if cot["estado"] not in ("aceptada", "convertida"):
+        raise HTTPException(400, f"Solo se pueden pagar cotizaciones aceptadas. Estado: {cot['estado']}")
+
     s = get_settings()
     epayco = get_epayco()
     if not epayco.is_configured:
-        raise HTTPException(503, detail="Servicio de pagos no configurado")
+        raise HTTPException(503, "Servicio de pagos no configurado")
 
-    # 1. Aceptaciones legales
-    if not req.acepta_perecedero:
-        raise HTTPException(400, detail="Debés aceptar el aviso de producto perecedero")
-    if not req.acepta_habeas_data:
-        raise HTTPException(400, detail="Debés aceptar el tratamiento de datos personales")
+    update_data: dict = {}
+    if req.ciudad_entrega:           update_data["ciudad_entrega"]           = req.ciudad_entrega
+    if req.fecha_entrega_deseada:    update_data["fecha_entrega_deseada"]    = req.fecha_entrega_deseada
+    if req.notas:                    update_data["notas_cliente"]             = req.notas
+    if req.direccion_entrega_exacta: update_data["direccion_entrega_exacta"] = req.direccion_entrega_exacta
+    if req.contacto_nombre:          update_data["contacto_nombre"]           = req.contacto_nombre
+    if req.contacto_telefono:        update_data["contacto_telefono"]         = req.contacto_telefono
+    if req.tipo_vehiculo:            update_data["tipo_vehiculo"]             = req.tipo_vehiculo
+    if req.ventana_inicio:           update_data["ventana_inicio"]            = req.ventana_inicio
+    if req.ventana_fin:              update_data["ventana_fin"]               = req.ventana_fin
+    if update_data:
+        db.table("cotizaciones").update(update_data).eq("cotizacion_id", cotizacion_id).execute()
 
-    db = admin()
+    total_viverista  = float(cot.get("total_estimado") or 0)
+    if total_viverista <= 0:
+        raise HTTPException(400, "El total de la cotización es inválido")
 
-    # 2. Limpieza pasiva
-    liberadas = _liberar_reservas_expiradas(db)
-    if liberadas > 0:
-        logger.info(f"[Fase 10.3] Liberadas {liberadas} reservas guest expiradas")
+    items = cot.get("items") or []
 
-    # 3. Re-validar cart
-    validacion = _validar_y_calcular_carrito(db, req.items)
-    if not validacion["ok"]:
-        raise HTTPException(400, detail={
-            "error": "validacion_fallida",
-            "mensaje": "Algunos productos ya no están disponibles. Volvé al carrito.",
-            "errores": validacion["errores"],
-        })
-
-    items_validados = validacion["items"]
-    total_comprador = validacion["total_comprador"]
-    total_mayorista = validacion["total_mayorista"]
-
-    # 4. Calcular flete DINÁMICO con huella de piso (FASE 11)
-    ciudad_norm = req.ciudad.strip()
-    if not ciudad_norm:
-        raise HTTPException(400, detail="Ciudad requerida")
-
-    tier_resultado = calcular_tier_viaje_con_huella_piso(db, req.items, es_b2b=False)
-    if tier_resultado['ok']:
-        tier_logistico = tier_resultado['tier_final']
-        area_carrito = tier_resultado['area_total']
-        altura_carrito = tier_resultado['altura_max']
-        advertencias_tier = tier_resultado['advertencias']
-    else:
-        logger.error(f"[FASE 11] Error calculando tier: {tier_resultado.get('error')}")
-        tier_logistico = 'M'
-        area_carrito = 0.0
-        altura_carrito = 0
-        advertencias_tier = [f"Error: {tier_resultado.get('error', 'desconocido')}"]
-
-    # Calcular flete con función nueva (FASE 11)
-    flete_resultado = calcular_flete_correcto(db, ciudad_norm, req.items, es_b2b=False)
-    if flete_resultado['ok']:
-        flete_cop = flete_resultado['total_flete']
-    else:
-        logger.error(f"[FASE 11] Error calculando flete: {flete_resultado.get('error')}")
-        flete_cop = 55000  # Fallback seguro
-        advertencias_tier.append(f"Flete fallback: {flete_resultado.get('error', 'desconocido')}")
+    # ── Fase 4 RESTAURADA (6 ago): cálculo completo vía motor matricial ──
+    # Antes: markup 20% fijo para todas las categorías, comisión flat
+    # Ahora: markup por categoría (materas 25%, sustrato 17%, etc.),
+    #        descuentos B2B ≥ 5 SMLMV, comisión calculada correctamente
+    calc = _calcular_para_cotizacion(
+        db, user.cliente_id, items, plazo=req.plazo or "inmediato"
+    )
+    totales = calc["totales"]
+    monto_plantas         = int(totales["precio_final_cliente"])
+    monto_viverista_real  = totales["monto_viverista_total"]
+    monto_plataforma      = totales["monto_viveroonline_bruto_total"]
+    porcentaje_efectivo   = totales["porcentaje_comision_efectivo"]
 
     # ═══════════════════════════════════════════════════════════════════════
-    # 5. Detectar cliente registrado B2B
+    # FASE 10.4 FIX: CALCULAR DESCUENTO B2B DESDE MOTOR + REGLA DEL PRODUCTOR
     # ═══════════════════════════════════════════════════════════════════════
-    email_norm = req.email.strip().lower()
-    
-    cliente_registrado = db.table("clientes").select(
-        "cliente_id, es_guest, nombre_representante"
-    ).eq("email", email_norm).eq("es_guest", False).limit(1).execute()
-    
-    if cliente_registrado.data:
-        cliente_id = cliente_registrado.data[0]["cliente_id"]
-        es_recurrente = True
-        
-        logger.info(
-            f"[Fase 10.4 FIX] Cliente registrado B2B encontrado: "
-            f"{cliente_id} ({cliente_registrado.data[0].get('nombre_representante')})"
-        )
-        
-        cliente_data = {"es_guest": False}
-    else:
-        cliente_id, es_recurrente = _upsert_cliente_guest(
-            db,
-            nombre=req.nombre,
-            tipo_documento=req.tipo_documento,
-            num_documento=req.num_documento,
-            email=req.email,
-            whatsapp=req.whatsapp,
-        )
-        
-        cliente_resp = db.table("clientes").select(
-            "cliente_id, es_guest"
-        ).eq("cliente_id", cliente_id).limit(1).execute()
-        cliente_data = cliente_resp.data[0] if cliente_resp.data else {"es_guest": True}
-
-    # 6. Marcar conversión si es 2da+ compra
-    if es_recurrente and cliente_data.get("es_guest") == False:
-        try:
-            db.table("clientes").update({
-                "necesita_conversion_b2b": True,
-            }).eq("cliente_id", cliente_id).execute()
-            logger.info(f"[Fase 10.3] Cliente {cliente_id} marcado para conversión B2B")
-        except Exception as e:
-            logger.warning(f"No se pudo marcar conversión de cliente {cliente_id}: {e}")
-
-    # 7. Preparar datos de entrega
-    contacto_nombre = req.nombre if req.mismo_receptor else (req.receptor_nombre or req.nombre)
-    contacto_telefono = req.whatsapp if req.mismo_receptor else (req.receptor_telefono or req.whatsapp)
-    direccion_completa = req.direccion.strip()
-    if req.referencia and req.referencia.strip():
-        direccion_completa += f" ({req.referencia.strip()})"
-
-    fecha_venc = datetime.now(timezone.utc) + timedelta(minutes=15)
-
-    # ═══════════════════════════════════════════════════════════════════════
-    # 8. Aplicar descuento 12% B2B sobre SUBTOTAL (ANTES de flete)
-    # ═══════════════════════════════════════════════════════════════════════
-    es_b2b = not cliente_data.get("es_guest", False)
-    fintech_activa = bool(get_config("fintech_activa", default=False))
-    
-    smlmv = float(get_config("smlmv_actual", default=1_750_905))
-    umbral_smlmv = int(get_config("umbral_descuento_b2b_smlmv", default=5))
-    umbral_pesos = smlmv * umbral_smlmv
-    
-    subtotal_con_descuento = total_comprador
+    # Si aplica_descuento_b2b = True:
+    #   - Viverista SIEMPRE recibe 80% (monto_viverista_real)
+    #   - Descuento 12% se aplica sobre el precio SIN descuento (vitrina)
+    #   - Plataforma absorbe el costo del descuento (comisión NO se reduce)
+    # ─────────────────────────────────────────────────────────────────────
+    aplica_descuento = calc.get("aplica_descuento_b2b", False)
     descuento_pesos = 0
     descuento_porcentaje = 0.0
-    descuento_aplicado = False
     
-    if es_b2b and not fintech_activa:
-        if total_comprador >= umbral_pesos:
-            descuento_pesos = int(total_comprador * 0.12)
-            subtotal_con_descuento = total_comprador - descuento_pesos
-            descuento_porcentaje = 12.0
-            descuento_aplicado = True
-            
-            logger.info(
-                f"[Fase 10.4] Descuento B2B 12% aplicado: "
-                f"Subtotal ${total_comprador:,} >= Umbral ${umbral_pesos:,} (5 SMLMV × ${smlmv:,.0f}) "
-                f"→ Descuento: ${descuento_pesos:,} → Nuevo subtotal: ${subtotal_con_descuento:,}"
-            )
-        else:
-            logger.info(
-                f"[Fase 10.4] Descuento B2B NO aplicado: "
-                f"Subtotal ${total_comprador:,} < Umbral ${umbral_pesos:,} (5 SMLMV) "
-                f"→ Cliente B2B pero compra pequeña"
-            )
-    elif es_b2b and fintech_activa:
-        logger.info(
-            f"[Fase 10.4] Descuento B2B delegado a fintech: "
-            f"fintech_activa=true → Usar descuentos de financiamiento"
-        )
+    if aplica_descuento:
+        # Reversión matemática: si viverista = 80% del precio_vitrina
+        # entonces: precio_vitrina = monto_viverista / 0.8
+        precio_vitrina = monto_viverista_real / 0.8
+        descuento_porcentaje = 12.0
+        descuento_pesos = int(precio_vitrina * (descuento_porcentaje / 100))
+        monto_con_descuento = monto_plantas - descuento_pesos
     else:
-        logger.info(
-            f"[Fase 10.4] Descuento B2B NO aplicado: "
-            f"Cliente es guest={not es_b2b}"
-        )
-    
-    # Flete se suma al subtotal DESPUÉS del descuento
-    monto_total_epayco = subtotal_con_descuento + flete_cop
+        monto_con_descuento = monto_plantas
     # ═════════════════════════════════════════════════════════════════════════
 
-    # 9. Guardar cotización
-    cot_data = {
-        "cliente_id": cliente_id,
-        "estado": "convertida",
-        "items": items_validados,
-        "total_estimado": total_comprador,
-        "ciudad_entrega": ciudad_norm,
-        "direccion_entrega_exacta": direccion_completa,
-        "contacto_nombre": contacto_nombre,
-        "contacto_telefono": contacto_telefono,
-        "fecha_vencimiento": fecha_venc.isoformat(),
-        "notas_cliente": req.notas.strip() if req.notas else "",
-        "prompt_original": f"Compra B2C guest - {req.nombre}",
-        "generada_por_ia": False,
-    }
-    if req.fecha_entrega:
-        cot_data["fecha_entrega_deseada"] = req.fecha_entrega
+    flete_cop = int(req.flete_cop or 0)
+    monto_cop = monto_plantas + flete_cop
 
-    cot_resp = db.table("cotizaciones").insert(cot_data).execute()
-    if not cot_resp.data:
-        raise HTTPException(500, detail="No se pudo crear la cotización")
+    cliente = db.table("clientes").select(
+        "nombre_empresa, nombre_representante, whatsapp_numero"
+    ).eq("cliente_id", user.cliente_id).limit(1).execute()
+    cli   = cliente.data[0] if cliente.data else {}
+    nombre = cli.get("nombre_representante") or cli.get("nombre_empresa") or "Cliente"
 
-    cotizacion_id = cot_resp.data[0]["cotizacion_id"]
-    logger.info(f"[Fase 10.3] Cotización {cotizacion_id} creada para cliente {cliente_id}")
+    transaccion_id = None
+    if cot.get("estado") == "convertida":
+        txn_existente = db.table("transacciones_b2b").select(
+            "transaccion_id, estado"
+        ).eq("cotizacion_id", cotizacion_id).eq("estado", "pendiente").limit(1).execute()
+        if txn_existente.data:
+            transaccion_id = txn_existente.data[0]["transaccion_id"]
 
-    # 10. Reservar stock atómicamente
-    stock_reservado = []
-    try:
-        for it in items_validados:
-            resp = db.rpc("reservar_stock_atomic", {
-                "p_inventario_id": it["inventario_id"],
-                "p_cantidad": it["cantidad"],
-            }).execute()
-
-            resultado_rpc = resp.data
-            if resultado_rpc == -1 or resultado_rpc is None:
-                for prev in stock_reservado:
-                    try:
-                        db.rpc("liberar_stock", {
-                            "p_inventario_id": prev["inventario_id"],
-                            "p_cantidad": prev["cantidad"],
-                        }).execute()
-                    except Exception:
-                        pass
-                db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
-                raise HTTPException(
-                    400,
-                    detail=f"Stock insuficiente para el producto {it['nombre']} en el último momento",
-                )
-
-            stock_reservado.append(it)
-    except HTTPException:
-        raise
-    except Exception as e:
-        for prev in stock_reservado:
-            try:
-                db.rpc("liberar_stock", {
-                    "p_inventario_id": prev["inventario_id"],
-                    "p_cantidad": prev["cantidad"],
-                }).execute()
-            except Exception:
-                pass
-        db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
-        logger.exception(f"[Fase 10.3] Error reservando stock: {e}")
-        raise HTTPException(500, detail=f"Error reservando stock: {e}")
-
-    # 11. Crear transaccion_b2b
-    comision_plataforma = subtotal_con_descuento - total_mayorista
-
-    try:
+    if not transaccion_id:
         txn_resp = db.table("transacciones_b2b").insert({
-            "cliente_id": cliente_id,
-            "cotizacion_id": cotizacion_id,
-            "precio_total": subtotal_con_descuento,
-            "comision_plataforma": comision_plataforma,
-            "estado": "pendiente",
+            "cliente_id":          user.cliente_id,
+            "inventario_id":       items[0].get("inventario_id") if items else None,
+            "cantidad":            sum(it.get("cantidad", 0) for it in items),
+            "precio_unitario":     float(items[0].get("precio_unitario", 0)) if items else 0,
+            "precio_total":        monto_cop,
+            "comision_plataforma": round(monto_plataforma),
+            "porcentaje_comision": porcentaje_efectivo,  # Fase 4: calculado por motor
+            "estado":              "pendiente",
+            "cotizacion_id":       cotizacion_id,
+            # ═══════════════════════════════════════════════════════════
+            # FASE 10.5: Desglose de precios para auditoría y análisis
+            # ═══════════════════════════════════════════════════════════
+            "flete_cop":           flete_cop,
+            "subtotal_plantas":    monto_plantas,
+            "descuento_pesos":     descuento_pesos,
         }).execute()
+
         if not txn_resp.data:
-            raise Exception("No se pudo crear la transacción")
+            raise HTTPException(500, "No se pudo crear la transacción")
+
         transaccion_id = txn_resp.data[0]["transaccion_id"]
-    except Exception as e:
-        for it in stock_reservado:
-            try:
-                db.rpc("liberar_stock", {
-                    "p_inventario_id": it["inventario_id"],
-                    "p_cantidad": it["cantidad"],
-                }).execute()
-            except Exception:
-                pass
-        db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
-        logger.exception(f"[Fase 10.3] Error creando transaccion: {e}")
-        raise HTTPException(500, detail=f"Error creando transacción: {e}")
 
-    # 12. Generar payload ePayco
-    response_url = f"{s.app_base_url}/pagos/resultado"
-    confirmation_url = f"{s.app_base_url}/api/pagos/confirmacion"
+        db.table("cotizaciones").update({
+            "estado":           "convertida",
+            "fecha_conversion": datetime.utcnow().isoformat(),
+            "transaccion_id":   transaccion_id,
+        }).eq("cotizacion_id", cotizacion_id).execute()
 
-    try:
-        checkout_req = CheckoutRequest(
-            transaccion_id=transaccion_id,
-            monto_cop=monto_total_epayco,
-            descripcion=f"viveroonline.com.co · Compra #{transaccion_id} ({validacion['total_plantas']} plantas)",
-            nombre_cliente=req.nombre.strip(),
-            telefono_cliente=req.whatsapp.strip(),
-        )
-        payload = epayco.build_checkout_payload(checkout_req, response_url, confirmation_url)
-        referencia = payload["invoice"]
-    except Exception as e:
-        db.table("transacciones_b2b").delete().eq("transaccion_id", transaccion_id).execute()
-        for it in stock_reservado:
-            try:
-                db.rpc("liberar_stock", {
-                    "p_inventario_id": it["inventario_id"],
-                    "p_cantidad": it["cantidad"],
-                }).execute()
-            except Exception:
-                pass
-        db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
-        logger.exception(f"[Fase 10.3] Error generando payload ePayco: {e}")
-        raise HTTPException(500, detail=f"Error preparando el pago: {e}")
-
-    # 13. Crear pago
-    try:
-        pago_resp = db.table("pagos").insert({
-            "transaccion_id": transaccion_id,
-            "monto_total": monto_total_epayco,
-            "moneda": "COP",
-            "estado_pago": "pendiente",
-            "metodo": "epayco",
-            "referencia_externa": referencia,
-            "monto_viverista": total_mayorista,
-            "monto_plataforma": comision_plataforma,
-        }).execute()
-        if not pago_resp.data:
-            raise Exception("No se pudo insertar el pago")
-        pago_id = pago_resp.data[0]["pago_id"]
-    except Exception as e:
-        db.table("transacciones_b2b").delete().eq("transaccion_id", transaccion_id).execute()
-        for it in stock_reservado:
-            try:
-                db.rpc("liberar_stock", {
-                    "p_inventario_id": it["inventario_id"],
-                    "p_cantidad": it["cantidad"],
-                }).execute()
-            except Exception:
-                pass
-        db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
-        logger.exception(f"[Fase 10.3] Error creando pago: {e}")
-        raise HTTPException(500, detail=f"Error registrando el pago: {e}")
-
-    logger.info(
-        f"[Fase 10.3 + FASE 11] Pedido creado OK: "
-        f"cot={cotizacion_id}, txn={transaccion_id}, pago={pago_id}, "
-        f"tier_dinamico={tier_logistico}, area={area_carrito:.2f}m², altura={altura_carrito}cm, "
-        f"monto_epayco=${monto_total_epayco:,}, "
-        f"descuento_aplicado={descuento_aplicado} (${descuento_pesos:,}), "
-        f"cliente_b2b={es_b2b}, "
-        f"ref={referencia}"
-    )
-
-    # ═══════════════════════════════════════════════════════════════════════════════
-    # Devolver respuesta con TODOS los campos (Fase 10.4 SHOW + FASE 11)
-    # ═══════════════════════════════════════════════════════════════════════════════
-    return CreateOrderResponse(
-        ok=True,
-        cotizacion_id=cotizacion_id,
+    checkout_req = CheckoutRequest(
         transaccion_id=transaccion_id,
-        pago_id=pago_id,
-        referencia=referencia,
-        monto_total=monto_total_epayco,
-        descuento_pesos=descuento_pesos,
-        descuento_porcentaje=descuento_porcentaje,
-        monto_con_descuento=subtotal_con_descuento,
-        tier_dinamico=tier_logistico,
-        area_m2=area_carrito,
-        altura_cm=altura_carrito,
-        advertencias=advertencias_tier,
-        checkout_payload=payload,
-        expires_at=fecha_venc.isoformat(),
+        monto_cop=monto_cop,
+        descripcion=f"ViveroOnline · {cot.get('prompt_original') or f'Pedido #{cotizacion_id}'}",
+        nombre_cliente=nombre,
+        telefono_cliente=cli.get("whatsapp_numero"),
     )
+    response_url     = f"{s.app_base_url}/pagos/resultado"
+    confirmation_url = f"{s.app_base_url}/api/pagos/confirmacion"
+    payload = epayco.build_checkout_payload(checkout_req, response_url, confirmation_url)
+
+    pago_resp = db.table("pagos").insert({
+        "transaccion_id":     transaccion_id,
+        "monto_total":        monto_cop,
+        "moneda":             "COP",
+        "estado_pago":        "pendiente",
+        "metodo":             "epayco",
+        "referencia_externa": payload["invoice"],
+        "monto_viverista":    round(monto_viverista_real),  # Fase 4: real, no total_estimado
+        "monto_plataforma":   round(monto_plataforma),
+    }).execute()
+
+    pago_id = pago_resp.data[0]["pago_id"] if pago_resp.data else None
+
+    return {
+        "ok":               True,
+        "pago_id":          pago_id,
+        "transaccion_id":   transaccion_id,
+        "cotizacion_id":    cotizacion_id,
+        "referencia":       payload["invoice"],
+        "checkout_payload": payload,
+        "monto_plantas":    monto_plantas,
+        "flete_cop":        flete_cop,
+        "monto_cop":        monto_cop,
+        "monto_viverista":  round(monto_viverista_real),
+        "monto_plataforma": round(monto_plataforma),
+        # ── Fase 4: desglose adicional para transparencia ──
+        "canal":                calc["canal"],
+        "plazo":                calc["plazo"],
+        "aplica_descuento_b2b": calc["aplica_descuento_b2b"],
+        "porcentaje_efectivo":  porcentaje_efectivo,
+        # ── FASE 10.4: DESCUENTO DEVUELTO AL FRONTEND ──
+        "descuento_pesos":      descuento_pesos,
+        "descuento_porcentaje": round(descuento_porcentaje, 2),
+        "monto_con_descuento":  int(monto_con_descuento),
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# 7. COMPRADOR: Confirmar vivero alternativo tras rechazo
+# ═══════════════════════════════════════════════════════════
+
+@router.post("/{cotizacion_id}/confirmar-alternativa")
+async def confirmar_vivero_alternativo(
+    cotizacion_id: int,
+    user: UserContext = Depends(require_comprador),
+):
+    """Comprador acepta el vivero alternativo propuesto tras un rechazo.
+
+    Actualiza los items de la cotización con los inventario_id alternativos,
+    recalcula el total, y la devuelve a estado 'borrador' para que el
+    comprador pueda reenviarla al nuevo vivero.
+    """
+    db = db_admin()
+
+    cot = db.table("cotizaciones").select(
+        "cotizacion_id, cliente_id, estado, items, total_estimado, alternativas_vivero"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+
+    if not cot.data:
+        raise HTTPException(404, "Cotización no encontrada")
+    c = cot.data[0]
+
+    if c["cliente_id"] != user.cliente_id:
+        raise HTTPException(403, "No podés modificar esta cotización")
+    if c["estado"] != "rechazada":
+        raise HTTPException(400, f"Solo se puede confirmar alternativa en cotizaciones rechazadas. Estado: {c['estado']}")
+
+    alternativas = c.get("alternativas_vivero") or []
+    if not alternativas:
+        raise HTTPException(400, "Esta cotización no tiene vivero alternativo disponible")
+
+    # Construir mapa: inventario_original → inventario_alternativo
+    alt_map = {
+        a["inventario_original"]: a["inventario_alternativo"]
+        for a in alternativas if a.get("inventario_original") and a.get("inventario_alternativo")
+    }
+
+    # Actualizar items con los nuevos inventario_id
+    items_actuales = c.get("items") or []
+    items_nuevos = []
+    total_nuevo = 0.0
+
+    for it in items_actuales:
+        inv_id_original = it.get("inventario_id")
+        inv_id_nuevo = alt_map.get(inv_id_original, inv_id_original)
+
+        # Verificar stock y precio del inventario alternativo
+        inv = db.table("inventario").select(
+            "precio_mayorista, stock, estado_planta"
+        ).eq("inventario_id", inv_id_nuevo).limit(1).execute()
+
+        if not inv.data:
+            raise HTTPException(400, f"El inventario alternativo {inv_id_nuevo} ya no está disponible")
+        i = inv.data[0]
+        if i["estado_planta"] != "disponible" or (i.get("stock") or 0) < it.get("cantidad", 1):
+            raise HTTPException(400, f"El vivero alternativo ya no tiene stock suficiente para uno de los items")
+
+        precio_nuevo = float(i["precio_mayorista"])
+        subtotal = precio_nuevo * it.get("cantidad", 1)
+        total_nuevo += subtotal
+
+        items_nuevos.append({
+            **it,
+            "inventario_id": inv_id_nuevo,
+            "precio_unitario": precio_nuevo,
+            "subtotal": subtotal,
+        })
+
+    # Volver a borrador con los items actualizados y sin alternativas pendientes
+    db.table("cotizaciones").update({
+        "estado": "borrador",
+        "items": items_nuevos,
+        "total_estimado": total_nuevo,
+        "alternativas_vivero": None,
+        "notas_agente": "Redirigido a vivero alternativo por el comprador",
+    }).eq("cotizacion_id", cotizacion_id).execute()
+
+    return {
+        "ok": True,
+        "cotizacion_id": cotizacion_id,
+        "estado": "borrador",
+        "total_estimado": total_nuevo,
+        "mensaje": "Vivero alternativo confirmado. Ya podés reenviar la cotización.",
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# 8. COMPRADOR: Aceptar cotización parcial (Fase auto-timeout)
+# ═══════════════════════════════════════════════════════════
+
+@router.post("/{cotizacion_id}/aceptar-parcial")
+async def aceptar_cotizacion_parcial(
+    cotizacion_id: int,
+    user: UserContext = Depends(require_comprador),
+):
+    """Comprador acepta pagar SOLO los items de sub_cotizaciones aprobadas.
+
+    Se usa cuando auto_timeout marca alguna sub como rechazada por sin
+    respuesta del viverista. El comprador puede optar por:
+      1. Pagar solo lo disponible (este endpoint)
+      2. Aceptar alternativa (endpoint /confirmar-alternativa existente)
+      3. Cancelar el pedido completo (frontend)
+
+    Flujo:
+      - Filtra items de sub_cotizaciones aprobadas
+      - Recalcula total con el motor matricial (nuevo total puede quedar
+        por debajo del umbral B2B 5 SMLMV → pierde descuento — el motor
+        lo maneja solo)
+      - Actualiza cotización a estado 'aceptada' con los items filtrados
+      - Comprador puede pagar normalmente desde su panel /comprador
+    """
+    db = db_admin()
+
+    cot = db.table("cotizaciones").select(
+        "cotizacion_id, cliente_id, estado, items, prompt_original"
+    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+
+    if not cot.data:
+        raise HTTPException(404, "Cotización no encontrada")
+    c = cot.data[0]
+
+    if c["cliente_id"] != user.cliente_id:
+        raise HTTPException(403, "No podés modificar esta cotización")
+
+    # ── Obtener sub_cotizaciones aprobadas ──
+    subs = db.table("sub_cotizaciones").select(
+        "sub_cotizacion_id, vivero_id, estado, items"
+    ).eq("cotizacion_id", cotizacion_id).execute()
+
+    if not subs.data:
+        raise HTTPException(400, "Esta cotización no tiene sub_cotizaciones asociadas")
+
+    subs_aprobadas = [s for s in subs.data if s["estado"] == "aprobada"]
+    if not subs_aprobadas:
+        raise HTTPException(400, "No hay ninguna sub_cotización aprobada. Nada que pagar parcialmente.")
+
+    # ── Filtrar items de la cotización que estén en subs aprobadas ──
+    inv_ids_aprobados = set()
+    for sub in subs_aprobadas:
+        for it in (sub.get("items") or []):
+            if it.get("inventario_id"):
+                inv_ids_aprobados.add(it["inventario_id"])
+
+    items_actuales = c.get("items") or []
+    items_disponibles = [
+        it for it in items_actuales
+        if it.get("inventario_id") in inv_ids_aprobados
+    ]
+
+    if not items_disponibles:
+        raise HTTPException(400, "No hay items disponibles para pagar parcialmente")
+
+    # ── Recalcular con motor matricial (respeta descuentos B2B) ──
+    calc = _calcular_para_cotizacion(db, user.cliente_id, items_disponibles)
+    nuevo_total_mayorista = float(calc["totales"]["precio_mayorista_total"])
+
+    # ── Actualizar cotización a 'aceptada' con los items filtrados ──
+    db.table("cotizaciones").update({
+        "estado": "aceptada",
+        "items": items_disponibles,
+        "total_estimado": nuevo_total_mayorista,
+        "notas_agente": (
+            "Aceptación parcial por sin respuesta de un vivero (auto-timeout). "
+            f"{len(items_disponibles)} de {len(items_actuales)} items originales."
+        ),
+    }).eq("cotizacion_id", cotizacion_id).execute()
+
+    return {
+        "ok": True,
+        "cotizacion_id": cotizacion_id,
+        "estado": "aceptada",
+        "items_originales": len(items_actuales),
+        "items_disponibles": len(items_disponibles),
+        "nuevo_total_mayorista": nuevo_total_mayorista,
+        "nuevo_total_comprador": int(calc["totales"]["precio_final_cliente"]),
+        "aplica_descuento_b2b": calc["aplica_descuento_b2b"],
+        "mensaje": "Cotización lista para pagar el monto parcial disponible.",
+    }
+
+
+# ═══════════════════════════════════════════════════════════
+# CRON — Vencer cotizaciones expiradas
+# ═══════════════════════════════════════════════════════════
+
+@router.get("/cron/vencer-cotizaciones")
+async def vencer_cotizaciones_cron(request: Request):
+    """Vence cotizaciones expiradas y notifica por WhatsApp a cada comprador.
+
+    AJUSTE (18 jun): la función SQL ahora retorna las filas vencidas
+    (cotizacion_id + cliente_id) en vez de solo el conteo, así podemos
+    notificar al comprador en la misma corrida sin re-consultar ni usar
+    una tabla intermedia. Si la notificación WhatsApp falla para alguna
+    cotización, se loguea el error pero el cron sigue con las demás.
+    """
+    import os
+    import logging
+    cron_secret = os.getenv("CRON_SECRET", "")
+    if cron_secret:
+        auth = request.headers.get("authorization", "")
+        if auth != f"Bearer {cron_secret}":
+            raise HTTPException(status_code=401, detail="No autorizado")
+
+    logger = logging.getLogger(__name__)
+    db = db_admin()
+    notificadas = 0
+    errores_wa = 0
+
+    try:
+        result = db.rpc("vencer_cotizaciones_expiradas").execute()
+        filas = result.data or []
+
+        for fila in filas:
+            cotizacion_id = fila.get("cotizacion_id")
+            cliente_id = fila.get("cliente_id")
+            if not cotizacion_id or not cliente_id:
+                continue
+
+            try:
+                cot = db.table("cotizaciones").select(
+                    "prompt_original"
+                ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+
+                cliente = db.table("clientes").select(
+                    "whatsapp_numero"
+                ).eq("cliente_id", cliente_id).limit(1).execute()
+
+                if not cliente.data or not cliente.data[0].get("whatsapp_numero"):
+                    continue
+
+                nombre_proyecto = (
+                    (cot.data[0].get("prompt_original") if cot.data else None)
+                    or f"Cotización #{cotizacion_id}"
+                )
+                base = get_settings().app_base_url
+
+                msg = (
+                    "⏰ *Tu cotización venció — ViveroOnline*\n\n"
+                    f"Proyecto: *{nombre_proyecto}*\n\n"
+                    "El tiempo para completar el pago expiró. "
+                    "Podés volver a solicitar disponibilidad desde el marketplace:\n"
+                    f"{base}/marketplace"
+                )
+                await send_text_message(cliente.data[0]["whatsapp_numero"], msg)
+                notificadas += 1
+
+            except Exception as e:
+                errores_wa += 1
+                logger.warning(f"No se pudo notificar vencimiento cotizacion_id={cotizacion_id}: {e}")
+
+        # ═══════════════════════════════════════════════════════════
+        # Fase auto-timeout (6 ago 2026) — piggyback en este cron
+        # Procesa sub_cotizaciones pendientes: recordatorios + timeout
+        # Ver app/services/auto_timeout.py para lógica completa
+        # (respeta horario 7am-8pm Colombia + días laborales + grace materas)
+        # ═══════════════════════════════════════════════════════════
+        try:
+            auto_timeout_stats = procesar_recordatorios_y_timeouts(dry_run=False)
+            logger.info(f"Auto-timeout stats: {auto_timeout_stats}")
+        except Exception as e:
+            logger.exception(f"Error en procesar_recordatorios_y_timeouts: {e}")
+            auto_timeout_stats = {"ok": False, "error": str(e)}
+
+        return {
+            "ok": True,
+            "vencidas": len(filas),
+            "notificadas": notificadas,
+            "errores_wa": errores_wa,
+            "auto_timeout": auto_timeout_stats,
+        }
+
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
