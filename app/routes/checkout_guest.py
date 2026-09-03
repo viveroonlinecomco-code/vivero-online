@@ -1,4 +1,4 @@
-"""Checkout guest B2C — Fase 10.2 + 10.3 + FASE 10.4 (Descuento B2B)
+"""Checkout guest B2C — Fase 10.2 + 10.3 + FASE 10.4 (Descuento B2B) + FASE 11 (Huella de piso)
 
 Endpoints públicos SIN autenticación para el flujo de compra guest.
 
@@ -7,11 +7,7 @@ Fase 10.3 (29 jul): create-order — crea cliente_guest + cotización + payment 
 Fase 10.4 (24 ago): Descuento B2B 12% sobre SUBTOTAL (no flete) con validación SMLMV
 FASE 10.4 FIX (24 ago): Detectar cliente registrado B2B (no guest) si ya existe por email
 FASE 10.4 SHOW (25 ago): Devolver descuento en respuesta para mostrar al cliente ANTES de pagar
-
-FASE 11 (03 sep): INTEGRACIÓN HUELLA DE PISO
-  - Cálculo dinámico de tier basado en altura + área
-  - Fórmula unificada: Fee 9% (L/XL) + Recargo 12% × (viveros-1)
-  - Mismo modelo B2C y B2B
+FASE 11 (03 sep): INTEGRACIÓN HUELLA DE PISO — Tier dinámico basado en área + altura
 
 Reglas B2C guest:
 - Solo tier S+M
@@ -23,7 +19,7 @@ Reglas B2C guest:
 - NUEVO: Descuento 12% B2B si cliente registrado + compra >= 5 SMLMV + fintech_activa=false
 - FIX: Si email pertenece a cliente registrado (es_guest=false), usar ese cliente (no crear guest)
 - SHOW: Devolver descuento_pesos, descuento_porcentaje en respuesta para mostrar al cliente
-- FASE 11: Tier calculado dinámicamente con huella de piso
+- FASE 11: Calcular tier dinámico con huella de piso (área + altura) en lugar de valor estático
 """
 from __future__ import annotations
 from typing import Optional
@@ -36,9 +32,10 @@ from app.config import get_settings
 from app.services.epayco import CheckoutRequest, get_epayco
 from app.services.supabase import admin
 from app.services.config_global import get_matriz_comercial, get_config
+# FASE 11: Importar funciones de huella de piso
 from app.services.logistica_huella_piso import (
     calcular_tier_viaje_con_huella_piso,
-    calcular_flete_correcto,
+    calcular_flete_correcto
 )
 
 logger = logging.getLogger(__name__)
@@ -94,16 +91,16 @@ class CreateOrderResponse(BaseModel):
     pago_id: int
     referencia: str
     monto_total: int
-    # ═══ Descuento B2B (Fase 10.4 SHOW) ═══
+    # ═══ FASE 10.4 SHOW: Descuento para mostrar al cliente ═══
     descuento_pesos: int
     descuento_porcentaje: float
     monto_con_descuento: int
-    # ═══ Nuevos campos FASE 11 (huella de piso) ═══
+    # ═══ FASE 11: Datos de huella de piso ═══
     tier_dinamico: str
     area_m2: float
     altura_cm: int
-    advertencias: list[str]
-    # ═══════════════════════════════════════════
+    advertencias: list[str] = []
+    # ═══════════════════════════════════════════════════════════
     checkout_payload: dict
     expires_at: str  # ISO string
 
@@ -140,7 +137,6 @@ def _tier_mayor(tiers: list[str]) -> str:
 
 
 def _calcular_flete_por_tarifa(db, ciudad: str, tier: str) -> int:
-    """Fallback: obtiene tarifa de BD o usa stub."""
     try:
         resp = db.table("tarifas_logistica").select(
             "tarifa_cop"
@@ -245,7 +241,7 @@ def _validar_y_calcular_carrito(db, items_req: list[CartItem]) -> dict:
             "foto_ia_url": inv.get("foto_ia_url"),
             "precio_comprador_unitario": precio_comprador,
             "precio_mayorista_unitario": round(precio_mayorista),
-            "precio_unitario": round(precio_mayorista),
+            "precio_unitario": round(precio_mayorista),  # compatibilidad
             "subtotal": subtotal_comprador,
             "subtotal_comprador": subtotal_comprador,
             "subtotal_mayorista": subtotal_mayorista,
@@ -310,63 +306,57 @@ async def validate_cart(req: ValidateCartRequest):
 
 
 # ═══════════════════════════════════════════════════════════
-# Endpoint 2: CALCULAR FLETE (Fase 10.2)
+# Endpoint 2: CALCULAR FLETE (Fase 10.2 + FASE 11)
 # ═══════════════════════════════════════════════════════════
 
 @router.post("/calcular-flete")
 async def calcular_flete(req: CalcularFleteRequest):
-    """Calcula flete usando tier DINÁMICO con huella de piso (FASE 11)."""
+    """Calcula flete con TIER DINÁMICO usando huella de piso (FASE 11)."""
     db = admin()
     
+    # FASE 11: Usar función dinámica de huella de piso
+    items_dict = [{"inventario_id": it.inventario_id, "cantidad": it.cantidad} for it in req.items]
+    
+    tier_resultado = calcular_tier_viaje_con_huella_piso(db, items_dict, es_b2b=False)
+    
+    if not tier_resultado['ok']:
+        logger.warning(f"Error calculando tier: {tier_resultado.get('error')}")
+        tier_mayor = "M"
+        area_total = 0.0
+        altura_max = 0
+    else:
+        tier_mayor = tier_resultado['tier_final']
+        area_total = tier_resultado['area_total']
+        altura_max = tier_resultado['altura_max']
+    
+    if tier_mayor not in ("S", "M"):
+        raise HTTPException(400, detail="Este pedido requiere cuenta empresa")
+
     ciudad = req.ciudad.strip()
     if not ciudad:
         raise HTTPException(400, detail="Ciudad requerida")
 
-    # FASE 11: Usar función dinámica en lugar de tier estático
-    try:
-        tier_resultado = calcular_tier_viaje_con_huella_piso(db, req.items, es_b2b=False)
-        
-        if not tier_resultado['ok']:
-            logger.warning(f"Error calculando tier dinámico: {tier_resultado.get('error')}")
-            # Fallback a tier estático
-            inv_ids = [it.inventario_id for it in req.items]
-            tier_resp = db.table("inventario").select(
-                "inventario_id, logistics_tier"
-            ).in_("inventario_id", inv_ids).execute()
-            tiers = [r.get("logistics_tier", "M") for r in (tier_resp.data or [])]
-            tier_mayor = _tier_mayor(tiers) if tiers else "M"
-        else:
-            tier_mayor = tier_resultado['tier_final']
-
-        if tier_mayor not in ("S", "M"):
-            raise HTTPException(400, detail="Este pedido requiere cuenta empresa")
-
-        # Calcular flete con función nueva (FASE 11)
-        flete_resultado = calcular_flete_correcto(db, ciudad, req.items, es_b2b=False)
-        
-        if flete_resultado['ok']:
-            flete_cop = flete_resultado['total_flete']
-            zona = flete_resultado['zona']
-        else:
-            logger.warning(f"Error calculando flete: {flete_resultado.get('error')}")
-            # Fallback
-            zona = _resolver_zona(ciudad)
-            flete_cop = _calcular_flete_por_tarifa(db, ciudad, tier_mayor)
-
-        return {
-            "ok": True,
-            "ciudad": ciudad,
-            "tier": tier_mayor,
-            "zona": zona,
-            "flete_cop": flete_cop,
-            "dias_entrega_estimados": 5 if zona == "sabana_entre_municipios" else 7,
-        }
+    # FASE 11: Usar flete dinámico
+    flete_resultado = calcular_flete_correcto(db, ciudad, items_dict, es_b2b=False)
     
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"Error calculando flete: {e}")
-        raise HTTPException(500, detail=f"Error calculando flete: {e}")
+    if flete_resultado['ok']:
+        flete_cop = flete_resultado['total_flete']
+    else:
+        flete_cop = 55000
+        logger.warning(f"Error calculando flete dinámico: {flete_resultado.get('error')}")
+    
+    zona = _resolver_zona(ciudad)
+
+    return {
+        "ok": True,
+        "ciudad": ciudad,
+        "tier": tier_mayor,
+        "zona": zona,
+        "flete_cop": flete_cop,
+        "area_m2": area_total,
+        "altura_cm": altura_max,
+        "dias_entrega_estimados": 5 if zona == 1 else 7,
+    }
 
 
 # ═══════════════════════════════════════════════════════════
@@ -434,28 +424,20 @@ def _upsert_cliente_guest(
     email: str,
     whatsapp: str,
 ) -> tuple[int, bool]:
-    """Crea o reutiliza cliente guest.
-    
-    Retorna (cliente_id, es_recurrente).
-    """
+    """Upsert cliente guest. Retorna (cliente_id, es_recurrente)."""
     email_norm = email.strip().lower()
     
-    # Buscar guest existente
-    resp = db.table("clientes").select(
-        "cliente_id"
+    existing = db.table("clientes").select(
+        "cliente_id, es_guest"
     ).eq("email", email_norm).eq("es_guest", True).limit(1).execute()
-    
-    if resp.data:
-        es_recurrente = True
-        logger.info(
-            f"[Fase 10.3] Cliente guest existente encontrado: "
-            f"{resp.data[0]['cliente_id']}"
-        )
-        return (resp.data[0]["cliente_id"], es_recurrente)
-    
-    es_recurrente = False
+
+    if existing.data:
+        return (existing.data[0]["cliente_id"], True)
+
     new_resp = db.table("clientes").insert({
         "es_guest": True,
+        "tipo_cliente": "guest",
+        "activo": True,
         "nombre_representante": nombre.strip(),
         "nombre_empresa": f"Compra particular - {nombre.strip()}",
         "email": email_norm,
@@ -473,28 +455,12 @@ def _upsert_cliente_guest(
 
 @router.post("/create-order", response_model=CreateOrderResponse)
 async def create_order(req: CreateOrderRequest):
-    """Crea el pedido guest completo + payment intent ePayco.
-
-    Flujo:
-    1. Validar aceptaciones legales
-    2. Limpieza pasiva de reservas expiradas
-    3. Re-validar cart
-    4. Calcular flete DINÁMICO con huella de piso (FASE 11)
-    5. Detectar cliente registrado B2B si existe por email
-    6. Marcar conversión si es recurrente
-    7. Crear cotización
-    8. Reservar stock atómicamente por item
-    9. Crear transaccion_b2b + pago
-    10. Aplicar descuento 12% B2B sobre SUBTOTAL
-    11. Generar payload ePayco
-    12. Devolver respuesta con datos FASE 11
-    """
+    """Crea pedido guest + payment intent ePayco (FASE 11: con huella de piso dinámica)."""
     s = get_settings()
     epayco = get_epayco()
     if not epayco.is_configured:
         raise HTTPException(503, detail="Servicio de pagos no configurado")
 
-    # 1. Aceptaciones legales
     if not req.acepta_perecedero:
         raise HTTPException(400, detail="Debés aceptar el aviso de producto perecedero")
     if not req.acepta_habeas_data:
@@ -502,12 +468,10 @@ async def create_order(req: CreateOrderRequest):
 
     db = admin()
 
-    # 2. Limpieza pasiva
     liberadas = _liberar_reservas_expiradas(db)
     if liberadas > 0:
         logger.info(f"[Fase 10.3] Liberadas {liberadas} reservas guest expiradas")
 
-    # 3. Re-validar cart
     validacion = _validar_y_calcular_carrito(db, req.items)
     if not validacion["ok"]:
         raise HTTPException(400, detail={
@@ -520,36 +484,53 @@ async def create_order(req: CreateOrderRequest):
     total_comprador = validacion["total_comprador"]
     total_mayorista = validacion["total_mayorista"]
 
-    # 4. Calcular flete DINÁMICO con huella de piso (FASE 11)
     ciudad_norm = req.ciudad.strip()
     if not ciudad_norm:
         raise HTTPException(400, detail="Ciudad requerida")
 
-    tier_resultado = calcular_tier_viaje_con_huella_piso(db, req.items, es_b2b=False)
+    # ═══════════════════════════════════════════════════════════════════════
+    # FASE 11: CALCULAR TIER Y FLETE CON HUELLA DE PISO DINÁMICO
+    # ═══════════════════════════════════════════════════════════════════════
+    items_dict = [{"inventario_id": it["inventario_id"], "cantidad": it["cantidad"]} 
+                  for it in items_validados]
+    
+    # Obtener tier dinámico
+    tier_resultado = calcular_tier_viaje_con_huella_piso(db, items_dict, es_b2b=False)
+    
     if tier_resultado['ok']:
         tier_logistico = tier_resultado['tier_final']
         area_carrito = tier_resultado['area_total']
         altura_carrito = tier_resultado['altura_max']
-        advertencias_tier = tier_resultado['advertencias']
+        advertencias_tier = tier_resultado.get('advertencias', [])
+        logger.info(
+            f"[FASE 11] Tier dinámico calculado: {tier_logistico} "
+            f"(área: {area_carrito}m², altura: {altura_carrito}cm)"
+        )
     else:
         logger.error(f"[FASE 11] Error calculando tier: {tier_resultado.get('error')}")
         tier_logistico = 'M'
         area_carrito = 0.0
         altura_carrito = 0
-        advertencias_tier = [f"Error: {tier_resultado.get('error', 'desconocido')}"]
-
-    # Calcular flete con función nueva (FASE 11)
-    flete_resultado = calcular_flete_correcto(db, ciudad_norm, req.items, es_b2b=False)
+        advertencias_tier = [tier_resultado.get('error', 'Error calculando tier')]
+    
+    # Obtener flete dinámico
+    flete_resultado = calcular_flete_correcto(db, ciudad_norm, items_dict, es_b2b=False)
+    
     if flete_resultado['ok']:
         flete_cop = flete_resultado['total_flete']
+        logger.info(
+            f"[FASE 11] Flete calculado: ${flete_cop:,} "
+            f"(Base: ${flete_resultado['costo_base']:,}, "
+            f"Fee: ${flete_resultado['fee_9pct']:,}, "
+            f"Recargo: ${flete_resultado['recargo_12pct']:,})"
+        )
     else:
         logger.error(f"[FASE 11] Error calculando flete: {flete_resultado.get('error')}")
-        flete_cop = 55000  # Fallback seguro
-        advertencias_tier.append(f"Flete fallback: {flete_resultado.get('error', 'desconocido')}")
+        flete_cop = 55000
+        advertencias_tier.append(f"Flete fallback: ${flete_cop:,}")
+    # ═════════════════════════════════════════════════════════════════════════
 
-    # ═══════════════════════════════════════════════════════════════════════
-    # 5. Detectar cliente registrado B2B
-    # ═══════════════════════════════════════════════════════════════════════
+    # 5. NUEVO FIX (Fase 10.4): Detectar cliente registrado B2B
     email_norm = req.email.strip().lower()
     
     cliente_registrado = db.table("clientes").select(
@@ -559,12 +540,9 @@ async def create_order(req: CreateOrderRequest):
     if cliente_registrado.data:
         cliente_id = cliente_registrado.data[0]["cliente_id"]
         es_recurrente = True
-        
         logger.info(
-            f"[Fase 10.4 FIX] Cliente registrado B2B encontrado: "
-            f"{cliente_id} ({cliente_registrado.data[0].get('nombre_representante')})"
+            f"[Fase 10.4 FIX] Cliente registrado B2B: {cliente_id}"
         )
-        
         cliente_data = {"es_guest": False}
     else:
         cliente_id, es_recurrente = _upsert_cliente_guest(
@@ -575,7 +553,6 @@ async def create_order(req: CreateOrderRequest):
             email=req.email,
             whatsapp=req.whatsapp,
         )
-        
         cliente_resp = db.table("clientes").select(
             "cliente_id, es_guest"
         ).eq("cliente_id", cliente_id).limit(1).execute()
@@ -601,7 +578,7 @@ async def create_order(req: CreateOrderRequest):
     fecha_venc = datetime.now(timezone.utc) + timedelta(minutes=15)
 
     # ═══════════════════════════════════════════════════════════════════════
-    # 8. Aplicar descuento 12% B2B sobre SUBTOTAL (ANTES de flete)
+    # 🔴 FASE 10.4: Aplicar descuento 12% B2B sobre SUBTOTAL (ANTES de flete)
     # ═══════════════════════════════════════════════════════════════════════
     es_b2b = not cliente_data.get("es_guest", False)
     fintech_activa = bool(get_config("fintech_activa", default=False))
@@ -621,34 +598,24 @@ async def create_order(req: CreateOrderRequest):
             subtotal_con_descuento = total_comprador - descuento_pesos
             descuento_porcentaje = 12.0
             descuento_aplicado = True
-            
             logger.info(
                 f"[Fase 10.4] Descuento B2B 12% aplicado: "
-                f"Subtotal ${total_comprador:,} >= Umbral ${umbral_pesos:,} (5 SMLMV × ${smlmv:,.0f}) "
-                f"→ Descuento: ${descuento_pesos:,} → Nuevo subtotal: ${subtotal_con_descuento:,}"
+                f"${total_comprador:,} → ${subtotal_con_descuento:,}"
             )
         else:
             logger.info(
                 f"[Fase 10.4] Descuento B2B NO aplicado: "
-                f"Subtotal ${total_comprador:,} < Umbral ${umbral_pesos:,} (5 SMLMV) "
-                f"→ Cliente B2B pero compra pequeña"
+                f"Compra pequeña ${total_comprador:,} < ${umbral_pesos:,}"
             )
     elif es_b2b and fintech_activa:
-        logger.info(
-            f"[Fase 10.4] Descuento B2B delegado a fintech: "
-            f"fintech_activa=true → Usar descuentos de financiamiento"
-        )
+        logger.info(f"[Fase 10.4] Descuento delegado a fintech")
     else:
-        logger.info(
-            f"[Fase 10.4] Descuento B2B NO aplicado: "
-            f"Cliente es guest={not es_b2b}"
-        )
+        logger.info(f"[Fase 10.4] Cliente es guest, sin descuento")
     
-    # Flete se suma al subtotal DESPUÉS del descuento
     monto_total_epayco = subtotal_con_descuento + flete_cop
     # ═════════════════════════════════════════════════════════════════════════
 
-    # 9. Guardar cotización
+    # 8. Guardar cotización
     cot_data = {
         "cliente_id": cliente_id,
         "estado": "convertida",
@@ -671,9 +638,9 @@ async def create_order(req: CreateOrderRequest):
         raise HTTPException(500, detail="No se pudo crear la cotización")
 
     cotizacion_id = cot_resp.data[0]["cotizacion_id"]
-    logger.info(f"[Fase 10.3] Cotización {cotizacion_id} creada para cliente {cliente_id}")
+    logger.info(f"[Fase 10.3] Cotización {cotizacion_id} creada")
 
-    # 10. Reservar stock atómicamente
+    # 9. Reservar stock
     stock_reservado = []
     try:
         for it in items_validados:
@@ -695,7 +662,7 @@ async def create_order(req: CreateOrderRequest):
                 db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
                 raise HTTPException(
                     400,
-                    detail=f"Stock insuficiente para el producto {it['nombre']} en el último momento",
+                    detail=f"Stock insuficiente para {it['nombre']}",
                 )
 
             stock_reservado.append(it)
@@ -711,10 +678,10 @@ async def create_order(req: CreateOrderRequest):
             except Exception:
                 pass
         db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
-        logger.exception(f"[Fase 10.3] Error reservando stock: {e}")
+        logger.exception(f"Error reservando stock: {e}")
         raise HTTPException(500, detail=f"Error reservando stock: {e}")
 
-    # 11. Crear transaccion_b2b
+    # 10. Crear transaccion_b2b
     comision_plataforma = subtotal_con_descuento - total_mayorista
 
     try:
@@ -738,10 +705,10 @@ async def create_order(req: CreateOrderRequest):
             except Exception:
                 pass
         db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
-        logger.exception(f"[Fase 10.3] Error creando transaccion: {e}")
+        logger.exception(f"Error creando transaccion: {e}")
         raise HTTPException(500, detail=f"Error creando transacción: {e}")
 
-    # 12. Generar payload ePayco
+    # 11. Generar payload ePayco
     response_url = f"{s.app_base_url}/pagos/resultado"
     confirmation_url = f"{s.app_base_url}/api/pagos/confirmacion"
 
@@ -766,10 +733,10 @@ async def create_order(req: CreateOrderRequest):
             except Exception:
                 pass
         db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
-        logger.exception(f"[Fase 10.3] Error generando payload ePayco: {e}")
+        logger.exception(f"Error generando payload ePayco: {e}")
         raise HTTPException(500, detail=f"Error preparando el pago: {e}")
 
-    # 13. Crear pago
+    # 12. Crear pago
     try:
         pago_resp = db.table("pagos").insert({
             "transaccion_id": transaccion_id,
@@ -795,22 +762,20 @@ async def create_order(req: CreateOrderRequest):
             except Exception:
                 pass
         db.table("cotizaciones").delete().eq("cotizacion_id", cotizacion_id).execute()
-        logger.exception(f"[Fase 10.3] Error creando pago: {e}")
+        logger.exception(f"Error creando pago: {e}")
         raise HTTPException(500, detail=f"Error registrando el pago: {e}")
 
     logger.info(
-        f"[Fase 10.3 + FASE 11] Pedido creado OK: "
+        f"[Fase 10.3 + FASE 11] Pedido creado: "
         f"cot={cotizacion_id}, txn={transaccion_id}, pago={pago_id}, "
-        f"tier_dinamico={tier_logistico}, area={area_carrito:.2f}m², altura={altura_carrito}cm, "
-        f"monto_epayco=${monto_total_epayco:,}, "
-        f"descuento_aplicado={descuento_aplicado} (${descuento_pesos:,}), "
-        f"cliente_b2b={es_b2b}, "
-        f"ref={referencia}"
+        f"monto=${monto_total_epayco:,}, "
+        f"tier_dinamico={tier_logistico} (área:{area_carrito}m², altura:{altura_carrito}cm), "
+        f"flete=${flete_cop:,}, descuento={'SÍ' if descuento_aplicado else 'NO'}"
     )
 
-    # ═══════════════════════════════════════════════════════════════════════════════
-    # Devolver respuesta con TODOS los campos (Fase 10.4 SHOW + FASE 11)
-    # ═══════════════════════════════════════════════════════════════════════════════
+    # ═══════════════════════════════════════════════════════════════════════
+    # 🟢 FASE 10.4 SHOW + FASE 11: Devolver todo con datos de huella
+    # ═══════════════════════════════════════════════════════════════════════
     return CreateOrderResponse(
         ok=True,
         cotizacion_id=cotizacion_id,
