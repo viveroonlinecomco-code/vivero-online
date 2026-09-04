@@ -15,8 +15,8 @@ from app.services.supabase import admin
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/public", tags=["public"])
 
-# Markup 20% — debe coincidir con marketplace.py
-MARKUP_PLATAFORMA = 0.20
+# Markup 18% — debe coincidir con marketplace.py
+MARKUP_PLATAFORMA = 0.18
 
 
 @router.get("/health")
@@ -118,7 +118,7 @@ async def listar_marketplace_publico(
     # Listado general
     query = db.table("v_inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
-        "stock, unidad_medida, foto_ia_url, vivero_id, "
+        "stock, foto_ia_url, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico), "
         "viveros(nombre_vivero, ciudad)"
     ).eq("estado_planta", "disponible").gte("stock", cantidad_min).gte("altura_cm", altura_min)
@@ -146,7 +146,6 @@ async def listar_marketplace_publico(
             "precio_comprador": round(precio_base * (1 + MARKUP_PLATAFORMA)),
             "stock": r.get("stock") or 0,
             "altura_cm": r.get("altura_cm") or 0,
-            "unidad_medida": r.get("unidad_medida"),
             "vivero_id": r.get("vivero_id"),
             "nombre_vivero": vivero.get("nombre_vivero"),
             "municipio": vivero.get("ciudad"),
@@ -163,8 +162,8 @@ async def detalle_item_publico(inventario_id: int):
     """
     db = admin()
     resp = db.table("v_inventario").select(
-        "inventario_id, planta_id, altura_cm, precio_mayorista, precio_detal, "
-        "stock, unidad_medida, estado_planta, foto_ia_url, notas, vivero_id, "
+        "inventario_id, planta_id, altura_cm, precio_mayorista, "
+        "stock, estado_planta, foto_ia_url, notas, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico, familia_botanica, requerimientos_ia, clima_ideal), "
         "viveros(nombre_vivero, ciudad, historia, foto_url)"
     ).eq("inventario_id", inventario_id).limit(1).execute()
