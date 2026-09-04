@@ -36,7 +36,6 @@ from app.schemas.transactions import (
 )
 from app.services.supabase import admin
 from app.services.config_global import get_markup_categoria, get_matriz_comercial
-from app.services.whatsapp_meta import notify_viverista_nueva_cotizacion
 
 router = APIRouter(prefix="/api/marketplace", tags=["marketplace"])
 public_router = APIRouter(prefix="/api/public/marketplace", tags=["marketplace-guest"])
