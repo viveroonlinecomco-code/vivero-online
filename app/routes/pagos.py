@@ -28,7 +28,7 @@ from app.services.epayco import (
 from app.services.supabase import admin
 from app.services.precios import calcular_precios_pedido
 from app.services.config_global import get_config
-from app.services.whatsapp_meta import enviar_mensaje_whatsapp
+from app.services.whatsapp_meta import send_text_message
 
 
 router = APIRouter(prefix="/api/pagos", tags=["pagos"])
@@ -494,9 +494,9 @@ async def confirmar_pago(
                                     if vivero_resp.data:
                                         numero = vivero_resp.data[0].get("whatsapp_numero")
                                         if numero:
-                                            await enviar_mensaje_whatsapp(
-                                                numero_whatsapp=numero,
-                                                mensaje=whatsapp_msg
+                                            await send_text_message(
+                                                to=numero,
+                                                body=whatsapp_msg
                                             )
                                             logger.info(
                                                 f"[FASE 2] WhatsApp enviado a vivero {vivero_id}"
