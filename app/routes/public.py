@@ -15,8 +15,8 @@ from app.services.supabase import admin
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/public", tags=["public"])
 
-# Markup 18% — debe coincidir con marketplace.py
-MARKUP_PLATAFORMA = 0.18
+# Markup 20% — debe coincidir con marketplace.py
+MARKUP_PLATAFORMA = 0.20
 
 
 @router.get("/health")
@@ -116,7 +116,7 @@ async def listar_marketplace_publico(
         return {"ok": True, "items": items, "total": len(items)}
 
     # Listado general
-    query = db.table("inventario").select(
+    query = db.table("v_inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
         "stock, unidad_medida, foto_ia_url, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico), "
@@ -162,7 +162,7 @@ async def detalle_item_publico(inventario_id: int):
     NO devuelve: dirección, teléfono ni WhatsApp del vivero.
     """
     db = admin()
-    resp = db.table("inventario").select(
+    resp = db.table("v_inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, precio_detal, "
         "stock, unidad_medida, estado_planta, foto_ia_url, notas, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico, familia_botanica, requerimientos_ia, clima_ideal), "
