@@ -413,6 +413,70 @@ async def notify_comprador_respuesta_recibida(
     return await send_text_message(to, mensaje)
 
 
+async def notify_viverista_recordatorio(
+    to: str,
+    nombre_viverista: str,
+    proyecto: str,
+    tu_parte_cop: int,
+    numero_recordatorio: int,
+    minutos_restantes: int,
+) -> bool:
+    """Recordatorio a viverista para responder cotización.
+    
+    Args:
+        to: WhatsApp del viverista
+        nombre_viverista: Nombre del vivero
+        proyecto: Nombre del proyecto
+        tu_parte_cop: Monto que recibirá
+        numero_recordatorio: Número de recordatorio (1, 2, 3...)
+        minutos_restantes: Minutos para responder
+    
+    Returns:
+        True si se envió exitosamente
+    """
+    mensaje = (
+        f"⏰ Recordatorio #{numero_recordatorio} - {nombre_viverista}\n\n"
+        f"Proyecto: {proyecto}\n"
+        f"Tu parte: ${tu_parte_cop:,.0f} COP\n\n"
+        f"⏳ Responde en {minutos_restantes} minutos\n\n"
+        f"👉 Accede a tu dashboard:\n"
+        f"https://app.viveroonline.com.co/viverista"
+    )
+    
+    return await send_text_message(to, mensaje)
+
+
+async def notify_comprador_pedido_parcial(
+    to: str,
+    nombre_cliente: str,
+    proyecto: str,
+    monto_disponible_cop: int,
+    detalle_no_confirmado: str,
+) -> bool:
+    """Notifica comprador sobre disponibilidad parcial.
+    
+    Args:
+        to: WhatsApp del comprador
+        nombre_cliente: Nombre del cliente
+        proyecto: Nombre del proyecto
+        monto_disponible_cop: Monto que SÍ tiene disponibilidad
+        detalle_no_confirmado: Qué plantas NO confirmaron
+    
+    Returns:
+        True si se envió exitosamente
+    """
+    mensaje = (
+        f"📋 Disponibilidad parcial - {proyecto}\n\n"
+        f"Hola {nombre_cliente},\n\n"
+        f"✅ Disponible: ${monto_disponible_cop:,.0f} COP\n\n"
+        f"❌ No confirmado:\n{detalle_no_confirmado}\n\n"
+        f"Contáctanos para alternativas.\n\n"
+        f"ViveroOnline 🌿"
+    )
+    
+    return await send_text_message(to, mensaje)
+
+
 # ═══════════════════════════════════════════════════════════════
 # WEBHOOK VERIFICATION (para Meta)
 # ═══════════════════════════════════════════════════════════════
