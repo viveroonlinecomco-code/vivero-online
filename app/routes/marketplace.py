@@ -95,10 +95,11 @@ def _resolver_categorias_batch(db, inventario_ids: list[int]) -> dict[int, str]:
     if not inventario_ids:
         return {}
     resp = db.table("inventario").select(
-        "inventario_id, plantas(categoria_producto)"
+        "inventario_id, categoria_producto, plantas(categoria_producto)"
     ).in_("inventario_id", inventario_ids).execute()
     resultado = {}
     for row in resp.data or []:
+        override = row.get("categoria_producto")
         default = (row.get("plantas") or {}).get("categoria_producto")
         resultado[row["inventario_id"]] = override or default or "plantas_ornamentales"
     return resultado
@@ -470,7 +471,7 @@ def _enriquecer_items(db, items_raw: list[dict]) -> list[dict]:
     inv_map: dict[int, dict] = {}
     if inventario_ids:
         inv_resp = db.table("inventario").select(
-            "inventario_id, foto_ia_url, stock, estado_planta, "
+            "inventario_id, foto_ia_url, stock, estado_planta, categoria_producto, "
             "plantas(nombre_comun, nombre_cientifico, categoria_producto), "
             "viveros(vivero_id, nombre_vivero, ciudad)"
         ).in_("inventario_id", inventario_ids).execute()
@@ -483,6 +484,7 @@ def _enriquecer_items(db, items_raw: list[dict]) -> list[dict]:
         inv = inv_map.get(inv_id, {})
         planta = inv.get("plantas") or {}
         vivero = inv.get("viveros") or {}
+        override_inv = inv.get("categoria_producto")
         default_planta = planta.get("categoria_producto")
         categoria = override_inv or default_planta or "plantas_ornamentales"
         markup = float(markups_b2c.get(categoria, 0.20))
