@@ -165,7 +165,7 @@ def _validar_y_calcular_carrito(db, items_req: list[CartItem]) -> dict:
         }
 
     inv_ids = [it.inventario_id for it in items_req]
-    inv_resp = db.table("v_inventario").select(
+    inv_resp = db.table("inventario").select(
         "inventario_id, precio_mayorista, stock, estado_planta, "
         "logistics_tier, foto_ia_url, categoria_producto, "
         "plantas(nombre_comun, categoria_producto), "
@@ -302,7 +302,7 @@ async def calcular_flete(req: CalcularFleteRequest):
     db = admin()
     inv_ids = [it.inventario_id for it in req.items]
 
-    tier_resp = db.table("v_inventario").select(
+    tier_resp = db.table("inventario").select(
         "inventario_id, logistics_tier"
     ).in_("inventario_id", inv_ids).execute()
     tiers = [r.get("logistics_tier", "M") for r in (tier_resp.data or [])]
