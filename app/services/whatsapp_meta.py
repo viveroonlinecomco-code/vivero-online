@@ -25,17 +25,14 @@ _GRAPH_API = "https://graph.facebook.com/v25.0"
 
 
 def _phone_id() -> str:
-    """Obtener Phone Number ID desde variables de entorno."""
     return os.getenv("META_WA_PHONE_NUMBER_ID", "")
 
 
 def _access_token() -> str:
-    """Obtener Access Token desde variables de entorno."""
     return os.getenv("META_WA_ACCESS_TOKEN", "")
 
 
 def _verify_token() -> str:
-    """Obtener Verify Token para webhooks."""
     return os.getenv("WEBHOOK_VERIFY_TOKEN", "vivero_webhook_secure_token")
 
 
@@ -43,17 +40,7 @@ def _verify_token() -> str:
 # FUNCIONES DE SEGURIDAD Y VALIDACIÓN
 # ═══════════════════════════════════════════════════════════════
 
-
 def verify_signature(body_bytes: bytes, signature_header: str) -> bool:
-    """Valida firma HMAC de webhook Meta.
-    
-    Args:
-        body_bytes: Body del request en bytes
-        signature_header: Header X-Hub-Signature-256
-    
-    Returns:
-        True si la firma es válido, False en caso contrario
-    """
     app_secret = os.getenv("META_WA_APP_SECRET", "")
     if not app_secret:
         return True
@@ -75,28 +62,8 @@ def verify_signature(body_bytes: bytes, signature_header: str) -> bool:
 # FUNCIONES DE DESCARGA DE MEDIA
 # ═══════════════════════════════════════════════════════════════
 
-
 async def download_media_bytes(media_id: str) -> bytes:
-    """Descarga media de Meta en 2 pasos.
-    
-    Proceso:
-    1. GET /v25.0/{media_id} con Auth → obtiene URL firmada
-    2. GET URL real con Auth → bytes del archivo
-    
-    FIX: El paso 2 TAMBIÉN requiere Authorization header,
-    sin él Meta devuelve 401 desde lookaside.fbsbx.com
-    
-    Args:
-        media_id: ID del media en Meta
-    
-    Returns:
-        Bytes del archivo descargado
-    
-    Raises:
-        ValueError: Si no se puede obtener la URL o descargar
-    """
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-        # Paso 1: Obtener URL del media
         meta_resp = await client.get(
             f"{_GRAPH_API}/{media_id}",
             headers={"Authorization": f"Bearer {_access_token()}"},
@@ -107,16 +74,12 @@ async def download_media_bytes(media_id: str) -> bytes:
         if not media_url:
             raise ValueError("No URL obtenida de Meta")
         
-        logger.info(f"✅ URL obtenida para media {media_id}")
-        
-        # Paso 2: Descargar desde URL (también requiere Authorization)
         media_resp = await client.get(
             media_url,
             headers={"Authorization": f"Bearer {_access_token()}"},
         )
         media_resp.raise_for_status()
         
-        logger.info(f"✅ Media descargado ({len(media_resp.content)} bytes)")
         return media_resp.content
 
 
@@ -124,55 +87,29 @@ async def download_media_bytes(media_id: str) -> bytes:
 # FUNCIONES DE CONSULTA DE PRECIOS
 # ═══════════════════════════════════════════════════════════════
 
-
 async def procesar_consulta_precio_producto(
     supabase,
     producto_nombre: str,
     es_guest: bool = True,
     plazo: str = "inmediato",
 ) -> str:
-    """Busca planta → inventario → calcula precio cliente.
-    
-    Pasos:
-    1. Busca en tabla 'plantas' por nombre_comun
-    2. Obtiene planta_id
-    3. Busca en 'inventario' con ese planta_id
-    4. Obtiene precio_mayorista
-    5. Calcula precio cliente con markup
-    
-    Args:
-        supabase: Cliente Supabase
-        producto_nombre: Nombre de la planta a buscar
-        es_guest: Si es comprador guest (True) o registrado (False)
-        plazo: Plazo de entrega ("inmediato" o similar)
-    
-    Returns:
-        Mensaje con precio o error
-    """
     try:
-        logger.info(f"🔍 Buscando: {producto_nombre}")
-        
-        # 1. Buscar en tabla 'plantas'
         plantas_resp = supabase.table("plantas").select(
             "planta_id, nombre_comun"
         ).ilike("nombre_comun", f"%{producto_nombre}%").limit(1).execute()
         
         if not plantas_resp.data:
-            logger.warning(f"Planta no encontrada: {producto_nombre}")
             return f"No encontré '{producto_nombre}'. Intenta con: Hiedra, Geranio, Duranta, Afelandra, Palma"
         
         planta = plantas_resp.data[0]
         planta_id = planta.get("planta_id")
         nombre_comun = planta.get("nombre_comun")
-        logger.info(f"✅ Planta: {nombre_comun} (id={planta_id})")
         
-        # 2. Buscar en 'inventario'
         inventario_resp = supabase.table("inventario").select(
             "inventario_id, precio_mayorista, stock"
         ).eq("planta_id", planta_id).limit(1).execute()
         
         if not inventario_resp.data:
-            logger.warning(f"Sin inventario para planta_id={planta_id}")
             return f"'{nombre_comun}' no está disponible en inventario"
         
         inventario = inventario_resp.data[0]
@@ -181,10 +118,6 @@ async def procesar_consulta_precio_producto(
         if not precio_mayorista:
             return f"Error: '{nombre_comun}' sin precio"
         
-        logger.info(f"✅ Precio mayorista: ${precio_mayorista}")
-        
-        # 3. Calcular precio con markup
-        # Guest: ~18%, Registrado: ~15%
         if es_guest:
             precio_cliente = round(precio_mayorista * 1.18)
         else:
@@ -192,13 +125,11 @@ async def procesar_consulta_precio_producto(
         
         precio_fmt = f"${int(precio_cliente):,.0f}".replace(",", ".")
         
-        # 4. Construir respuesta
         mensaje = (
             f"Para tu proyecto, la {nombre_comun} "
             f"tiene un precio de {precio_fmt} COP. "
             f"Compra aquí: https://app.viveroonline.com.co/marketplace"
         )
-        logger.info(f"✅ Respuesta enviada")
         return mensaje
     
     except Exception as e:
@@ -210,17 +141,7 @@ async def procesar_consulta_precio_producto(
 # FUNCIONES PÚBLICAS — ENVÍO DE MENSAJES
 # ═══════════════════════════════════════════════════════════════
 
-
 async def send_text_message(to: str, body: str) -> bool:
-    """Envía un mensaje de texto a través de Meta WhatsApp API.
-    
-    Args:
-        to: Número de teléfono (puede incluir o no '+')
-        body: Cuerpo del mensaje (máx 4096 caracteres)
-    
-    Returns:
-        True si se envió exitosamente, False en caso contrario
-    """
     to_clean = to.lstrip("+")
     payload = {
         "messaging_product": "whatsapp",
@@ -239,16 +160,8 @@ async def send_text_message(to: str, body: str) -> bool:
                 },
                 json=payload,
             )
-        
-        if resp.status_code == 200:
-            logger.info(f"✅ Mensaje de texto enviado a {to_clean}")
-            return True
-        else:
-            logger.error(f"❌ Error {resp.status_code}: {resp.text}")
-            return False
-    
-    except Exception as e:
-        logger.error(f"❌ Excepción: {e}")
+        return resp.status_code == 200
+    except Exception:
         return False
 
 
@@ -258,19 +171,7 @@ async def send_template_message(
     language_code: str = "es_MX",
     parameters: Optional[list[Dict[str, Any]]] = None,
 ) -> bool:
-    """Envía un mensaje de template (plantilla pre-aprobada).
-    
-    Args:
-        to: Número de teléfono destino
-        template_name: Nombre de la plantilla en Meta Business Manager
-        language_code: Código de idioma (default: español México)
-        parameters: Lista de dicts con 'type' y 'text' para parámetros
-    
-    Returns:
-        True si se envió exitosamente, False en caso contrario
-    """
     to_clean = to.lstrip("+")
-    
     params_body = parameters if parameters else []
     
     payload = {
@@ -294,23 +195,14 @@ async def send_template_message(
                 },
                 json=payload,
             )
-        
-        if resp.status_code == 200:
-            logger.info(f"✅ Template {template_name} enviado a {to_clean}")
-            return True
-        else:
-            logger.error(f"❌ Error {resp.status_code}: {resp.text}")
-            return False
-    
-    except Exception as e:
-        logger.error(f"❌ Excepción: {e}")
+        return resp.status_code == 200
+    except Exception:
         return False
 
 
 # ═══════════════════════════════════════════════════════════════
 # NOTIFICACIONES ESPECÍFICAS DEL NEGOCIO
 # ═══════════════════════════════════════════════════════════════
-
 
 async def notify_viverista_nueva_cotizacion(
     to: str,
@@ -321,20 +213,6 @@ async def notify_viverista_nueva_cotizacion(
     ciudad_entrega: str,
     horas_para_responder: int = 2,
 ) -> bool:
-    """Notifica a un viverista sobre una nueva cotización.
-    
-    Args:
-        to: WhatsApp del viverista (con o sin +)
-        nombre_viverista: Nombre del vivero
-        proyecto: Nombre del proyecto del cliente
-        cliente: Nombre del cliente
-        tu_parte_cop: Monto en COP que le corresponde al viverista
-        ciudad_entrega: Ciudad de entrega
-        horas_para_responder: Horas para responder (default: 2)
-    
-    Returns:
-        True si se envió exitosamente
-    """
     mensaje = (
         f"🌱 ¡Hola {nombre_viverista}!\n\n"
         f"Tienes una nueva cotización en ViveroOnline:\n\n"
@@ -346,7 +224,6 @@ async def notify_viverista_nueva_cotizacion(
         f"👉 Accede a tu dashboard para ver detalles.\n\n"
         f"¡Gracias por ser parte de ViveroOnline! 🚀"
     )
-    
     return await send_text_message(to, mensaje)
 
 
@@ -357,18 +234,6 @@ async def notify_comprador_cotizacion_enviada(
     total_cop: int,
     num_viveristas: int,
 ) -> bool:
-    """Notifica al comprador que su cotización fue enviada.
-    
-    Args:
-        to: WhatsApp del comprador
-        nombre_comprador: Nombre del comprador
-        proyecto: Nombre del proyecto
-        total_cop: Monto total en COP
-        num_viveristas: Número de viveristas a los que se envió
-    
-    Returns:
-        True si se envió exitosamente
-    """
     mensaje = (
         f"✅ ¡Hola {nombre_comprador}!\n\n"
         f"Tu cotización fue enviada a {num_viveristas} viverista(s):\n\n"
@@ -378,7 +243,6 @@ async def notify_comprador_cotizacion_enviada(
         f"Podrás ver todo en tu dashboard.\n\n"
         f"¡Gracias por confiar en ViveroOnline! 🌿"
     )
-    
     return await send_text_message(to, mensaje)
 
 
@@ -389,18 +253,6 @@ async def notify_comprador_respuesta_recibida(
     nombre_viverista: str,
     monto_cop: int,
 ) -> bool:
-    """Notifica al comprador cuando un viverista responde.
-    
-    Args:
-        to: WhatsApp del comprador
-        nombre_comprador: Nombre del comprador
-        proyecto: Nombre del proyecto
-        nombre_viverista: Nombre del vivero que respondió
-        monto_cop: Monto de la propuesta
-    
-    Returns:
-        True si se envió exitosamente
-    """
     mensaje = (
         f"📬 ¡{nombre_comprador}! Tienes una respuesta:\n\n"
         f"🌱 {nombre_viverista}\n"
@@ -409,7 +261,6 @@ async def notify_comprador_respuesta_recibida(
         f"👉 Revisa todas las propuestas en tu dashboard.\n\n"
         f"ViveroOnline 🚀"
     )
-    
     return await send_text_message(to, mensaje)
 
 
@@ -417,23 +268,12 @@ async def notify_comprador_respuesta_recibida(
 # WEBHOOK VERIFICATION (para Meta)
 # ═══════════════════════════════════════════════════════════════
 
-
 def verify_webhook_token(
     received_token: str,
     expected_token: Optional[str] = None,
 ) -> bool:
-    """Verifica que el token de webhook sea válido.
-    
-    Args:
-        received_token: Token recibido en el challenge
-        expected_token: Token esperado (default: variable de entorno)
-    
-    Returns:
-        True si el token es válido
-    """
     if expected_token is None:
         expected_token = _verify_token()
-    
     return received_token == expected_token
 
 
@@ -441,18 +281,8 @@ def generate_webhook_signature(
     payload: str,
     app_secret: Optional[str] = None,
 ) -> str:
-    """Genera la firma HMAC para validar webhooks de Meta.
-    
-    Args:
-        payload: Body del request como string
-        app_secret: App Secret de Meta (default: variable de entorno)
-    
-    Returns:
-        Firma HMAC hexadecimal
-    """
     if app_secret is None:
         app_secret = os.getenv("META_APP_SECRET", "")
-    
     signature = hmac.new(
         app_secret.encode(),
         payload.encode(),
@@ -466,19 +296,8 @@ def verify_webhook_signature(
     received_signature: str,
     app_secret: Optional[str] = None,
 ) -> bool:
-    """Verifica la firma HMAC de un webhook de Meta.
-    
-    Args:
-        payload: Body del request como string
-        received_signature: Firma en header X-Hub-Signature-256
-        app_secret: App Secret de Meta (default: variable de entorno)
-    
-    Returns:
-        True si la firma es válida
-    """
     generated_sig = generate_webhook_signature(payload, app_secret)
     expected = f"sha256={generated_sig}"
-    
     return hmac.compare_digest(expected, received_signature)
 
 
@@ -486,16 +305,7 @@ def verify_webhook_signature(
 # PARSEO DE EVENTOS DE WEBHOOK
 # ═══════════════════════════════════════════════════════════════
 
-
 def parse_webhook_event(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Extrae el primer evento de mensaje de un payload de webhook.
-    
-    Args:
-        payload: Payload completo del webhook
-    
-    Returns:
-        Diccionario con información del evento o None
-    """
     try:
         entry = payload.get("entry", [{}])[0]
         changes = entry.get("changes", [{}])
@@ -504,24 +314,14 @@ def parse_webhook_event(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             messages = change.get("value", {}).get("messages", [])
             if messages:
                 return messages[0]
-        
         return None
     except (KeyError, IndexError, TypeError):
         return None
 
 
 def extract_message_info(message_obj: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    """Extrae información útil de un objeto de mensaje.
-    
-    Args:
-        message_obj: Objeto de mensaje del webhook
-    
-    Returns:
-        Dict con from, type, text, timestamp o None
-    """
     try:
         msg_type = message_obj.get("type", "")
-        
         if msg_type != "text":
             return None
         
@@ -532,10 +332,36 @@ def extract_message_info(message_obj: Dict[str, Any]) -> Optional[Dict[str, Any]
             "timestamp": message_obj.get("timestamp"),
             "message_id": message_obj.get("id"),
         }
-        
         if info["from"] and info["text"]:
             return info
-        
         return None
     except (KeyError, TypeError):
         return None
+
+
+# ═══════════════════════════════════════════════════════════════
+# FUNCIONES DE AUTO-TIMEOUT RESTAURADAS
+# ═══════════════════════════════════════════════════════════════
+
+async def notify_viverista_recordatorio(to: str, nombre_viverista: str, proyecto: str) -> bool:
+    """Notifica al viverista que el tiempo de respuesta está por expirar."""
+    mensaje = (
+        f"⏳ ¡Hola {nombre_viverista}!\n\n"
+        f"Tienes una solicitud pendiente por responder:\n\n"
+        f"📋 Proyecto: *{proyecto}*\n\n"
+        f"El tiempo está por agotarse. Por favor, ingresa a tu panel para confirmar o rechazar la disponibilidad.\n\n"
+        f"ViveroOnline 🚀"
+    )
+    return await send_text_message(to, mensaje)
+
+
+async def notify_viverista_timeout(to: str, nombre_viverista: str, proyecto: str) -> bool:
+    """Notifica al viverista que la cotización expiró por falta de respuesta."""
+    mensaje = (
+        f"❌ ¡Hola {nombre_viverista}!\n\n"
+        f"El tiempo para responder a la solicitud ha expirado:\n\n"
+        f"📋 Proyecto: *{proyecto}*\n\n"
+        f"La solicitud ha sido marcada como rechazada automáticamente.\n\n"
+        f"ViveroOnline 🚀"
+    )
+    return await send_text_message(to, mensaje)
