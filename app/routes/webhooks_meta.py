@@ -1,148 +1,319 @@
-"""
-Webhooks de Meta para rastreo de entregas WhatsApp.
-Endpoints para recibir confirmaciones de:
-- delivered: mensaje entregado
-- read: mensaje leído
-- failed: envío fallido
-"""
+"""Cliente WhatsApp — Estructura CORRECTA de tablas: plantas + inventario."""
+from __future__ import annotations
 
+import hashlib
+import hmac
 import logging
 import os
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import PlainTextResponse, JSONResponse
+from typing import Any, Dict
 
-from app.services.supabase import admin
-from app.services.whatsapp_meta import verify_signature
+import httpx
+from app.services.precios import calcular_precios_pedido
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/whatsapp", tags=["webhooks"])
+
+_GRAPH_API = "https://graph.facebook.com/v25.0"
 
 
-@router.get("/status")
-async def webhook_verify(request: Request):
-    """Verificación de webhook Meta - devuelve challenge como texto plano"""
-    mode = request.query_params.get("hub.mode")
-    token = request.query_params.get("hub.verify_token")
-    challenge = request.query_params.get("hub.challenge")
-    verify_token = os.getenv("WEBHOOK_VERIFY_TOKEN", "vivero_webhook_secure_token")
-    
-    logger.info(f"🔍 Webhook GET recibido:")
-    logger.info(f"   mode={mode}")
-    logger.info(f"   token_recibido={token}")
-    logger.info(f"   token_esperado={verify_token}")
-    logger.info(f"   challenge={challenge[:20] if challenge else None}...")
-    
-    # En staging: ser más permisivo para diagnosticar
-    if mode == "subscribe":
-        if token == verify_token or token is None or token == "":
-            logger.info("✅ Webhook verificado (token correcto o vacío)")
-            return PlainTextResponse(challenge)
-        else:
-            logger.warning(f"⚠️  Token no coincide: '{token}' vs '{verify_token}'")
-            # Aún así responder OK si es staging (para diagnosticar)
-            if os.getenv("ENV") != "production":
-                logger.info("📍 Staging mode: aceptando token no coincidente")
-                return PlainTextResponse(challenge)
-    
-    logger.warning(f"❌ Verificación fallida: mode={mode}")
-    return PlainTextResponse("", status_code=403)
+def _phone_id() -> str:
+    return os.getenv("META_WA_PHONE_NUMBER_ID", "")
 
 
-@router.post("/status")
-async def webhook_status(request: Request):
+def _access_token() -> str:
+    return os.getenv("META_WA_ACCESS_TOKEN", "")
+
+
+async def send_text_message(to: str, body: str) -> bool:
+    """Envía un mensaje de texto."""
+    to_clean = to.lstrip("+")
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_clean,
+        "type": "text",
+        "text": {"body": body[:4096]},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{_GRAPH_API}/{_phone_id()}/messages",
+                headers={
+                    "Authorization": f"Bearer {_access_token()}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        if resp.status_code == 200:
+            logger.info(f"✅ Mensaje enviado")
+            return True
+        logger.error(f"❌ Error {resp.status_code}")
+        return False
+    except Exception as e:
+        logger.exception(f"❌ Exception: {e}")
+        return False
+
+
+async def send_template_message(
+    to: str,
+    template_name: str,
+    language_code: str = "es",
+    components: list | None = None,
+) -> bool:
+    """Envía template Meta."""
+    to_clean = to.lstrip("+")
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_clean,
+        "type": "template",
+        "template": {
+            "name": template_name,
+            "language": {"code": language_code},
+        },
+    }
+    if components:
+        payload["template"]["components"] = components
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.post(
+                f"{_GRAPH_API}/{_phone_id()}/messages",
+                headers={
+                    "Authorization": f"Bearer {_access_token()}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            )
+        if resp.status_code == 200:
+            return True
+        return False
+    except Exception as e:
+        logger.exception(f"❌ Exception: {e}")
+        return False
+
+
+async def download_media_bytes(media_id: str) -> bytes:
+    """Descarga media de Meta.
+
+    Proceso 2 pasos:
+    1. GET /v25.0/{media_id} → obtiene URL real firmada
+    2. GET URL real → bytes del archivo
+
+    FIX (22 ago): al paso 2 le faltaba el header Authorization. Meta lo
+    exige en AMBAS llamadas, no solo en la primera — sin él, la descarga
+    real desde lookaside.fbsbx.com devuelve 401 Unauthorized aunque el
+    paso 1 (pedir la URL) funcione bien.
     """
-    Recibe notificaciones de Meta sobre estado de mensajes.
-    Estados: delivered, read, failed
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        meta_resp = await client.get(
+            f"{_GRAPH_API}/{media_id}",
+            headers={"Authorization": f"Bearer {_access_token()}"},
+        )
+        meta_resp.raise_for_status()
+        media_url = meta_resp.json().get("url")
+        if not media_url:
+            raise ValueError("No URL")
+
+        media_resp = await client.get(
+            media_url,
+            headers={"Authorization": f"Bearer {_access_token()}"},
+        )
+        media_resp.raise_for_status()
+        return media_resp.content
+
+
+def verify_signature(body_bytes: bytes, signature_header: str) -> bool:
+    """Valida firma Meta."""
+    app_secret = os.getenv("META_WA_APP_SECRET", "")
+    if not app_secret:
+        return True
+
+    if not signature_header or not signature_header.startswith("sha256="):
+        return False
+
+    expected = signature_header[7:]
+    computed = hmac.new(
+        app_secret.encode("utf-8"),
+        body_bytes,
+        hashlib.sha256,
+    ).hexdigest()
+
+    return hmac.compare_digest(expected, computed)
+
+
+async def procesar_consulta_precio_producto(
+    supabase,
+    producto_nombre: str,
+    es_guest: bool = True,
+    plazo: str = "inmediato",
+) -> str:
+    """✅ ESTRUCTURA CORRECTA: Busca en plantas → inventario → precio.
+
+    Pasos:
+    1. Busca en tabla 'plantas' por nombre_comun
+    2. Obtiene planta_id
+    3. Busca en tabla 'inventario' donde planta_id = ese ID
+    4. Obtiene precio_mayorista
+    5. Calcula con matriz comercial correcta
     """
     try:
-        # Obtener firma y cuerpo
-        body_bytes = await request.body()
-        signature = request.headers.get("x-hub-signature-256", "")
-        
-        # Verificar firma en producción
-        if os.getenv("ENV") == "production":
-            if not verify_signature(body_bytes, signature):
-                logger.warning("❌ Firma de webhook inválida")
-                return JSONResponse(status_code=403, content={"ok": False})
-        
-        # Parsear payload
-        payload = await request.json()
-        logger.info(f"📨 Webhook recibido: {len(payload.get('entry', []))} entries")
-        
+        logger.info(f"🔍 Buscando: {producto_nombre}")
+
+        # 1. BUSCAR EN TABLA 'plantas' por nombre_comun
+        plantas_resp = supabase.table("plantas").select(
+            "planta_id, nombre_comun"
+        ).ilike("nombre_comun", f"%{producto_nombre}%").limit(1).execute()
+
+        if not plantas_resp.data:
+            logger.warning(f"Planta no encontrada: {producto_nombre}")
+            return f"No encontré '{producto_nombre}'. Intenta con: Hiedra, Geranio, Duranta, Afelandra"
+
+        planta = plantas_resp.data[0]
+        planta_id = planta.get("planta_id")
+        nombre_comun = planta.get("nombre_comun")
+        logger.info(f"✅ Planta encontrada: {nombre_comun} (id={planta_id})")
+
+        # 2. BUSCAR EN TABLA 'v_inventario' por planta_id
+        inventario_resp = supabase.table("v_inventario").select(
+            "inventario_id, precio_mayorista, stock"
+        ).eq("planta_id", planta_id).limit(1).execute()
+
+        if not inventario_resp.data:
+            logger.warning(f"Inventario no encontrado para planta_id={planta_id}")
+            return f"'{nombre_comun}' no está disponible en inventario"
+
+        inventario = inventario_resp.data[0]
+        precio_mayorista = inventario.get("precio_mayorista", 0)
+        inventario_id = inventario.get("inventario_id")
+        logger.info(f"✅ Inventario encontrado: inventario_id={inventario_id}, precio=${precio_mayorista}")
+
+        if not precio_mayorista:
+            return "Error: precio no disponible"
+
+        # 3. CALCULAR PRECIO CON MATRIZ COMERCIAL
+        resultado_precios = calcular_precios_pedido(
+            cliente={
+                "es_guest": es_guest,
+                "cliente_id": None if es_guest else 0,
+            },
+            items=[{
+                "inventario_id": inventario_id,
+                "cantidad": 1,
+                "precio_unitario": precio_mayorista,
+            }],
+            plazo=plazo,
+            forzar_canal=None,
+        )
+
+        precio_cliente = resultado_precios["totales"]["precio_final_cliente"]
+        logger.info(f"✅ Precio cliente: ${precio_cliente}")
+
+        # 4. CONSTRUIR MENSAJE
+        precio_fmt = f"${int(precio_cliente):,.0f}".replace(",", ".")
+        mensaje = (
+            f"Para tu proyecto, la {nombre_comun} "
+            f"tiene un precio de {precio_fmt} COP. "
+            f"Compra: https://app.viveroonline.com.co/marketplace"
+        )
+        logger.info(f"✅ Respuesta: {mensaje[:80]}")
+        return mensaje
+
     except Exception as e:
-        logger.error(f"❌ Error parseando webhook: {e}")
-        return {"ok": True}  # Responder OK igual para no hacer reintentar a Meta
-    
-    # Procesar cambios de estado
+        logger.exception(f"❌ Error: {e}")
+        return f"⚠️ Error: {str(e)[:100]}"
+
+
+async def obtener_recomendacion_producto(
+    supabase,
+    producto_id: int,
+    es_guest: bool = True,
+    plazo: str = "inmediato",
+) -> dict:
+    """Obtiene recomendación de producto."""
     try:
-        db = admin()
-        
-        for entry in payload.get("entry", []):
-            for change in entry.get("changes", []):
-                if change.get("field") != "messages":
-                    continue
-                
-                value = change.get("value", {})
-                statuses = value.get("statuses", [])
-                
-                # Procesar cada status
-                for status in statuses:
-                    try:
-                        message_id = status.get("id")
-                        status_value = status.get("status")  # delivered, read, failed
-                        recipient = status.get("recipient_id")
-                        timestamp = status.get("timestamp")
-                        
-                        if not message_id:
-                            continue
-                        
-                        logger.info(
-                            f"📍 Meta notifica: {message_id[:20]}... → {status_value} "
-                            f"(destinatario: +{recipient})"
-                        )
-                        
-                        # Intentar actualizar evento existente
-                        try:
-                            response = db.table("ticket_eventos_whatsapp").select(
-                                "evento_id"
-                            ).eq("meta_message_id", message_id).limit(1).execute()
-                            
-                            if response.data:
-                                # Actualizar estado
-                                db.table("ticket_eventos_whatsapp").update({
-                                    "estado": status_value,
-                                    "json_response": str(status)
-                                }).eq("meta_message_id", message_id).execute()
-                                
-                                logger.info(
-                                    f"✅ Evento actualizado: {message_id[:20]}... → {status_value}"
-                                )
-                            else:
-                                # Crear nuevo evento si no existe
-                                db.table("ticket_eventos_whatsapp").insert({
-                                    "whatsapp_numero": f"+{recipient}" if recipient else None,
-                                    "meta_message_id": message_id,
-                                    "tipo_evento": "status_update",
-                                    "estado": status_value,
-                                    "json_response": str(status)
-                                }).execute()
-                                
-                                logger.info(
-                                    f"📝 Evento creado: {message_id[:20]}... → {status_value}"
-                                )
-                                
-                        except Exception as db_err:
-                            logger.error(
-                                f"❌ Error guardando evento {message_id}: {db_err}"
-                            )
-                            # Continuar con siguientes mensajes
-                    
-                    except Exception as status_err:
-                        logger.error(f"❌ Error procesando status individual: {status_err}")
-                        # Continuar sin romper el flujo
-    
+        inventario = supabase.table("v_inventario").select("*").eq("id", producto_id).single().execute()
+
+        if not inventario.data:
+            return {"error": "No encontrado"}
+
+        datos = inventario.data
+        precio = datos.get("precio_mayorista", 0)
+
+        if not precio:
+            return {"error": "Sin precio"}
+
+        resultado_precios = calcular_precios_pedido(
+            cliente={"es_guest": es_guest, "cliente_id": None},
+            items=[{"inventario_id": producto_id, "cantidad": 1, "precio_unitario": precio}],
+            plazo=plazo,
+            forzar_canal=None,
+        )
+
+        precio_cliente = resultado_precios["totales"]["precio_final_cliente"]
+
+        return {
+            "id": producto_id,
+            "nombre": "Producto",
+            "precio_cliente_cop": int(precio_cliente),
+            "precio_mayorista_cop": precio,
+            "error": None
+        }
+
     except Exception as e:
-        logger.exception(f"❌ Error general procesando webhook: {e}")
+        logger.exception(f"Error: {e}")
+        return {"error": str(e)}
+
+
+def _format_cop(monto) -> str:
+    """Formato: $88.410"""
+    return f"${int(monto):,}".replace(",", ".")
+
+
+async def notify_viverista_nueva_cotizacion(
+    to: str,
+    nombre_viverista: str,
+    proyecto: str,
+    cliente: str,
+    tu_parte_cop: int,
+    ciudad_entrega: str,
+    horas_para_responder: int = 2,
+) -> Dict[str, Any]:
+    """Notifica al viverista sobre nueva cotización.
     
-    # SIEMPRE responder 200 OK a Meta para que no reintente
-    return {"ok": True}
+    FIX (19 ago 2026): Esta función YA NO se usa directamente desde pedidos.py
+    El nuevo flujo construye el mensaje DETALLADO en pedidos.py con:
+    - Lista de plantas con precio unitario mayorista cada una
+    - Total mayorista que recibirá
+    - SIN mostrar precio al comprador (es info interna del sistema)
+    
+    Nota: Esta función se mantiene aquí por compatibilidad con
+    otros flujos (recordatorios, etc).
+    """
+    msg = f"🌿 Nueva solicitud\n{proyecto}\n💰 ${tu_parte_cop:,}"
+    result = await send_text_message(to, msg)
+    return {"ok": result}
+
+
+async def notify_viverista_recordatorio(
+    to: str,
+    nombre_viverista: str,
+    proyecto: str,
+    tu_parte_cop: int,
+    numero_recordatorio: int,
+    minutos_restantes: int,
+) -> Dict[str, Any]:
+    """⚠️ PENDIENTE — Mejorar con estructura similar a nueva_cotizacion."""
+    msg = f"⏰ Recordatorio {numero_recordatorio}\n{proyecto}"
+    result = await send_text_message(to, msg)
+    return {"ok": result}
+
+
+async def notify_comprador_pedido_parcial(
+    to: str,
+    nombre_cliente: str,
+    proyecto: str,
+    monto_disponible_cop: int,
+    detalle_no_confirmado: str,
+) -> Dict[str, Any]:
+    """⚠️ PENDIENTE — Implementar flujo completo."""
+    msg = f"📋 {proyecto}\n✅ ${monto_disponible_cop:,}"
+    result = await send_text_message(to, msg)
+    return {"ok": result}
