@@ -7,6 +7,11 @@ Si por alguna razón no está disponible, se recalcula al vuelo desde el modelo.
 
 Fase 10.4 (24 ago 2026): Agregado descuento B2B temporal 12% + ePayco
 (reversible automáticamente cuando fintech_activa=true en configuracion_global).
+
+Fase 2 (4 sep 2026): Integración Escenario 3 - Split automático de pagos.
+Calcula splits viverista/plataforma para plantas y flete.
+Crea registros en transferencias_viverista.
+Envía WhatsApp a viverista con desglose.
 """
 from __future__ import annotations
 from typing import Optional
@@ -23,6 +28,7 @@ from app.services.epayco import (
 from app.services.supabase import admin
 from app.services.precios import calcular_precios_pedido
 from app.services.config_global import get_config
+from app.services.whatsapp_meta import send_text_message
 
 
 router = APIRouter(prefix="/api/pagos", tags=["pagos"])
@@ -104,6 +110,95 @@ def _obtener_desglose_pago(db, transaccion_id: int, monto_cop: int) -> tuple[flo
 
     # Estrategia 3 — Fallback conservador (protege al viverista)
     return (float(monto_cop), 0.0)
+
+
+# ─────────────────────────────────────────────────────────────────
+# FASE 2: Funciones para Escenario 3 (split de pagos)
+# ─────────────────────────────────────────────────────────────────
+
+async def calcular_escenario_3_pago(
+    db,
+    pago_id: int,
+    monto_plantas: float,
+    monto_flete: float,
+    es_b2b: bool,
+    total_carrito: float,
+    descuento_b2b_pct: float = 12.0
+) -> dict:
+    """Calcula los splits de pago usando función SQL calcular_escenario_3().
+    
+    Retorna dict con splits viverista/plataforma para plantas y flete.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        # Llamar función SQL
+        resultado = db.rpc(
+            "calcular_escenario_3",
+            {
+                "p_pago_id": pago_id,
+                "p_plantas_monto": monto_plantas,
+                "p_flete_monto": monto_flete,
+                "p_es_b2b": es_b2b,
+                "p_total_carrito": total_carrito,
+                "p_descuento_b2b_pct": descuento_b2b_pct,
+            }
+        ).execute()
+        
+        if resultado.data and len(resultado.data) > 0:
+            return resultado.data[0]
+        else:
+            logger.error(f"[FASE 2] RPC calcular_escenario_3 retornó datos vacíos")
+            return None
+            
+    except Exception as e:
+        logger.error(f"[FASE 2] Error llamando calcular_escenario_3: {e}")
+        return None
+
+
+async def crear_transferencia_viverista(
+    db,
+    vivero_id: int,
+    pago_id: int,
+    splits: dict
+) -> int:
+    """Crea registro en transferencias_viverista con splits del pago.
+    
+    Retorna transfer_id si éxito, None si falla.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        transfer_resp = db.table("transferencias_viverista").insert({
+            "vivero_id": vivero_id,
+            "pago_id": pago_id,
+            "monto_plantas": splits.get("viverista_plantas"),
+            "monto_flete": splits.get("viverista_flete"),
+            "monto_total": splits.get("viverista_total"),
+            "comision_plataforma_plantas": splits.get("plataforma_plantas"),
+            "comision_plataforma_flete": splits.get("plataforma_flete"),
+            "comision_descuento_b2b": splits.get("plataforma_descuento", 0),
+            "comision_total_plataforma": splits.get("plataforma_total"),
+            "descuento_b2b_pct": splits.get("descuento_b2b", 0),
+            "estado": "pendiente_transferencia",  # Pendiente confirmación
+            "notas": f"Escenario 3 - Pago {pago_id} confirmado",
+        }).execute()
+        
+        if transfer_resp.data:
+            transfer_id = transfer_resp.data[0].get("transfer_id")
+            logger.info(f"[FASE 2] Transferencia creada: {transfer_id} para pago {pago_id}")
+            return transfer_id
+        else:
+            logger.error(f"[FASE 2] No se pudo crear transferencia para pago {pago_id}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"[FASE 2] Error creando transferencia: {e}")
+        return None
+
+# ───────────────────────────────────────────────────────────────────
 
 
 @router.post("/iniciar", response_model=IniciarPagoResponse)
@@ -318,6 +413,110 @@ async def confirmar_pago(
             }).eq("suscripcion_id", pago["suscripcion_id"]).execute()
 
         elif pago.get("transaccion_id"):
+            # ═══════════════════════════════════════════════════════════════
+            # FASE 2: ESCENARIO 3 - Split automático de pagos
+            # ═══════════════════════════════════════════════════════════════
+            import logging
+            logger = logging.getLogger(__name__)
+            
+            try:
+                # Obtener datos de la cotización para calcular splits
+                txn = db.table("transacciones_b2b").select(
+                    "transaccion_id, vivero_id, cliente_id, cotizacion_id, "
+                    "precio_total, estado"
+                ).eq("transaccion_id", pago["transaccion_id"]).limit(1).execute()
+                
+                if txn.data:
+                    txn_row = txn.data[0]
+                    vivero_id = txn_row.get("vivero_id")
+                    cotizacion_id = txn_row.get("cotizacion_id")
+                    cliente_id = txn_row.get("cliente_id")
+                    
+                    # Obtener monto total y desglose plantas/flete
+                    cot = db.table("cotizaciones").select(
+                        "monto_plantas, monto_flete, tipo_cliente, es_b2b"
+                    ).eq("cotizacion_id", cotizacion_id).limit(1).execute()
+                    
+                    if cot.data:
+                        cot_row = cot.data[0]
+                        monto_plantas = float(cot_row.get("monto_plantas", 0))
+                        monto_flete = float(cot_row.get("monto_flete", 0))
+                        es_b2b = bool(cot_row.get("es_b2b", False))
+                        total_carrito = monto_plantas + monto_flete
+                        
+                        # Leer descuento B2B desde config
+                        descuento_b2b_pct = 12.0  # Default Escenario 3
+                        
+                        # LLAMAR calcular_escenario_3()
+                        splits = await calcular_escenario_3_pago(
+                            db=db,
+                            pago_id=pago["pago_id"],
+                            monto_plantas=monto_plantas,
+                            monto_flete=monto_flete,
+                            es_b2b=es_b2b,
+                            total_carrito=total_carrito,
+                            descuento_b2b_pct=descuento_b2b_pct
+                        )
+                        
+                        if splits:
+                            # CREAR transferencia_viverista
+                            transfer_id = await crear_transferencia_viverista(
+                                db=db,
+                                vivero_id=vivero_id,
+                                pago_id=pago["pago_id"],
+                                splits=splits
+                            )
+                            
+                            if transfer_id:
+                                logger.info(
+                                    f"[FASE 2] Escenario 3 OK: "
+                                    f"Pago {pago['pago_id']} → Transfer {transfer_id}"
+                                )
+                                
+                                # ENVIAR WhatsApp a viverista con desglose
+                                try:
+                                    whatsapp_msg = (
+                                        f"✅ *PAGO CONFIRMADO*\n\n"
+                                        f"Pago #{pago['pago_id']}\n"
+                                        f"Transacción: {pago['transaccion_id']}\n\n"
+                                        f"*DESGLOSE:*\n"
+                                        f"Plantas: ${splits.get('viverista_plantas', 0):,.0f}\n"
+                                        f"Flete: ${splits.get('viverista_flete', 0):,.0f}\n"
+                                        f"*TOTAL: ${splits.get('viverista_total', 0):,.0f}*\n\n"
+                                        f"Estado: Pendiente transferencia"
+                                    )
+                                    
+                                    # Obtener WhatsApp del viverista
+                                    vivero_resp = db.table("viveros").select(
+                                        "whatsapp_numero"
+                                    ).eq("vivero_id", vivero_id).limit(1).execute()
+                                    
+                                    if vivero_resp.data:
+                                        numero = vivero_resp.data[0].get("whatsapp_numero")
+                                        if numero:
+                                            await send_text_message(
+                                                to=numero,
+                                                body=whatsapp_msg
+                                            )
+                                            logger.info(
+                                                f"[FASE 2] WhatsApp enviado a vivero {vivero_id}"
+                                            )
+                                except Exception as e:
+                                    logger.warning(f"[FASE 2] Error enviando WhatsApp: {e}")
+                            else:
+                                logger.error(
+                                    f"[FASE 2] No se pudo crear transferencia para pago {pago['pago_id']}"
+                                )
+                        else:
+                            logger.error(
+                                f"[FASE 2] calcular_escenario_3 retornó None para pago {pago['pago_id']}"
+                            )
+            except Exception as e:
+                # No bloqueamos el flujo de pago si Escenario 3 falla
+                logger.exception(f"[FASE 2] Error en Escenario 3: {e}")
+            
+            # ═══════════════════════════════════════════════════════════════
+            
             # Pago B2B del marketplace — marcar como pagada
             db.table("transacciones_b2b").update({
                 "estado": "pagada",
