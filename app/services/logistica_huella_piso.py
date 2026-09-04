@@ -48,8 +48,8 @@ def calcular_tier_viaje_con_huella_piso(db, items: List[Dict], es_b2b: bool = Fa
     
     Implementa especificación de Elena:
       PASO 1: Auditoría restricciones físicas (altura)
-      PASO 2: Sumatoria de área
-      PASO 3: Validación contra límites
+      PASO 2: Sumatoria de área (obtiene huella_piso_m2 via JOIN a formatos_comerciales)
+      PASO 3: Validación contra límites (con márgenes configurables)
       PASO 4: Escalado automático
       PASO 5: Restricción de canal (B2B vs B2C)
     
@@ -220,6 +220,11 @@ def calcular_area_total_carrito(db, items: List[Dict]) -> float:
       - 6 MEDIANA (6 × 0.065 = 0.39m²)
       - Total: 1.19m²
     
+    CAMBIO (Sep 4, 2026):
+      - Ahora obtiene huella_piso_m2 desde formatos_comerciales
+      - Lee via FK formato_id (normalización correcta)
+      - Elimina redundancia: huella_piso_m2 fue removida de inventario
+    
     Args:
         db: Cliente Supabase
         items: [{inventario_id, cantidad}, ...]
@@ -240,20 +245,27 @@ def calcular_area_total_carrito(db, items: List[Dict]) -> float:
             if not inv_id or cantidad <= 0:
                 continue
             
-            # Obtener huella_piso del producto desde BD
-            resp = db.table('inventario').select('huella_piso_m2').eq('inventario_id', inv_id).limit(1).execute()
+            # CAMBIO: Obtener huella_piso del producto via JOIN a formatos_comerciales
+            # Query: inventario (con formato_id FK) → formatos_comerciales (con huella_piso_m2)
+            resp = db.table('inventario').select(
+                'formato_id, formatos_comerciales(huella_piso_m2)'
+            ).eq('inventario_id', inv_id).limit(1).execute()
             
-            if resp.data and resp.data[0].get('huella_piso_m2'):
-                huella = float(resp.data[0]['huella_piso_m2'])
-                area_item = cantidad * huella
-                area_total += area_item
-                
-                logger.debug(f"Item {inv_id}: {cantidad} × {huella}m² = {area_item:.3f}m²")
+            if resp.data:
+                row = resp.data[0]
+                # El JOIN devuelve formatos_comerciales como objeto anidado
+                formato = row.get('formatos_comerciales')
+                if formato and formato.get('huella_piso_m2'):
+                    huella = float(formato['huella_piso_m2'])
+                    area_item = cantidad * huella
+                    area_total += area_item
+                    
+                    logger.debug(f"Item {inv_id}: {cantidad} × {huella}m² = {area_item:.3f}m²")
         
         return round(area_total, 3)
     
     except Exception as e:
-        logger.error(f"Error calculando área: {e}")
+        logger.error(f"Error calculando área (JOIN formatos_comerciales): {e}")
         return 0.0
 
 
