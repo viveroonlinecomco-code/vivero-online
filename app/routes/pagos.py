@@ -7,6 +7,11 @@ Si por alguna razón no está disponible, se recalcula al vuelo desde el modelo.
 
 Fase 10.4 (24 ago 2026): Agregado descuento B2B temporal 12% + ePayco
 (reversible automáticamente cuando fintech_activa=true en configuracion_global).
+
+Fase 2 (4 sep 2026): Integración Escenario 3 - Split automático de pagos.
+Calcula splits viverista/plataforma para plantas y flete.
+Crea registros en transferencias_viverista.
+Envía WhatsApp a viverista con desglose.
 """
 from __future__ import annotations
 from typing import Optional
@@ -23,7 +28,8 @@ from app.services.epayco import (
 from app.services.supabase import admin
 from app.services.precios import calcular_precios_pedido
 from app.services.config_global import get_config
-from app.services.whatsapp import enviar_mensaje_whatsapp  ← NUEVA
+from app.services.whatsapp import enviar_mensaje_whatsapp
+
 
 router = APIRouter(prefix="/api/pagos", tags=["pagos"])
 
@@ -104,6 +110,7 @@ def _obtener_desglose_pago(db, transaccion_id: int, monto_cop: int) -> tuple[flo
 
     # Estrategia 3 — Fallback conservador (protege al viverista)
     return (float(monto_cop), 0.0)
+
 
 # ─────────────────────────────────────────────────────────────────
 # FASE 2: Funciones para Escenario 3 (split de pagos)
@@ -192,6 +199,8 @@ async def crear_transferencia_viverista(
         return None
 
 # ───────────────────────────────────────────────────────────────────
+
+
 @router.post("/iniciar", response_model=IniciarPagoResponse)
 async def iniciar_pago(req: IniciarPagoRequest, user: UserContext = Depends(require_user)):
     """Inicia pago de una transacción B2B vía ePayco.
@@ -403,7 +412,7 @@ async def confirmar_pago(
                 "epayco_subscription_id": x_ref_payco,
             }).eq("suscripcion_id", pago["suscripcion_id"]).execute()
 
-             elif pago.get("transaccion_id"):
+        elif pago.get("transaccion_id"):
             # ═══════════════════════════════════════════════════════════════
             # FASE 2: ESCENARIO 3 - Split automático de pagos
             # ═══════════════════════════════════════════════════════════════
@@ -512,8 +521,6 @@ async def confirmar_pago(
             db.table("transacciones_b2b").update({
                 "estado": "pagada",
             }).eq("transaccion_id", pago["transaccion_id"]).execute()
-
-            # ── LOGÍSTICA: generar entregas y notificar viveristas ──
 
             # ── LOGÍSTICA: generar entregas y notificar viveristas ──
             try:
