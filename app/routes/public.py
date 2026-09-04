@@ -116,7 +116,7 @@ async def listar_marketplace_publico(
         return {"ok": True, "items": items, "total": len(items)}
 
     # Listado general
-    query = db.table("v_inventario").select(
+    query = db.table("inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
         "stock, foto_ia_url, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico), "
@@ -161,7 +161,7 @@ async def detalle_item_publico(inventario_id: int):
     NO devuelve: dirección, teléfono ni WhatsApp del vivero.
     """
     db = admin()
-    resp = db.table("v_inventario").select(
+    resp = db.table("inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
         "stock, estado_planta, foto_ia_url, notas, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico, familia_botanica, requerimientos_ia, clima_ideal), "
