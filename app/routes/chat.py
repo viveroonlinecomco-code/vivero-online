@@ -74,3 +74,4 @@ async def chat(req: ChatRequest, user: UserContext = Depends(require_user)):
         agente=result["agente"],
         metadata=result.get("metadata", {}),
     )
+
