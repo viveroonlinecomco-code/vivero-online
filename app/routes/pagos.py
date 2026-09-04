@@ -28,7 +28,7 @@ from app.services.epayco import (
 from app.services.supabase import admin
 from app.services.precios import calcular_precios_pedido
 from app.services.config_global import get_config
-from app.services.whatsapp import enviar_mensaje_whatsapp
+from app.services.whatsapp_meta import enviar_mensaje_whatsapp
 
 
 router = APIRouter(prefix="/api/pagos", tags=["pagos"])
