@@ -1,11 +1,11 @@
-"""Cliente para enviar mensajes via Meta WhatsApp Cloud API y servicios de soporte."""
+"""Cliente WhatsApp — Estructura CORRECTA de tablas: plantas + inventario."""
 from __future__ import annotations
 
 import hashlib
 import hmac
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import httpx
 from app.services.precios import calcular_precios_pedido
@@ -82,14 +82,16 @@ async def send_template_message(
                 },
                 json=payload,
             )
-        return resp.status_code == 200
+        if resp.status_code == 200:
+            return True
+        return False
     except Exception as e:
         logger.exception("❌ Exception: %s", e)
         return False
 
 
 async def download_media_bytes(media_id: str) -> bytes:
-    """Descarga los bytes de un media file de Meta (imagen, audio, etc.)."""
+    """Descarga media de Meta en 2 pasos."""
     async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
         meta_resp = await client.get(
             f"{_GRAPH_API}/{media_id}",
@@ -98,7 +100,7 @@ async def download_media_bytes(media_id: str) -> bytes:
         meta_resp.raise_for_status()
         media_url = meta_resp.json().get("url")
         if not media_url:
-            raise ValueError(f"Meta no devolvió URL para media_id={media_id}")
+            raise ValueError("No URL")
 
         media_resp = await client.get(
             media_url,
@@ -133,29 +135,35 @@ async def procesar_consulta_precio_producto(
     es_guest: bool = True,
     plazo: str = "inmediato",
 ) -> str:
-    """Busca en plantas → inventario → precio."""
+    """✅ ESTRUCTURA CORRECTA: Busca en plantas → inventario → precio."""
     try:
+        logger.info("🔍 Buscando: %s", producto_nombre)
+
         plantas_resp = supabase.table("plantas").select(
             "planta_id, nombre_comun"
         ).ilike("nombre_comun", f"%{producto_nombre}%").limit(1).execute()
 
         if not plantas_resp.data:
+            logger.warning("Planta no encontrada: %s", producto_nombre)
             return f"No encontré '{producto_nombre}'. Intenta con: Hiedra, Geranio, Duranta, Afelandra"
 
         planta = plantas_resp.data[0]
         planta_id = planta.get("planta_id")
         nombre_comun = planta.get("nombre_comun")
+        logger.info("✅ Planta encontrada: %s (id=%s)", nombre_comun, planta_id)
 
         inventario_resp = supabase.table("inventario").select(
             "inventario_id, precio_mayorista, stock"
         ).eq("planta_id", planta_id).limit(1).execute()
 
         if not inventario_resp.data:
+            logger.warning("Inventario no encontrado para planta_id=%s", planta_id)
             return f"'{nombre_comun}' no está disponible en inventario"
 
         inventario = inventario_resp.data[0]
         precio_mayorista = inventario.get("precio_mayorista", 0)
         inventario_id = inventario.get("inventario_id")
+        logger.info("✅ Inventario encontrado: inventario_id=%s, precio=$%s", inventario_id, precio_mayorista)
 
         if not precio_mayorista:
             return "Error: precio no disponible"
@@ -175,16 +183,66 @@ async def procesar_consulta_precio_producto(
         )
 
         precio_cliente = resultado_precios["totales"]["precio_final_cliente"]
+        logger.info("✅ Precio cliente: $%s", precio_cliente)
+
         precio_fmt = f"${int(precio_cliente):,.0f}".replace(",", ".")
-        
-        return (
+        mensaje = (
             f"Para tu proyecto, la {nombre_comun} "
             f"tiene un precio de {precio_fmt} COP. "
             f"Compra: https://app.viveroonline.com.co/marketplace"
         )
+        logger.info("✅ Respuesta: %s", mensaje[:80])
+        return mensaje
+
     except Exception as e:
         logger.exception("❌ Error: %s", e)
         return f"⚠️ Error: {str(e)[:100]}"
+
+
+async def obtener_recomendacion_producto(
+    supabase,
+    producto_id: int,
+    es_guest: bool = True,
+    plazo: str = "inmediato",
+) -> dict:
+    """Obtiene recomendación de producto."""
+    try:
+        inventario = supabase.table("inventario").select("*").eq("id", producto_id).single().execute()
+
+        if not inventario.data:
+            return {"error": "No encontrado"}
+
+        datos = inventario.data
+        precio = datos.get("precio_mayorista", 0)
+
+        if not precio:
+            return {"error": "Sin precio"}
+
+        resultado_precios = calcular_precios_pedido(
+            cliente={"es_guest": es_guest, "cliente_id": None},
+            items=[{"inventario_id": producto_id, "cantidad": 1, "precio_unitario": precio}],
+            plazo=plazo,
+            forzar_canal=None,
+        )
+
+        precio_cliente = resultado_precios["totales"]["precio_final_cliente"]
+
+        return {
+            "id": producto_id,
+            "nombre": "Producto",
+            "precio_cliente_cop": int(precio_cliente),
+            "precio_mayorista_cop": precio,
+            "error": None
+        }
+
+    except Exception as e:
+        logger.exception("Error: %s", e)
+        return {"error": str(e)}
+
+
+def _format_cop(monto) -> str:
+    """Formato: $88.410"""
+    return f"${int(monto):,}".replace(",", ".")
 
 
 async def notify_viverista_nueva_cotizacion(
