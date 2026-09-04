@@ -136,7 +136,7 @@ async def procesar_consulta_precio_producto(
     Pasos:
     1. Busca en tabla 'plantas' por nombre_comun
     2. Obtiene planta_id
-    3. Busca en 'v_inventario' con ese planta_id
+    3. Busca en 'inventario' con ese planta_id
     4. Obtiene precio_mayorista
     5. Calcula precio cliente con markup
     
@@ -166,8 +166,8 @@ async def procesar_consulta_precio_producto(
         nombre_comun = planta.get("nombre_comun")
         logger.info(f"✅ Planta: {nombre_comun} (id={planta_id})")
         
-        # 2. Buscar en 'v_inventario'
-        inventario_resp = supabase.table("v_inventario").select(
+        # 2. Buscar en 'inventario'
+        inventario_resp = supabase.table("inventario").select(
             "inventario_id, precio_mayorista, stock"
         ).eq("planta_id", planta_id).limit(1).execute()
         
