@@ -27,11 +27,6 @@ comercial. En este archivo:
 El comprador SÍ ve su total (en el mensaje de aprobación y en el checkout).
 
 ═══════════════════════════════════════════════════════════════════════════
-FASE 11 (03 sep 2026):
-  - Integración de huella de piso: tier dinámico basado en área + altura
-  - Fórmula unificada: Fee 0% (S/M), 9% (L/XL) + Recargo 12% × (viveros-1) × BASE
-  - Ambos checkouts (B2C + B2B) usan misma lógica de cálculo de flete
-
 FEATURE AUTO-TIMEOUT (6 ago 2026):
   - Cron vencer-cotizaciones extendido para procesar recordatorios + timeout
   - Endpoint POST /aceptar-parcial para cotizaciones parciales
@@ -61,11 +56,6 @@ from app.services.whatsapp_meta import send_text_message, notify_viverista_nueva
 # from app.services.onboarding_wa import marcar_primera_cotizacion  # FIX 25 ago: Import local en solicitar_aprobacion()
 from app.services.precios import calcular_precios_pedido
 from app.services.auto_timeout import procesar_recordatorios_y_timeouts
-# FASE 11: Importar funciones de huella de piso
-from app.services.logistica_huella_piso import (
-    calcular_tier_viaje_con_huella_piso,
-    calcular_flete_correcto
-)
 
 router = APIRouter(prefix="/api/pedidos", tags=["pedidos"])
 
@@ -773,94 +763,32 @@ async def calcular_flete_cotizacion(
         zona_resp = db.table("ciudades_zonas").select("zona").eq("ciudad", ciudad).limit(1).execute()
         zona = zona_resp.data[0]["zona"] if zona_resp.data else "sabana_entre_municipios"
 
-        # 2. Obtener tier dinámico con HUELLA DE PISO (FASE 11)
+        # 2. Obtener tier máximo de los items de la cotización
         cot_items = db.table("cotizaciones").select("items").eq("cotizacion_id", cotizacion_id).limit(1).execute()
         items = cot_items.data[0].get("items", []) if cot_items.data else []
         inv_ids = [it.get("inventario_id") for it in items if it.get("inventario_id")]
 
         tier = "M"
         num_viveros = 1
-        area_total = 0.0
-        altura_max = 0
-        
         if inv_ids:
-            # FASE 11: Usar función dinámica en lugar del max() estático
-            items_dict = [{"inventario_id": it.get("inventario_id"), "cantidad": it.get("cantidad", 1)} 
-                         for it in items]
-            tier_resultado = calcular_tier_viaje_con_huella_piso(db, items_dict, es_b2b=True)
-            
-            if tier_resultado['ok']:
-                tier = tier_resultado['tier_final']
-                area_total = tier_resultado['area_total']
-                altura_max = tier_resultado['altura_max']
-                import logging
-                logging.getLogger(__name__).debug(
-                    f"Tier dinámico calculado: {tier} (área: {area_total}m², altura: {altura_max}cm)"
-                )
-            else:
-                # Fallback: calcular manualmente
-                inv_resp = db.table("inventario").select("logistics_tier, vivero_id").in_("inventario_id", inv_ids).execute()
-                tier_orden = {"XL": 4, "L": 3, "M": 2, "S": 1}
-                tiers = [r.get("logistics_tier", "M") for r in (inv_resp.data or [])]
-                if tiers:
-                    tier = max(tiers, key=lambda t: tier_orden.get(t, 2))
-                viveros = {r.get("vivero_id") for r in (inv_resp.data or []) if r.get("vivero_id")}
-                num_viveros = len(viveros) if viveros else 1
-                import logging
-                logging.getLogger(__name__).warning(
-                    f"Error calculando tier dinámico, fallback: {tier_resultado.get('error')}"
-                )
-            
-            # Contar viveros si no lo hizo la función dinámica
-            if num_viveros == 1 and inv_ids:
-                try:
-                    inv_resp = db.table("inventario").select("vivero_id").in_("inventario_id", inv_ids).execute()
-                    viveros = {r.get("vivero_id") for r in (inv_resp.data or []) if r.get("vivero_id")}
-                    num_viveros = len(viveros) if viveros else 1
-                except:
-                    num_viveros = 1
+            inv_resp = db.table("v_inventario").select("logistics_tier, vivero_id").in_("inventario_id", inv_ids).execute()
+            tier_orden = {"XL": 4, "L": 3, "M": 2, "S": 1}
+            tiers = [r.get("logistics_tier", "M") for r in (inv_resp.data or [])]
+            if tiers:
+                tier = max(tiers, key=lambda t: tier_orden.get(t, 2))
+            viveros = {r.get("vivero_id") for r in (inv_resp.data or []) if r.get("vivero_id")}
+            num_viveros = len(viveros) if viveros else 1
 
-        # 3. Calcular flete con FÓRMULA UNIFICADA (FASE 11)
-        # Fee: 0% (S/M), 9% (L/XL)
-        # Recargo: 12% × BASE × (viveros - 1)
+        # 3. Obtener precio base
         tarifa_resp = db.table("tarifas_logistica").select("precio_cop").eq("zona", zona).eq("tier_base", tier).limit(1).execute()
         precio_base = tarifa_resp.data[0]["precio_cop"] if tarifa_resp.data else 180000
 
-        # FASE 11: Usar fórmula unificada
-        flete_resultado = calcular_flete_correcto(db, ciudad, items_dict if inv_ids else [], es_b2b=True)
-        
-        if flete_resultado['ok']:
-            precio_base = flete_resultado['costo_base']
-            fee = flete_resultado['fee_9pct']
-            recargo = flete_resultado['recargo_12pct']
-            total = flete_resultado['total_flete']
-            import logging
-            logging.getLogger(__name__).info(
-                f"Flete dinámico calculado: ${total:,} "
-                f"(Base: ${precio_base:,}, Fee: ${fee:,}, Recargo: ${recargo:,})"
-            )
-        else:
-            # Fallback: usar lógica anterior
-            fee = round(precio_base * 0.09) if tier in ("L", "XL") else 0
-            recargos = {"S": 40000, "M": 60000, "L": 90000, "XL": 120000}
-            recargo = (num_viveros - 1) * recargos.get(tier, 60000) if num_viveros > 1 else 0
-            total = precio_base + fee + recargo
-            import logging
-            logging.getLogger(__name__).warning(
-                f"Error calculando flete dinámico, fallback: {flete_resultado.get('error')}"
-            )
+        # 4. Calcular fee y recargo
+        fee = round(precio_base * 0.10)
+        recargos = {"S": 40000, "M": 60000, "L": 90000, "XL": 120000}
+        recargo = (num_viveros - 1) * recargos.get(tier, 60000) if num_viveros > 1 else 0
+        total = precio_base + fee + recargo
 
-        return {
-            "ok":             True,
-            "tier":           tier,
-            "zona":           zona,
-            "precio_base":    precio_base,
-            "fee_carga_viva": fee,
-            "total_flete":    total,
-            "area_total":     area_total,
-            "altura_max":     altura_max,
-            "detalle":        [],
-        }
         return {
             "ok":             True,
             "tier":           tier,
