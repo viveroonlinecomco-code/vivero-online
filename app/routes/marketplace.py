@@ -95,7 +95,7 @@ def _resolver_categorias_batch(db, inventario_ids: list[int]) -> dict[int, str]:
     """Resuelve categorías de MÚLTIPLES SKUs en 1 sola query."""
     if not inventario_ids:
         return {}
-    resp = db.table("inventario").select(
+    resp = db.table("v_inventario").select(
         "inventario_id, categoria_producto, plantas(categoria_producto)"
     ).in_("inventario_id", inventario_ids).execute()
     resultado = {}
@@ -164,7 +164,7 @@ async def listar_marketplace_guest(
         raw_items = resp.data or []
         inv_ids = [r["inventario_id"] for r in raw_items]
         if inv_ids:
-            tiers = db.table("inventario").select(
+            tiers = db.table("v_inventario").select(
                 "inventario_id, logistics_tier"
             ).in_("inventario_id", inv_ids).execute()
             tier_map = {t["inventario_id"]: t.get("logistics_tier", "M") for t in (tiers.data or [])}
@@ -191,7 +191,7 @@ async def listar_marketplace_guest(
             })
         return {"ok": True, "items": items, "total": len(items)}
     
-    query = db.table("inventario").select(
+    query = db.table("v_inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
         "stock, unidad_medida, foto_ia_url, vivero_id, logistics_tier, "
         "plantas(nombre_comun, nombre_cientifico), "
@@ -234,7 +234,7 @@ async def listar_marketplace_guest(
 async def detalle_item_guest(inventario_id: int):
     """Detalle de producto para B2C guest (sin auth)."""
     db = admin()
-    resp = db.table("inventario").select(
+    resp = db.table("v_inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
         "stock, unidad_medida, estado_planta, foto_ia_url, notas, "
         "logistics_tier, "
@@ -329,7 +329,7 @@ async def listar_marketplace(
             })
         return {"ok": True, "items": items, "total": len(items)}
     
-    query = db.table("inventario").select(
+    query = db.table("v_inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
         "stock, unidad_medida, foto_ia_url, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico), "
@@ -382,7 +382,7 @@ async def detalle_item(
             "user_id", user.user_id
         ).eq("estado", "activa").limit(1).execute()
         tiene_suscripcion = bool(sus.data)
-    resp = db.table("inventario").select(
+    resp = db.table("v_inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, precio_detal, "
         "stock, unidad_medida, estado_planta, foto_ia_url, notas, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico, familia_botanica, requerimientos_ia, clima_ideal), "
@@ -409,7 +409,7 @@ def _validar_items_y_calcular(db, req_items) -> tuple[list[dict], float]:
     items_validados = []
     total = 0.0
     for item in req_items:
-        inv = db.table("inventario").select(
+        inv = db.table("v_inventario").select(
             "precio_mayorista, stock, estado_planta"
         ).eq("inventario_id", item.inventario_id).limit(1).execute()
         if not inv.data:
@@ -474,7 +474,7 @@ def _enriquecer_items(db, items_raw: list[dict]) -> list[dict]:
     inventario_ids = [it.get("inventario_id") for it in items_raw if it.get("inventario_id")]
     inv_map: dict[int, dict] = {}
     if inventario_ids:
-        inv_resp = db.table("inventario").select(
+        inv_resp = db.table("v_inventario").select(
             "inventario_id, foto_ia_url, stock, estado_planta, categoria_producto, "
             "plantas(nombre_comun, nombre_cientifico, categoria_producto), "
             "viveros(vivero_id, nombre_vivero, ciudad)"

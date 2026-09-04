@@ -48,8 +48,8 @@ def calcular_tier_viaje_con_huella_piso(db, items: List[Dict], es_b2b: bool = Fa
     
     Implementa especificación de Elena:
       PASO 1: Auditoría restricciones físicas (altura)
-      PASO 2: Sumatoria de área
-      PASO 3: Validación contra límites
+      PASO 2: Sumatoria de área (obtiene huella_piso_m2 via JOIN a formatos_comerciales)
+      PASO 3: Validación contra límites (con márgenes configurables)
       PASO 4: Escalado automático
       PASO 5: Restricción de canal (B2B vs B2C)
     
@@ -89,8 +89,8 @@ def calcular_tier_viaje_con_huella_piso(db, items: List[Dict], es_b2b: bool = Fa
         # PASO 2: Sumatoria de área
         area_total = calcular_area_total_carrito(db, items)
         
-        # PASO 3: Validación contra límites
-        tier_por_area = determinar_tier_por_area(area_total)
+        # PASO 3: Validación contra límites (ahora con margen de tolerancia)
+        tier_por_area, area_info = determinar_tier_por_area(area_total, db=db, usar_margen=True)
         
         # PASO 4: Tomar el MÁXIMO (más restrictivo)
         if TIER_ORDEN[tier_por_restriccion] > TIER_ORDEN[tier_por_area]:
@@ -166,11 +166,11 @@ def obtener_altura_maxima_carrito(db, items: List[Dict]) -> int:
         if not inv_ids:
             return 0
         
-        # Obtener altura máxima de todos los productos
-        resp = db.table('inventario').select('altura_cm_max').in_('inventario_id', inv_ids).execute()
+        # Obtener altura máxima de todos los productos (CORREGIDO: altura_cm, no altura_cm_max)
+        resp = db.table('inventario').select('altura_cm').in_('inventario_id', inv_ids).execute()
         
         if resp.data:
-            alturas = [r.get('altura_cm_max', 0) for r in resp.data]
+            alturas = [r.get('altura_cm', 0) for r in resp.data]
             return max(alturas) if alturas else 0
     
     except Exception as e:
@@ -220,6 +220,11 @@ def calcular_area_total_carrito(db, items: List[Dict]) -> float:
       - 6 MEDIANA (6 × 0.065 = 0.39m²)
       - Total: 1.19m²
     
+    CAMBIO (Sep 4, 2026):
+      - Ahora obtiene huella_piso_m2 desde formatos_comerciales
+      - Lee via FK formato_id (normalización correcta)
+      - Elimina redundancia: huella_piso_m2 fue removida de inventario
+    
     Args:
         db: Cliente Supabase
         items: [{inventario_id, cantidad}, ...]
@@ -240,20 +245,27 @@ def calcular_area_total_carrito(db, items: List[Dict]) -> float:
             if not inv_id or cantidad <= 0:
                 continue
             
-            # Obtener huella_piso del producto desde BD
-            resp = db.table('inventario').select('huella_piso_m2').eq('inventario_id', inv_id).limit(1).execute()
+            # CAMBIO: Obtener huella_piso del producto via JOIN a formatos_comerciales
+            # Query: inventario (con formato_id FK) → formatos_comerciales (con huella_piso_m2)
+            resp = db.table('inventario').select(
+                'formato_id, formatos_comerciales(huella_piso_m2)'
+            ).eq('inventario_id', inv_id).limit(1).execute()
             
-            if resp.data and resp.data[0].get('huella_piso_m2'):
-                huella = float(resp.data[0]['huella_piso_m2'])
-                area_item = cantidad * huella
-                area_total += area_item
-                
-                logger.debug(f"Item {inv_id}: {cantidad} × {huella}m² = {area_item:.3f}m²")
+            if resp.data:
+                row = resp.data[0]
+                # El JOIN devuelve formatos_comerciales como objeto anidado
+                formato = row.get('formatos_comerciales')
+                if formato and formato.get('huella_piso_m2'):
+                    huella = float(formato['huella_piso_m2'])
+                    area_item = cantidad * huella
+                    area_total += area_item
+                    
+                    logger.debug(f"Item {inv_id}: {cantidad} × {huella}m² = {area_item:.3f}m²")
         
         return round(area_total, 3)
     
     except Exception as e:
-        logger.error(f"Error calculando área: {e}")
+        logger.error(f"Error calculando área (JOIN formatos_comerciales): {e}")
         return 0.0
 
 
@@ -261,31 +273,100 @@ def calcular_area_total_carrito(db, items: List[Dict]) -> float:
 # FUNCIONES HELPER: Validación contra límites
 # ============================================================================
 
-def determinar_tier_por_area(area_m2: float) -> str:
+def determinar_tier_por_area(area_m2: float, db=None, usar_margen: bool = True) -> tuple[str, dict]:
     """
-    PASO 3: Validación contra límites de piso.
+    PASO 3: Validación contra límites de piso CON MARGEN DE TOLERANCIA.
     
     Determina el TIER MÍNIMO que puede soportar el área.
     
-    Lógica (ESPECIFICACIÓN ELENA):
-      if área ≤ 0.24m² → TIER S
-      elif área ≤ 2.0m² → TIER M
-      elif área ≤ 4.0m² → TIER L
-      elif área ≤ 14.0m² → TIER XL
+    MEJORÍA (Sep 4, 2026):
+      - Ahora soporta margen de tolerancia configurable
+      - Si área está cerca del límite, intenta escalad hacia abajo
+      - Ejemplo: 4.5m² cabe en Tier L (límite 4.0 + margen 0.5)
+    
+    Lógica:
+      if área ≤ 0.24 + margen_S → TIER S
+      elif área ≤ 2.0 + margen_M → TIER M
+      elif área ≤ 4.0 + margen_L → TIER L
+      elif área ≤ 14.0 + margen_XL → TIER XL
       else → ERROR (múltiples camiones)
     
     Args:
         area_m2: Área total en m²
+        db: Cliente Supabase (opcional, para leer márgenes de BD)
+        usar_margen: bool (True = usar márgenes, False = usar límites base)
     
     Returns:
-        str: Tier mínimo (S, M, L, o XL)
+        tuple: (tier_final, info_dict)
+        info_dict contiene: {
+            'tier': str,
+            'area_m2': float,
+            'limite_base': float,
+            'margen': float,
+            'limite_con_margen': float,
+            'entra_con_margen': bool,
+            'razon': str,
+        }
     """
-    for tier in ['S', 'M', 'L', 'XL']:
-        if area_m2 <= LIMITES_PISO[tier]:
-            return tier
+    info = {
+        'area_m2': area_m2,
+        'entra_con_margen': False,
+        'razon': '',
+    }
     
-    # Si supera XL (14m²), retorna XL pero se avisa
-    return 'XL'
+    # Obtener márgenes desde BD si está disponible y se solicita
+    margenes = {}
+    if usar_margen and db:
+        try:
+            resp = db.table('limites_tier_con_margen').select(
+                'tier, limite_base_m2, margen_m2, limite_con_margen'
+            ).eq('activo', True).execute()
+            for row in resp.data:
+                margenes[row['tier']] = {
+                    'base': float(row['limite_base_m2']),
+                    'margen': float(row['margen_m2']),
+                    'con_margen': float(row['limite_con_margen']),
+                }
+        except Exception as e:
+            logger.warning(f"Error leyendo márgenes de BD: {e}. Usando defaults.")
+            usar_margen = False
+    
+    # Iterar tiers en orden (S → M → L → XL)
+    for tier in ['S', 'M', 'L', 'XL']:
+        if usar_margen and margenes.get(tier):
+            # Usar límite CON margen
+            limite = margenes[tier]['con_margen']
+            base = margenes[tier]['base']
+            margen = margenes[tier]['margen']
+        else:
+            # Usar límite BASE (sin margen)
+            limite = LIMITES_PISO[tier]
+            base = LIMITES_PISO[tier]
+            margen = 0
+        
+        if area_m2 <= limite:
+            # ✅ Entra en este tier
+            info['tier'] = tier
+            info['limite_base'] = base
+            info['margen'] = margen
+            info['limite_con_margen'] = limite
+            info['entra_con_margen'] = (margen > 0)
+            
+            if margen > 0 and area_m2 > base:
+                info['razon'] = f"Área {area_m2:.2f}m² supera base {base}m², pero entra con margen +{margen}m² = {limite}m²"
+            else:
+                info['razon'] = f"Área {area_m2:.2f}m² ≤ límite {limite}m²"
+            
+            return (tier, info)
+    
+    # Si supera XL (14 + margen)
+    info['tier'] = 'XL'
+    info['limite_base'] = LIMITES_PISO['XL']
+    info['margen'] = margenes.get('XL', {}).get('margen', 1.0) if margenes else 1.0
+    info['limite_con_margen'] = info['limite_base'] + info['margen']
+    info['razon'] = f"Área {area_m2:.2f}m² requiere múltiples camiones o cotización personalizada"
+    
+    return ('XL', info)
 
 
 # ============================================================================
