@@ -171,8 +171,8 @@ async def procesar_consulta_precio_producto(
         nombre_comun = planta.get("nombre_comun")
         logger.info(f"✅ Planta encontrada: {nombre_comun} (id={planta_id})")
 
-        # 2. BUSCAR EN TABLA 'v_inventario' por planta_id
-        inventario_resp = supabase.table("v_inventario").select(
+        # 2. BUSCAR EN TABLA 'inventario' por planta_id
+        inventario_resp = supabase.table("inventario").select(
             "inventario_id, precio_mayorista, stock"
         ).eq("planta_id", planta_id).limit(1).execute()
 
@@ -229,7 +229,7 @@ async def obtener_recomendacion_producto(
 ) -> dict:
     """Obtiene recomendación de producto."""
     try:
-        inventario = supabase.table("v_inventario").select("*").eq("id", producto_id).single().execute()
+        inventario = supabase.table("inventario").select("*").eq("id", producto_id).single().execute()
 
         if not inventario.data:
             return {"error": "No encontrado"}
