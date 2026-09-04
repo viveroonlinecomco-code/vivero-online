@@ -771,7 +771,7 @@ async def calcular_flete_cotizacion(
         tier = "M"
         num_viveros = 1
         if inv_ids:
-            inv_resp = db.table("v_inventario").select("logistics_tier, vivero_id").in_("inventario_id", inv_ids).execute()
+            inv_resp = db.table("inventario").select("logistics_tier, vivero_id").in_("inventario_id", inv_ids).execute()
             tier_orden = {"XL": 4, "L": 3, "M": 2, "S": 1}
             tiers = [r.get("logistics_tier", "M") for r in (inv_resp.data or [])]
             if tiers:
