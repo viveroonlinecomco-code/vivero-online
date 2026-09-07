@@ -14,9 +14,6 @@ INTEGRACIÓN:
 - Base de datos: Supabase (tabla entregas)
 - Fotos: almacenadas en BD como URL
 - Payout: crea registro en transferencias_viverista
-
-NOTA: Este archivo se integra en app/routes/whatsapp.py existente
-NO reemplaza whatsapp.py, solo agrega nueva lógica
 """
 
 from __future__ import annotations
@@ -24,12 +21,78 @@ import logging
 from datetime import datetime
 from typing import Optional
 
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+
 from app.services.supabase import admin
 from app.services.whatsapp_meta import download_media_bytes
 
 logger = logging.getLogger(__name__)
 
+# ═══════════════════════════════════════════════════════════════
+# DEFINIR ROUTER PARA FASTAPI
+# ═══════════════════════════════════════════════════════════════
+router = APIRouter(
+    prefix="/api/whatsapp",
+    tags=["whatsapp_despacho"],
+    responses={404: {"description": "Not found"}}
+)
 
+
+# ═══════════════════════════════════════════════════════════════
+# ESQUEMAS PYDANTIC
+# ═══════════════════════════════════════════════════════════════
+class DespachoRequest(BaseModel):
+    numero_viverista: str
+    cotizacion_id: int
+    vivero_id: int
+    mensaje_texto: Optional[str] = None
+    media_id: Optional[str] = None
+
+
+class DespachoResponse(BaseModel):
+    ok: bool
+    entrega_id: Optional[int] = None
+    payout_60_creado: bool = False
+    foto_url: Optional[str] = None
+    mensaje: str
+    error: Optional[str] = None
+
+
+# ═══════════════════════════════════════════════════════════════
+# ENDPOINT HTTP PARA WEBHOOK DE DESPACHO
+# ═══════════════════════════════════════════════════════════════
+@router.post("/despacho-trigger", response_model=DespachoResponse)
+async def despacho_trigger_endpoint(request: DespachoRequest) -> DespachoResponse:
+    """
+    Endpoint para procesar confirmación de despacho desde WhatsApp
+    
+    POST /api/whatsapp/despacho-trigger
+    {
+        "numero_viverista": "+573178543819",
+        "cotizacion_id": 123,
+        "vivero_id": 1,
+        "mensaje_texto": "Despacho listo",
+        "media_id": "wamid.abc123xyz"
+    }
+    """
+    result = await procesar_mensaje_despacho(
+        numero_viverista=request.numero_viverista,
+        cotizacion_id=request.cotizacion_id,
+        vivero_id=request.vivero_id,
+        mensaje_texto=request.mensaje_texto,
+        media_id=request.media_id
+    )
+    
+    if not result["ok"]:
+        raise HTTPException(status_code=400, detail=result.get("mensaje", "Error procesando despacho"))
+    
+    return DespachoResponse(**result)
+
+
+# ═══════════════════════════════════════════════════════════════
+# FUNCIÓN PRINCIPAL DE LÓGICA
+# ═══════════════════════════════════════════════════════════════
 async def procesar_mensaje_despacho(
     numero_viverista: str,
     cotizacion_id: int,
@@ -40,7 +103,7 @@ async def procesar_mensaje_despacho(
     """
     Procesa mensaje de despacho del viverista
     
-    Llamado desde: app/routes/whatsapp.py cuando se detecta keyword "despacho"
+    Llamado desde: endpoint despacho_trigger_endpoint
     
     Args:
         numero_viverista: Número WhatsApp del viverista (ej: +573178543819)
@@ -129,7 +192,8 @@ async def procesar_mensaje_despacho(
                 logger.error(f"[DESPACHO] Cotización {cotizacion_id} no encontrada")
                 return {
                     "ok": False,
-                    "error": "cotizacion_not_found"
+                    "error": "cotizacion_not_found",
+                    "mensaje": f"Cotización {cotizacion_id} no encontrada"
                 }
             
             cotizacion = cotizacion_result.data
@@ -140,7 +204,8 @@ async def procesar_mensaje_despacho(
             logger.error(f"[DESPACHO] Error obteniendo cotización: {str(e)}")
             return {
                 "ok": False,
-                "error": "cotizacion_error"
+                "error": "cotizacion_error",
+                "mensaje": f"Error obteniendo cotización: {str(e)}"
             }
         
         # 5. BUSCAR pago_id ASOCIADO
