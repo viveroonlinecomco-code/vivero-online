@@ -36,7 +36,7 @@ async def ejecutar_garantia_cron() -> Dict:
     """
     Ejecuta verificación de garantía 24h y payout 40%
     
-    Llamado por: APScheduler en app/main.py
+    Llamado desde: app/main.py via APScheduler
     
     Returns:
         {
@@ -44,7 +44,7 @@ async def ejecutar_garantia_cron() -> Dict:
             "entregas_verificadas": int,
             "payouts_ejecutados": int,
             "entregas_con_reclamo": int,
-            "errores": int,
+            "entregas_error": int,
             "detalles": [...],
             "error": str (si error general)
         }
@@ -64,7 +64,7 @@ async def ejecutar_garantia_cron() -> Dict:
     try:
         logger.info("[CRON 24h] Iniciando verificación de garantía...")
         
-        # 1. BUSCAR ENTREGAS ENTREGADAS HACE MÁS DE 24h
+        # 1. BUSCAR ENTREGAS ENTREGADAS HACE MÁS DE 24H
         try:
             ahora = datetime.utcnow()
             hace_24h = (ahora - timedelta(hours=24)).isoformat()
@@ -94,9 +94,8 @@ async def ejecutar_garantia_cron() -> Dict:
                 entrega_id = entrega["entrega_id"]
                 cotizacion_id = entrega["cotizacion_id"]
                 vivero_id = entrega["vivero_id"]
-                timestamp_entrega = entrega["timestamp_entrega"]
                 
-                logger.info(f"[CRON 24h] Verificando entrega {entrega_id}...")
+                logger.info(f"[CRON 24h] Procesando entrega {entrega_id}...")
                 
                 # 2.1. BUSCAR RECLAMOS ABIERTOS PARA ESTA ENTREGA
                 try:
@@ -105,9 +104,9 @@ async def ejecutar_garantia_cron() -> Dict:
                     ).eq(
                         "entrega_id", entrega_id
                     ).eq(
-                        "ticket_type", "RECLAMO"  # Solo reclamos, no consultas
+                        "ticket_type", "RECLAMO"
                     ).eq(
-                        "estado", "abierto"  # Solo abiertos
+                        "estado", "abierto"
                     ).execute()
                     
                     tiene_reclamo = bool(reclamos_result.data and len(reclamos_result.data) > 0)
@@ -126,7 +125,7 @@ async def ejecutar_garantia_cron() -> Dict:
                         continue  # Pasar a siguiente entrega
                     
                 except Exception as e:
-                    logger.error(f"[CRON 24h] Error buscando reclamos: {str(e)}")
+                    logger.error(f"[CRON 24h] Error verificando reclamos: {str(e)}")
                     resultado["entregas_error"] += 1
                     resultado["detalles"].append({
                         "entrega_id": entrega_id,
@@ -135,14 +134,11 @@ async def ejecutar_garantia_cron() -> Dict:
                     })
                     continue
                 
-                # 2.2. NO HAY RECLAMO → EJECUTAR PAYOUT 40%
-                logger.info(
-                    f"[CRON 24h] Entrega {entrega_id}: SIN RECLAMOS, "
-                    f"ejecutando Payout 40%..."
-                )
+                # 2.2. SIN RECLAMOS → EJECUTAR PAYOUT 40%
+                logger.info(f"[CRON 24h] Entrega {entrega_id}: SIN RECLAMOS, ejecutando Payout 40%")
                 
-                # 2.2.1. OBTENER pago_id Y MONTO
                 try:
+                    # Obtener monto de cotización
                     cotizacion_result = db.table("cotizaciones").select(
                         "monto_total"
                     ).eq(
@@ -164,32 +160,24 @@ async def ejecutar_garantia_cron() -> Dict:
                     })
                     continue
                 
-                # 2.2.2. BUSCAR pago_id
+                # Obtener pago_id
+                pago_id = None
                 try:
-                    pagos_result = db.table("pagos").select(
-                        "pago_id"
-                    ).eq(
-                        "estado_pago", "aprobado"
-                    ).eq(
-                        "monto_total", monto_total
-                    ).limit(1).execute()
+                    pagos_result = db.table("pagos").select("pago_id").eq(
+                        "cotizacion_id", cotizacion_id
+                    ).eq("estado_pago", "aprobado").limit(1).execute()
                     
-                    if not pagos_result.data:
-                        logger.warning(
-                            f"[CRON 24h] No se encontró pago aprobado para monto {monto_total}"
-                        )
-                        pago_id = None
-                    else:
+                    if pagos_result.data:
                         pago_id = pagos_result.data[0]["pago_id"]
-                    
+                
                 except Exception as e:
                     logger.error(f"[CRON 24h] Error buscando pago: {str(e)}")
                     pago_id = None
                 
-                # 2.2.3. CREAR TRANSFERENCIA PAYOUT 40%
+                # Crear transferencia Payout 40%
                 if pago_id:
                     try:
-                        # Calcular split Escenario 3: 3% VO, 97% viverista, 40% post-entrega
+                        # Calcular split Escenario 3
                         comision_vo_40 = (monto_total * 0.03) * 0.40
                         monto_viverista_40 = (monto_total * 0.97) * 0.40
                         
@@ -205,43 +193,21 @@ async def ejecutar_garantia_cron() -> Dict:
                             "plataforma_flete": 0,
                             "plataforma_total": comision_vo_40,
                             "estado": "enviado",
-                            "referencia_banco": f"TR_{pago_id}_POST_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+                            "referencia_banco": f"TR_{pago_id}_CRON40_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
                             "fecha_transferencia": datetime.utcnow().isoformat(),
                         }).execute()
                         
                         logger.info(
-                            f"[CRON 24h] Payout 40% EJECUTADO: "
-                            f"entrega={entrega_id}, pago={pago_id}, "
-                            f"monto=${monto_viverista_40:.2f}"
+                            f"[CRON 24h] Payout 40% ejecutado: "
+                            f"entrega={entrega_id}, viverista=${monto_viverista_40:.2f}"
                         )
-                        
                         resultado["payouts_ejecutados"] += 1
                         resultado["detalles"].append({
                             "entrega_id": entrega_id,
-                            "pago_id": pago_id,
                             "status": "payout_40_ejecutado",
                             "monto": monto_viverista_40,
                             "timestamp": datetime.utcnow().isoformat()
                         })
-                        
-                        # 2.2.4. MARCAR ENTREGA COMO COMPLETADA
-                        try:
-                            db.table("entregas").update({
-                                "estado_entrega": "completado",
-                                "fecha_actualizacion": datetime.utcnow().isoformat()
-                            }).eq("entrega_id", entrega_id).execute()
-                            
-                            logger.info(f"[CRON 24h] Entrega {entrega_id} marcada como completada")
-                            
-                        except Exception as e:
-                            logger.error(f"[CRON 24h] Error marcando completada: {str(e)}")
-                            # No es bloqueante
-                        
-                        # TODO: Notificar viverista por WhatsApp
-                        logger.info(
-                            f"[CRON 24h] TODO: Notificar viverista {vivero_id}: "
-                            f"'✅ Payout 40% completado. Total recibido: $XX'"
-                        )
                         
                     except Exception as e:
                         logger.error(f"[CRON 24h] Error creando transferencia: {str(e)}")
@@ -251,14 +217,26 @@ async def ejecutar_garantia_cron() -> Dict:
                             "status": "error_transferencia",
                             "error": str(e)
                         })
+                        continue
                 else:
-                    logger.warning(f"[CRON 24h] Sin pago_id para entrega {entrega_id}")
+                    logger.warning(f"[CRON 24h] Sin pago_id para entrega {entrega_id}, saltando Payout")
                     resultado["detalles"].append({
                         "entrega_id": entrega_id,
                         "status": "sin_pago_id",
                         "timestamp": datetime.utcnow().isoformat()
                     })
+                
+                # 2.3. MARCAR ENTREGA COMO COMPLETADA
+                try:
+                    db.table("entregas").update({
+                        "estado_entrega": "completado",
+                        "fecha_actualizacion": datetime.utcnow().isoformat()
+                    }).eq("entrega_id", entrega_id).execute()
                     
+                except Exception as e:
+                    logger.error(f"[CRON 24h] Error marcando como completada: {str(e)}")
+                    # No es bloqueante
+                
             except Exception as e:
                 logger.error(f"[CRON 24h] Error procesando entrega {entrega.get('entrega_id')}: {str(e)}")
                 resultado["entregas_error"] += 1
@@ -268,7 +246,7 @@ async def ejecutar_garantia_cron() -> Dict:
                     "error": str(e)
                 })
         
-        # 3. RESUMEN LOG
+        # 3. RESUMEN FINAL
         logger.info(
             f"[CRON 24h] COMPLETADO: "
             f"verificadas={resultado['entregas_verificadas']}, "
