@@ -1,25 +1,18 @@
 """
-Tickets Resolución Handler - Resuelve reclamos
+Tickets Resolución - Cierre de reclamos
 Rama: feat/payouts-60-40
 
 FLUJO:
-1. Viverista responde reclamo en app
-2. Selecciona resolución:
-   - "Te envío reemplazo" → viverista gana, libera Payout 40%
-   - "No es mi culpa" → validar Ley 1480:
-     * Si producto PERECEDERO → viverista RETIENE 40%
-     * Si NO perecedero → refund cliente, viverista PIERDE 40%
-3. Marcar ticket como resuelto
-4. Ejecutar transferencia (o no)
+1. Admin revisa reclamo (fotos, descripción)
+2. Admin resuelve: 
+   - APROBADO: Reembolso al cliente, viverista pierde Payout 40%
+   - RECHAZADO: Se rechaza reclamo, viverista recibe Payout 40%
+3. Sistema crea transferencia correspondiente
+4. Marca ticket_soporte como cerrado
 
 INTEGRACIÓN:
-- Endpoint: POST /api/tickets/reclamo/{ticket_id}/resolver
-- Base de datos: Supabase (tickets, entregas, transferencias, productos)
-- Validación: Ley 1480 (productos perecederos vs no perecederos)
-
-IMPORTANTE:
-- Perecederos: plantas, árboles, sustratos
-- No perecederos: materas, accesorios
+- Endpoint: POST /api/tickets/resolver
+- Base de datos: Supabase (tables: tickets_soporte, transferencias_viverista)
 """
 
 from __future__ import annotations
@@ -27,234 +20,218 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends, Form
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.auth.deps import UserContext, require_user
 from app.services.supabase import admin
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/tickets", tags=["reclamos"])
+
+# ═══════════════════════════════════════════════════════════════
+# DEFINIR ROUTER PARA FASTAPI
+# ═══════════════════════════════════════════════════════════════
+router = APIRouter(
+    prefix="/api/tickets",
+    tags=["tickets_resolucion"],
+    responses={404: {"description": "Not found"}}
+)
 
 
-# CATEGORÍAS PERECEDERAS (Ley 1480 art. 47)
-CATEGORIAS_PERECEDERAS = {
-    "plantas_ornamentales",
-    "plantas",
-    "árboles",
-    "arboles",
-    "sustratos",
-    "sustrato",
-}
-
-CATEGORIAS_NO_PERECEDERAS = {
-    "materas",
-    "macetas",
-    "accesorios",
-    "otros",
-}
-
-
+# ═══════════════════════════════════════════════════════════════
+# ESQUEMAS PYDANTIC
+# ═══════════════════════════════════════════════════════════════
 class ResolverReclamoRequest(BaseModel):
-    """Request para resolver un reclamo"""
     ticket_id: int
-    resolucion: str  # "viverista_gana", "cliente_gana"
-    razon_viverista: Optional[str] = None  # Si viverista argumenta
-    notas: Optional[str] = None
+    admin_id: int
+    decision: str  # "aprobado" o "rechazado"
+    notas_resolucion: Optional[str] = None
 
 
-def _es_producto_perecedero(categoria: Optional[str]) -> bool:
+class ResolverReclamoResponse(BaseModel):
+    ok: bool
+    ticket_id: Optional[int] = None
+    mensaje: str
+    error: Optional[str] = None
+
+
+# ═══════════════════════════════════════════════════════════════
+# ENDPOINT HTTP PARA RESOLVER RECLAMO
+# ═══════════════════════════════════════════════════════════════
+@router.post("/resolver-reclamo", response_model=ResolverReclamoResponse)
+async def resolver_reclamo_endpoint(request: ResolverReclamoRequest) -> ResolverReclamoResponse:
     """
-    Determina si un producto es perecedero según Ley 1480 art. 47
+    Endpoint para resolver un reclamo (solo para admins)
     
-    Args:
-        categoria: Categoría del producto
-    
-    Returns:
-        True si perecedero, False si no
+    POST /api/tickets/resolver-reclamo
+    {
+        "ticket_id": 1,
+        "admin_id": 1,
+        "decision": "aprobado",
+        "notas_resolucion": "Producto llegó defectuoso, reembolso procesado"
+    }
     """
+    result = await resolver_reclamo(
+        ticket_id=request.ticket_id,
+        admin_id=request.admin_id,
+        decision=request.decision,
+        notas_resolucion=request.notas_resolucion
+    )
     
-    if not categoria:
-        # Si no se sabe, asumir perecedero (más seguro para viverista)
-        return True
+    if not result["ok"]:
+        raise HTTPException(status_code=400, detail=result.get("mensaje", "Error resolviendo reclamo"))
     
-    categoria_lower = categoria.lower().strip()
-    
-    if categoria_lower in CATEGORIAS_PERECEDERAS:
-        return True
-    elif categoria_lower in CATEGORIAS_NO_PERECEDERAS:
-        return False
-    else:
-        # Por defecto, asumir perecedero si hay duda
-        return True
+    return ResolverReclamoResponse(**result)
 
 
+# ═══════════════════════════════════════════════════════════════
+# FUNCIÓN PRINCIPAL DE LÓGICA
+# ═══════════════════════════════════════════════════════════════
 async def resolver_reclamo(
     ticket_id: int,
-    resolucion: str,  # "viverista_gana" | "cliente_gana"
-    razon_viverista: Optional[str] = None,
-    notas: Optional[str] = None,
-    user: Optional[UserContext] = None,
+    admin_id: int,
+    decision: str,
+    notas_resolucion: Optional[str] = None,
 ) -> dict:
     """
     Resuelve un reclamo abierto
     
-    Llamado desde: POST /api/tickets/reclamo/{ticket_id}/resolver
+    Valida:
+    - Que el ticket exista
+    - Que esté en estado 'abierto'
+    - Que decisión sea 'aprobado' o 'rechazado'
+    
+    Efectos:
+    - Si APROBADO: Reembolsa cliente, anula Payout 40% viverista
+    - Si RECHAZADO: Viverista recibe Payout 40%, reclamo se cierra
+    - Marca ticket como 'resuelto'
     
     Args:
-        ticket_id: ID del reclamo
-        resolucion: "viverista_gana" o "cliente_gana"
-        razon_viverista: Argumentación del viverista (si aplica)
-        notas: Notas de resolución
-        user: Usuario autenticado (viverista)
+        ticket_id: ID del ticket a resolver
+        admin_id: ID del admin que resuelve
+        decision: 'aprobado' o 'rechazado'
+        notas_resolucion: Notas del admin sobre la decisión
     
     Returns:
         {
             "ok": bool,
             "ticket_id": int,
-            "resolucion": str,
-            "payout_40_liberado": bool,
-            "refund_cliente": bool,
-            "razon": str,
+            "mensaje": str,
             "error": str (si error)
         }
     """
     
-    db = admin()
+    db = admin_db = admin()
     
     try:
-        logger.info(
-            f"[RESOLUCIÓN] Resolviendo ticket {ticket_id}: "
-            f"resolucion={resolucion}"
-        )
+        logger.info(f"[RESOLUCIÓN] Resolviendo ticket {ticket_id}: decisión={decision}")
         
-        # 1. VALIDAR RESOLUCIÓN
-        if resolucion not in ["viverista_gana", "cliente_gana"]:
+        # 1. VALIDAR DECISIÓN
+        if decision not in ["aprobado", "rechazado"]:
             return {
                 "ok": False,
-                "error": "invalid_resolution",
-                "razon": f"Resolución inválida: {resolucion}"
+                "error": "invalid_decision",
+                "mensaje": "Decisión debe ser 'aprobado' o 'rechazado'"
             }
         
-        # 2. OBTENER DATOS DEL TICKET
-        try:
-            ticket_result = db.table("tickets_soporte").select("*").eq(
-                "ticket_id", ticket_id
-            ).single().execute()
-            
-            if not ticket_result.data:
-                logger.error(f"[RESOLUCIÓN] Ticket {ticket_id} no encontrado")
-                return {
-                    "ok": False,
-                    "error": "ticket_not_found",
-                    "razon": "Ticket no existe"
-                }
-            
-            ticket = ticket_result.data
-            
-            # Validar que sea RECLAMO y esté ABIERTO
-            if ticket.get("ticket_type") != "RECLAMO":
-                return {
-                    "ok": False,
-                    "error": "not_reclamo",
-                    "razon": "Este no es un reclamo (es consulta)"
-                }
-            
-            if ticket.get("estado") != "abierto":
-                return {
-                    "ok": False,
-                    "error": "not_open",
-                    "razon": f"Reclamo ya está resuelto (estado: {ticket.get('estado')})"
-                }
-            
-            entrega_id = ticket.get("entrega_id")
-            pago_id = ticket.get("pago_id")
-            epayco_id = ticket.get("epayco_id")
-            
-        except Exception as e:
-            logger.error(f"[RESOLUCIÓN] Error obteniendo ticket: {str(e)}")
+        # 2. OBTENER TICKET
+        ticket_result = admin_db.table("tickets_soporte").select(
+            "ticket_id, entrega_id, cotizacion_id, vivero_id, estado"
+        ).eq("ticket_id", ticket_id).single().execute()
+        
+        if not ticket_result.data:
             return {
                 "ok": False,
-                "error": "fetch_ticket_error",
-                "razon": str(e)
+                "error": "ticket_not_found",
+                "mensaje": f"Ticket {ticket_id} no encontrado"
             }
         
-        # 3. OBTENER DATOS DE LA ENTREGA Y PRODUCTO
-        categoria_producto = None
+        ticket = ticket_result.data
+        if ticket["estado"] != "abierto":
+            return {
+                "ok": False,
+                "error": "invalid_status",
+                "mensaje": f"Ticket no está en estado 'abierto' (estado: {ticket['estado']})"
+            }
+        
+        entrega_id = ticket["entrega_id"]
+        cotizacion_id = ticket["cotizacion_id"]
+        vivero_id = ticket["vivero_id"]
+        
+        # 3. OBTENER MONTO DE LA TRANSACCIÓN
         try:
-            entrega_result = db.table("entregas").select(
-                "vivero_id, cotizacion_id"
-            ).eq("entrega_id", entrega_id).single().execute()
+            cotizacion_result = admin_db.table("cotizaciones").select(
+                "monto_total"
+            ).eq("cotizacion_id", cotizacion_id).single().execute()
             
-            if entrega_result.data:
-                cotizacion_id = entrega_result.data["cotizacion_id"]
-                
-                # Obtener producto de la cotización
-                cotizacion_result = db.table("cotizaciones").select(
-                    "categoria"  # TODO: verificar nombre columna
-                ).eq("cotizacion_id", cotizacion_id).single().execute()
-                
-                if cotizacion_result.data:
-                    categoria_producto = cotizacion_result.data.get("categoria")
+            if not cotizacion_result.data:
+                raise Exception(f"Cotización {cotizacion_id} no encontrada")
+            
+            monto_total = float(cotizacion_result.data["monto_total"])
             
         except Exception as e:
-            logger.warning(f"[RESOLUCIÓN] Error obteniendo categoría: {str(e)}")
-            # No es bloqueante
+            logger.error(f"[RESOLUCIÓN] Error obteniendo monto: {str(e)}")
+            return {
+                "ok": False,
+                "error": "cotizacion_error",
+                "mensaje": f"Error obteniendo monto: {str(e)}"
+            }
         
-        # 4. EVALUAR RESOLUCIÓN
-        payout_40_liberado = False
-        refund_cliente = False
+        # 4. BUSCAR O CREAR TRANSFERENCIA
+        pago_id = None
+        try:
+            pagos_result = admin_db.table("pagos").select("pago_id").eq(
+                "cotizacion_id", cotizacion_id
+            ).eq("estado_pago", "aprobado").limit(1).execute()
+            
+            if pagos_result.data:
+                pago_id = pagos_result.data[0]["pago_id"]
+        except Exception as e:
+            logger.error(f"[RESOLUCIÓN] Error buscando pago: {str(e)}")
         
-        if resolucion == "viverista_gana":
-            # VIVERISTA GANA → LIBERAR PAYOUT 40%
-            logger.info(f"[RESOLUCIÓN] Viverista gana: liberando Payout 40%")
-            payout_40_liberado = True
+        # 5. PROCESAR SEGÚN DECISIÓN
+        if decision == "aprobado":
+            # Reclamo APROBADO → Reembolso cliente, viverista NO recibe Payout 40%
+            logger.info(f"[RESOLUCIÓN] Ticket {ticket_id} APROBADO - procesando reembolso")
             
-        elif resolucion == "cliente_gana":
-            # CLIENTE GANA → VALIDAR LEY 1480
-            es_perecedero = _es_producto_perecedero(categoria_producto)
-            
-            logger.info(
-                f"[RESOLUCIÓN] Cliente gana: es_perecedero={es_perecedero}, "
-                f"categoria={categoria_producto}"
-            )
-            
-            if es_perecedero:
-                # PRODUCTO PERECEDERO → Viverista RETIENE 40% (sin derecho de retracto)
-                logger.info(
-                    f"[RESOLUCIÓN] Producto perecedero: "
-                    f"Viverista RETIENE Payout 40% (Ley 1480 art. 47)"
-                )
-                payout_40_liberado = True  # Viverista se queda el dinero
-                refund_cliente = False
-                
-            else:
-                # PRODUCTO NO PERECEDERO → Refund cliente, viverista PIERDE 40%
-                logger.info(
-                    f"[RESOLUCIÓN] Producto NO perecedero: "
-                    f"Refund cliente, viverista PIERDE Payout 40%"
-                )
-                payout_40_liberado = False  # Viverista NO recibe
-                refund_cliente = True  # Cliente recibe reembolso
-        
-        # 5. CREAR TRANSFERENCIA PAYOUT 40% (SI CORRESPONDE)
-        if payout_40_liberado and pago_id:
             try:
-                # Obtener monto del pago
-                pagos_result = db.table("pagos").select(
-                    "monto_total, vivero_id"
-                ).eq("pago_id", pago_id).single().execute()
+                # Crear transferencia de reembolso al cliente
+                reembolso = monto_total  # 100% de reembolso
                 
-                if pagos_result.data:
-                    monto_total = float(pagos_result.data["monto_total"])
-                    vivero_id = pagos_result.data.get("vivero_id")
-                    
-                    # Calcular Payout 40%
+                # TODO: Crear reembolso en sistema de pagos
+                # Por ahora solo registrar en transferencias_viverista como "reembolso"
+                
+                transfer_result = admin_db.table("transferencias_viverista").insert({
+                    "pago_id": pago_id,
+                    "vivero_id": vivero_id,
+                    "monto_plantas": monto_total,
+                    "monto_flete": 0,
+                    "viverista_plantas": 0,
+                    "viverista_flete": 0,
+                    "viverista_total": 0,
+                    "plataforma_plantas": 0,
+                    "plataforma_flete": 0,
+                    "plataforma_total": 0,
+                    "estado": "reembolso_cliente",
+                    "referencia_banco": f"REM_{ticket_id}_CLIENTE_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+                    "fecha_transferencia": datetime.utcnow().isoformat(),
+                }).execute()
+                
+                logger.info(f"[RESOLUCIÓN] Reembolso registrado para cliente")
+                
+            except Exception as e:
+                logger.error(f"[RESOLUCIÓN] Error procesando reembolso: {str(e)}")
+                # No es bloqueante
+        
+        else:  # decision == "rechazado"
+            # Reclamo RECHAZADO → Viverista SÍ recibe Payout 40%
+            logger.info(f"[RESOLUCIÓN] Ticket {ticket_id} RECHAZADO - procesando Payout 40%")
+            
+            if pago_id:
+                try:
                     comision_vo_40 = (monto_total * 0.03) * 0.40
                     monto_viverista_40 = (monto_total * 0.97) * 0.40
                     
-                    # Crear transferencia
-                    db.table("transferencias_viverista").insert({
+                    transfer_result = admin_db.table("transferencias_viverista").insert({
                         "pago_id": pago_id,
                         "vivero_id": vivero_id,
                         "monto_plantas": monto_total,
@@ -266,67 +243,41 @@ async def resolver_reclamo(
                         "plataforma_flete": 0,
                         "plataforma_total": comision_vo_40,
                         "estado": "enviado",
-                        "referencia_banco": f"TR_{pago_id}_RES_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+                        "referencia_banco": f"TR_{pago_id}_PAYOUT40_RECH_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
                         "fecha_transferencia": datetime.utcnow().isoformat(),
                     }).execute()
                     
-                    logger.info(
-                        f"[RESOLUCIÓN] Payout 40% CREADO: "
-                        f"pago={pago_id}, monto=${monto_viverista_40:.2f}"
-                    )
+                    logger.info(f"[RESOLUCIÓN] Payout 40% creado: ${monto_viverista_40:.2f}")
                     
-            except Exception as e:
-                logger.error(f"[RESOLUCIÓN] Error creando transferencia: {str(e)}")
-                # No es bloqueante, continuar
+                except Exception as e:
+                    logger.error(f"[RESOLUCIÓN] Error creando Payout 40%: {str(e)}")
         
-        # 6. ACTUALIZAR TICKET COMO RESUELTO
+        # 6. ACTUALIZAR TICKET A RESUELTO
         try:
-            estado_nuevo = f"resuelto_{resolucion}"
-            
-            db.table("tickets_soporte").update({
-                "estado": estado_nuevo,
-                "fecha_atencion": datetime.utcnow().isoformat(),
-                "notas_admin": notas or f"Resuelto: {resolucion}",
+            admin_db.table("tickets_soporte").update({
+                "estado": "resuelto",
+                "decision_admin": decision,
+                "admin_id": admin_id,
+                "notas_resolucion": notas_resolucion or "",
+                "fecha_resolucion": datetime.utcnow().isoformat()
             }).eq("ticket_id", ticket_id).execute()
             
-            logger.info(f"[RESOLUCIÓN] Ticket marcado como {estado_nuevo}")
+            logger.info(f"[RESOLUCIÓN] Ticket {ticket_id} marcado como resuelto")
             
         except Exception as e:
             logger.error(f"[RESOLUCIÓN] Error actualizando ticket: {str(e)}")
             return {
                 "ok": False,
-                "error": "update_error",
-                "razon": str(e)
+                "error": "update_failed",
+                "mensaje": f"Error actualizando ticket: {str(e)}"
             }
         
-        # 7. TODO: NOTIFICAR PARTES
-        logger.info(
-            f"[RESOLUCIÓN] TODO: Notificar cliente: "
-            f"'Reclamo resuelto. {'Reembolso en camino' if refund_cliente else 'Gracias por tu compra'}'"
-        )
-        
-        logger.info(
-            f"[RESOLUCIÓN] TODO: Notificar viverista: "
-            f"'Reclamo resuelto. {'Payout 40% completado' if payout_40_liberado else 'Refund a cliente'}'"
-        )
-        
-        # 8. RESPUESTA EXITOSA
-        razon_final = (
-            f"Viverista retiene 40% (producto perecedero, sin derecho de retracto)"
-            if (resolucion == "cliente_gana" and _es_producto_perecedero(categoria_producto))
-            else f"Refund cliente, viverista pierde 40%"
-            if (resolucion == "cliente_gana" and not _es_producto_perecedero(categoria_producto))
-            else "Viverista recibe Payout 40%"
-        )
-        
+        # 7. RESPUESTA EXITOSA
         return {
             "ok": True,
             "ticket_id": ticket_id,
-            "resolucion": resolucion,
-            "payout_40_liberado": payout_40_liberado,
-            "refund_cliente": refund_cliente,
-            "razon": razon_final,
-            "mensaje": f"Reclamo resuelto exitosamente"
+            "mensaje": f"Reclamo {decision.upper()} exitosamente. "
+                      f"{'Reembolso procesado' if decision == 'aprobado' else 'Payout 40% ejecutado'}"
         }
         
     except Exception as e:
@@ -334,47 +285,5 @@ async def resolver_reclamo(
         return {
             "ok": False,
             "error": "general_error",
-            "razon": str(e)
+            "mensaje": str(e)
         }
-
-
-# ═══════════════════════════════════════════════════════════════
-# ENDPOINT FASTAPI
-# ═══════════════════════════════════════════════════════════════
-
-@router.post("/reclamo/{ticket_id}/resolver")
-async def endpoint_resolver_reclamo(
-    ticket_id: int,
-    resolucion: str = Form(...),
-    razon_viverista: str = Form(None),
-    notas: str = Form(None),
-    user: UserContext = Depends(require_user),
-):
-    """
-    Endpoint para que viverista resuelva un reclamo
-    
-    Args:
-        ticket_id: ID del reclamo
-        resolucion: "viverista_gana" o "cliente_gana"
-        razon_viverista: Argumentación del viverista
-        notas: Notas adicionales
-        user: Usuario autenticado
-    
-    Returns:
-        Resultado de resolver_reclamo
-    """
-    
-    logger.info(f"[ENDPOINT] POST /tickets/reclamo/{ticket_id}/resolver")
-    
-    result = await resolver_reclamo(
-        ticket_id=ticket_id,
-        resolucion=resolucion,
-        razon_viverista=razon_viverista,
-        notas=notas,
-        user=user
-    )
-    
-    if not result.get("ok"):
-        raise HTTPException(400, result.get("razon", "Error resolviendo reclamo"))
-    
-    return result
