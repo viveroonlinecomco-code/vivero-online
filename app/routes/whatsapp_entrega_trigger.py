@@ -1,22 +1,19 @@
 """
-WhatsApp Entrega Trigger - Recibe foto de entrega
+WhatsApp Entrega Trigger - Recibe confirmación de entrega
 Rama: feat/payouts-60-40
 
 FLUJO:
-1. Viverista sube foto de entrega EN APP (no por WhatsApp)
-2. Sistema recibe POST /api/entregas/{entrega_id}/foto-entrega
-3. Sube foto a BD
+1. Cliente/Transportista envía WhatsApp "Entregado" + FOTO del producto
+2. Sistema recibe notificación de Meta
+3. Descarga foto y la sube a tabla entregas
 4. Marca estado = 'entregado'
-5. Guarda timestamp_entrega (inicia contador 24h automático)
-6. CRON cada 1h verificará si 24h + sin reclamo = Payout 40%
+5. Inicia contador 24h para Payout 40% (ejecutado por garantia_cron)
 
 INTEGRACIÓN:
-- Endpoint: POST /api/entregas/{entrega_id}/foto-entrega (en app/routes/entregas.py)
+- Escucha: webhook Meta POST /api/whatsapp/messages
 - Base de datos: Supabase (tabla entregas)
-- Fotos: URL almacenada en BD
-- Contador: timestamp_entrega para validación
-
-NOTA: Sistema automático, viverista solo sube foto en app
+- Fotos: almacenadas en BD como URL
+- Payout 40%: ejecutado por CRON después de 24h sin reclamos
 """
 
 from __future__ import annotations
@@ -24,109 +21,155 @@ import logging
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Depends, Form, UploadFile, File
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.auth.deps import UserContext, require_user
 from app.services.supabase import admin
+from app.services.whatsapp_meta import download_media_bytes
 
 logger = logging.getLogger(__name__)
-router = APIRouter(prefix="/api/entregas", tags=["entregas"])
+
+# ═══════════════════════════════════════════════════════════════
+# DEFINIR ROUTER PARA FASTAPI
+# ═══════════════════════════════════════════════════════════════
+router = APIRouter(
+    prefix="/api/whatsapp",
+    tags=["whatsapp_entrega"],
+    responses={404: {"description": "Not found"}}
+)
 
 
-class FotoEntregaRequest(BaseModel):
-    """Request para subir foto de entrega"""
-    entrega_id: int
-    foto_url: Optional[str] = None
+# ═══════════════════════════════════════════════════════════════
+# ESQUEMAS PYDANTIC
+# ═══════════════════════════════════════════════════════════════
+class EntregaRequest(BaseModel):
+    numero_cliente: str
+    cotizacion_id: int
+    vivero_id: int
+    mensaje_texto: Optional[str] = None
+    media_id: Optional[str] = None
 
 
-async def procesar_foto_entrega(
-    entrega_id: int,
-    foto_url: str,
-    user: Optional[UserContext] = None,
+class EntregaResponse(BaseModel):
+    ok: bool
+    entrega_id: Optional[int] = None
+    mensaje: str
+    error: Optional[str] = None
+
+
+# ═══════════════════════════════════════════════════════════════
+# ENDPOINT HTTP PARA WEBHOOK DE ENTREGA
+# ═══════════════════════════════════════════════════════════════
+@router.post("/entrega-trigger", response_model=EntregaResponse)
+async def entrega_trigger_endpoint(request: EntregaRequest) -> EntregaResponse:
+    """
+    Endpoint para procesar confirmación de entrega desde WhatsApp
+    
+    POST /api/whatsapp/entrega-trigger
+    {
+        "numero_cliente": "+573001234567",
+        "cotizacion_id": 123,
+        "vivero_id": 1,
+        "mensaje_texto": "Producto entregado",
+        "media_id": "wamid.abc123xyz"
+    }
+    """
+    result = await procesar_mensaje_entrega(
+        numero_cliente=request.numero_cliente,
+        cotizacion_id=request.cotizacion_id,
+        vivero_id=request.vivero_id,
+        mensaje_texto=request.mensaje_texto,
+        media_id=request.media_id
+    )
+    
+    if not result["ok"]:
+        raise HTTPException(status_code=400, detail=result.get("mensaje", "Error procesando entrega"))
+    
+    return EntregaResponse(**result)
+
+
+# ═══════════════════════════════════════════════════════════════
+# FUNCIÓN PRINCIPAL DE LÓGICA
+# ═══════════════════════════════════════════════════════════════
+async def procesar_mensaje_entrega(
+    numero_cliente: str,
+    cotizacion_id: int,
+    vivero_id: int,
+    mensaje_texto: Optional[str] = None,
+    media_id: Optional[str] = None,
 ) -> dict:
     """
-    Procesa foto de entrega y marca como entregado
+    Procesa mensaje de entrega del cliente/transportista
     
-    Llamado desde: endpoint /api/entregas/{entrega_id}/foto-entrega
+    Llamado desde: endpoint entrega_trigger_endpoint
     
     Args:
-        entrega_id: ID de la entrega
-        foto_url: URL de la foto (descargada por frontend)
-        user: Context del usuario (viverista)
+        numero_cliente: Número WhatsApp del cliente
+        cotizacion_id: ID de la cotización/transacción
+        vivero_id: ID del vivero
+        mensaje_texto: Texto opcional del mensaje
+        media_id: ID del media (foto) en Meta
     
     Returns:
         {
             "ok": bool,
-            "entrega_id": int,
-            "estado": str,
-            "timestamp_entrega": datetime,
-            "error": str (si error)
+            "entrega_id": int (si éxito),
+            "error": str (si error),
+            "mensaje": str
         }
     """
     
     db = admin()
     
     try:
-        logger.info(f"[ENTREGA] Procesando foto: entrega={entrega_id}, foto={foto_url[:50]}")
+        logger.info(
+            f"[ENTREGA] Procesando: vivero={vivero_id}, "
+            f"cotizacion={cotizacion_id}, media={media_id}"
+        )
         
-        # 1. OBTENER DATOS DE LA ENTREGA ACTUAL
-        try:
-            entrega_result = db.table("entregas").select("*").eq(
-                "entrega_id", entrega_id
-            ).single().execute()
-            
-            if not entrega_result.data:
-                logger.error(f"[ENTREGA] Entrega {entrega_id} no encontrada")
-                return {
-                    "ok": False,
-                    "error": "entrega_not_found",
-                    "mensaje": "Entrega no existe"
-                }
-            
-            entrega = entrega_result.data
-            cotizacion_id = entrega.get("cotizacion_id")
-            vivero_id = entrega.get("vivero_id")
-            estado_actual = entrega.get("estado_entrega")
-            
-        except Exception as e:
-            logger.error(f"[ENTREGA] Error obteniendo entrega: {str(e)}")
+        # 1. VERIFICAR QUE EXISTA ENTREGAS PARA ESTA COTIZACIÓN
+        entregas_result = db.table("entregas").select("entrega_id").eq(
+            "cotizacion_id", cotizacion_id
+        ).execute()
+        
+        if not entregas_result.data:
+            logger.warning(f"[ENTREGA] No existe entrega para cotizacion {cotizacion_id}")
             return {
                 "ok": False,
-                "error": "fetch_error",
-                "mensaje": f"Error obteniendo entrega: {str(e)}"
+                "error": "no_entrega_found",
+                "mensaje": "Cotización no encontrada en entregas"
             }
         
-        # 2. VALIDAR ESTADO (debe estar en "despachado" o NULL)
-        if estado_actual and estado_actual not in ["despachado", "en_camino"]:
-            logger.warning(
-                f"[ENTREGA] Estado inválido para actualizar: {estado_actual}. "
-                f"Solo se puede actualizar desde 'despachado'"
-            )
-            return {
-                "ok": False,
-                "error": "invalid_state",
-                "mensaje": f"No se puede actualizar entrega en estado '{estado_actual}'"
-            }
+        entrega_id = entregas_result.data[0]["entrega_id"]
         
-        # 3. GENERAR TIMESTAMP DE ENTREGA (CRÍTICO PARA CONTADOR 24h)
-        timestamp_entrega = datetime.utcnow().isoformat()
+        # 2. DESCARGAR FOTO SI EXISTE media_id
+        foto_url = None
+        if media_id:
+            try:
+                logger.info(f"[ENTREGA] Descargando media {media_id}...")
+                foto_bytes = await download_media_bytes(media_id)
+                
+                # TODO: Subir a storage (ej: Supabase Storage, AWS S3)
+                # Por ahora almacenar URL en BD
+                foto_url = f"media:{media_id}"
+                
+                logger.info(f"[ENTREGA] Foto descargada: {len(foto_bytes)} bytes")
+                
+            except Exception as e:
+                logger.error(f"[ENTREGA] Error descargando media: {str(e)}")
+                # No es bloqueante, continuar sin foto
         
-        # 4. ACTUALIZAR ENTREGA A "ENTREGADO"
+        # 3. ACTUALIZAR ENTREGA A "ENTREGADO" + TIMESTAMP
         try:
             db.table("entregas").update({
                 "estado_entrega": "entregado",
-                "fecha_entrega": timestamp_entrega,
+                "fecha_entrega": datetime.utcnow().isoformat(),
                 "foto_entrega": foto_url,
-                "timestamp_entrega": timestamp_entrega,
-                "garantia_inicia": timestamp_entrega,  # Inicia contador 24h
-                "fecha_actualizacion": datetime.utcnow().isoformat()
+                "timestamp_entrega": datetime.utcnow().isoformat(),
+                "notas_cliente": mensaje_texto or "Entrega confirmada por WhatsApp"
             }).eq("entrega_id", entrega_id).execute()
             
-            logger.info(
-                f"[ENTREGA] Entrega {entrega_id} marcada como ENTREGADO "
-                f"(timestamp={timestamp_entrega})"
-            )
+            logger.info(f"[ENTREGA] Entrega {entrega_id} marcada como entregada")
             
         except Exception as e:
             logger.error(f"[ENTREGA] Error actualizando entrega: {str(e)}")
@@ -136,43 +179,29 @@ async def procesar_foto_entrega(
                 "mensaje": f"Error actualizando entrega: {str(e)}"
             }
         
-        # 5. REGISTRAR EVENTO EN ticket_eventos_whatsapp
+        # 4. REGISTRAR EVENTO EN ticket_eventos_whatsapp
         try:
             db.table("ticket_eventos_whatsapp").insert({
-                "ticket_id": entrega_id,  # Usar entrega_id como referencia
-                "whatsapp_numero": None,  # Foto subida por app, no WhatsApp
+                "ticket_id": entrega_id,
+                "whatsapp_numero": numero_cliente,
                 "tipo_evento": "entrega_confirmada",
                 "estado": "procesado",
-                "json_response": f"Foto entrega confirmada a las {timestamp_entrega}",
+                "json_response": f"Entrega confirmada por cliente {numero_cliente}",
                 "fecha_creacion": datetime.utcnow().isoformat()
             }).execute()
             
-            logger.info(f"[ENTREGA] Evento 'entrega_confirmada' registrado")
+            logger.info(f"[ENTREGA] Evento registrado en BD")
             
         except Exception as e:
             logger.error(f"[ENTREGA] Error registrando evento: {str(e)}")
             # No es bloqueante
         
-        # 6. TODO: NOTIFICAR CLIENTE POR WhatsApp
-        logger.info(
-            f"[ENTREGA] TODO: Notificar cliente sobre entrega: "
-            f"'Tu pedido ha sido entregado. Tienes 24h para revisar'"
-        )
-        
-        # 7. TODO: NOTIFICAR VIVERISTA
-        logger.info(
-            f"[ENTREGA] TODO: Notificar viverista sobre foto confirmada: "
-            f"'Tu payout 40% está en garantía. Se ejecutará en 24h si sin reclamo'"
-        )
-        
-        # 8. RESPUESTA EXITOSA
+        # 5. RESPUESTA EXITOSA
         return {
             "ok": True,
             "entrega_id": entrega_id,
-            "estado": "entregado",
-            "timestamp_entrega": timestamp_entrega,
-            "garantia_expira": None,  # Calcular cuando se consuma
-            "mensaje": "Entrega confirmada. Contador de 24h iniciado."
+            "foto_url": foto_url,
+            "mensaje": f"Entrega registrada exitosamente. Payout 40% se ejecutará en 24h si no hay reclamos."
         }
         
     except Exception as e:
@@ -182,103 +211,3 @@ async def procesar_foto_entrega(
             "error": "general_error",
             "mensaje": str(e)
         }
-
-
-# ═══════════════════════════════════════════════════════════════
-# ENDPOINT FASTAPI
-# ═══════════════════════════════════════════════════════════════
-
-@router.post("/{entrega_id}/foto-entrega")
-async def upload_foto_entrega(
-    entrega_id: int,
-    foto_url: str = Form(...),
-    user: UserContext = Depends(require_user),
-):
-    """
-    Endpoint para que viverista suba foto de entrega
-    
-    Args:
-        entrega_id: ID de la entrega
-        foto_url: URL de la foto (subida previamente por frontend)
-        user: Usuario autenticado (debe ser el viverista)
-    
-    Returns:
-        Resultado de procesar_foto_entrega
-    """
-    
-    logger.info(f"[ENDPOINT] POST /entregas/{entrega_id}/foto-entrega - user={user.id}")
-    
-    # Validar que viverista sea dueño de la entrega
-    db = admin()
-    try:
-        entrega = db.table("entregas").select("vivero_id").eq(
-            "entrega_id", entrega_id
-        ).single().execute()
-        
-        if not entrega.data:
-            raise HTTPException(404, "Entrega no existe")
-        
-        # TODO: Validar que user.vivero_id == entrega.vivero_id
-        # (cuando sistema de autenticación esté completamente integrado)
-        
-    except Exception as e:
-        logger.error(f"[ENDPOINT] Error validando entrega: {str(e)}")
-        raise HTTPException(400, f"Error validando entrega: {str(e)}")
-    
-    # Procesar foto
-    result = await procesar_foto_entrega(
-        entrega_id=entrega_id,
-        foto_url=foto_url,
-        user=user
-    )
-    
-    if not result.get("ok"):
-        raise HTTPException(400, result.get("mensaje", "Error procesando foto"))
-    
-    return result
-
-
-@router.get("/{entrega_id}/status")
-async def get_status_entrega(
-    entrega_id: int,
-    user: UserContext = Depends(require_user),
-):
-    """
-    Obtiene estado actual de una entrega
-    
-    Útil para viverista verificar si su foto fue procesada
-    y cuándo vence la garantía 24h
-    """
-    
-    db = admin()
-    
-    try:
-        entrega = db.table("entregas").select(
-            "entrega_id, estado_entrega, timestamp_entrega, "
-            "foto_despacho, foto_entrega"
-        ).eq("entrega_id", entrega_id).single().execute()
-        
-        if not entrega.data:
-            raise HTTPException(404, "Entrega no encontrada")
-        
-        data = entrega.data
-        
-        # Calcular tiempo hasta garantía vence (si está entregado)
-        garantia_vence = None
-        if data.get("timestamp_entrega"):
-            from datetime import timedelta
-            ts = datetime.fromisoformat(data["timestamp_entrega"])
-            garantia_vence = (ts + timedelta(hours=24)).isoformat()
-        
-        return {
-            "entrega_id": data["entrega_id"],
-            "estado": data["estado_entrega"],
-            "timestamp_entrega": data["timestamp_entrega"],
-            "garantia_vence": garantia_vence,
-            "tiene_foto_despacho": bool(data.get("foto_despacho")),
-            "tiene_foto_entrega": bool(data.get("foto_entrega")),
-        }
-        
-    except Exception as e:
-        logger.error(f"[ENDPOINT] Error obteniendo status: {str(e)}")
-        raise HTTPException(500, f"Error obteniendo status: {str(e)}")
