@@ -18,6 +18,7 @@ from app.services.whatsapp_meta import (
     send_text_message,
     verify_signature,
     procesar_consulta_precio_producto,
+    notify_viverista_nueva_cotizacion,
 )
 
 logger = logging.getLogger(__name__)
