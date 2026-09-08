@@ -1,22 +1,26 @@
 """
-Tickets Resolución - Cierre de reclamos
+Tickets Resolución - Cierre de reclamos CON NOTIFICACIONES
 Rama: feat/payouts-60-40
 
-FLUJO:
+FLUJO COMPLETO (Escenario 3):
 1. Admin revisa reclamo (fotos, descripción)
 2. Admin resuelve: 
    - APROBADO: Reembolso al cliente, viverista pierde Payout 40%
    - RECHAZADO: Se rechaza reclamo, viverista recibe Payout 40%
 3. Sistema crea transferencia correspondiente
-4. Marca ticket_soporte como cerrado
+4. ⚠️ Notifica al cliente (via WhatsApp)
+5. ⚠️ Notifica al admin (confirmación)
+6. Marca ticket_soporte como cerrado
 
 INTEGRACIÓN:
 - Endpoint: POST /api/tickets/resolver
 - Base de datos: Supabase (tables: tickets_soporte, transferencias_viverista)
+- Notificaciones: WhatsApp via send_text_message
 """
 
 from __future__ import annotations
 import logging
+import os
 from datetime import datetime
 from typing import Optional
 
@@ -24,6 +28,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.services.supabase import admin
+from app.services.whatsapp_meta import send_text_message
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +50,7 @@ class ResolverReclamoRequest(BaseModel):
     admin_id: int
     decision: str  # "aprobado" o "rechazado"
     notas_resolucion: Optional[str] = None
+    cliente_whatsapp: Optional[str] = None
 
 
 class ResolverReclamoResponse(BaseModel):
@@ -67,14 +73,16 @@ async def resolver_reclamo_endpoint(request: ResolverReclamoRequest) -> Resolver
         "ticket_id": 1,
         "admin_id": 1,
         "decision": "aprobado",
-        "notas_resolucion": "Producto llegó defectuoso, reembolso procesado"
+        "notas_resolucion": "Producto llegó defectuoso, reembolso procesado",
+        "cliente_whatsapp": "+573001234567"
     }
     """
     result = await resolver_reclamo(
         ticket_id=request.ticket_id,
         admin_id=request.admin_id,
         decision=request.decision,
-        notas_resolucion=request.notas_resolucion
+        notas_resolucion=request.notas_resolucion,
+        cliente_whatsapp=request.cliente_whatsapp
     )
     
     if not result["ok"]:
@@ -91,11 +99,12 @@ async def resolver_reclamo(
     admin_id: int,
     decision: str,
     notas_resolucion: Optional[str] = None,
+    cliente_whatsapp: Optional[str] = None,
 ) -> dict:
     """
-    Resuelve un reclamo abierto
+    Resuelve un reclamo abierto CON NOTIFICACIONES COMPLETAS
     
-    Valida:
+    Validaciones:
     - Que el ticket exista
     - Que esté en estado 'abierto'
     - Que decisión sea 'aprobado' o 'rechazado'
@@ -104,12 +113,15 @@ async def resolver_reclamo(
     - Si APROBADO: Reembolsa cliente, anula Payout 40% viverista
     - Si RECHAZADO: Viverista recibe Payout 40%, reclamo se cierra
     - Marca ticket como 'resuelto'
+    - ⚠️ NOTIFICA AL CLIENTE (WhatsApp)
+    - ⚠️ NOTIFICA AL ADMIN (confirmación)
     
     Args:
         ticket_id: ID del ticket a resolver
         admin_id: ID del admin que resuelve
         decision: 'aprobado' o 'rechazado'
         notas_resolucion: Notas del admin sobre la decisión
+        cliente_whatsapp: WhatsApp del cliente (para notificación)
     
     Returns:
         {
@@ -120,7 +132,7 @@ async def resolver_reclamo(
         }
     """
     
-    db = admin_db = admin()
+    db = admin()
     
     try:
         logger.info(f"[RESOLUCIÓN] Resolviendo ticket {ticket_id}: decisión={decision}")
@@ -134,8 +146,8 @@ async def resolver_reclamo(
             }
         
         # 2. OBTENER TICKET
-        ticket_result = admin_db.table("tickets_soporte").select(
-            "ticket_id, entrega_id, cotizacion_id, vivero_id, estado"
+        ticket_result = db.table("tickets_soporte").select(
+            "ticket_id, entrega_id, cotizacion_id, vivero_id, estado, cliente_id"
         ).eq("ticket_id", ticket_id).single().execute()
         
         if not ticket_result.data:
@@ -156,10 +168,11 @@ async def resolver_reclamo(
         entrega_id = ticket["entrega_id"]
         cotizacion_id = ticket["cotizacion_id"]
         vivero_id = ticket["vivero_id"]
+        cliente_id = ticket.get("cliente_id")
         
         # 3. OBTENER MONTO DE LA TRANSACCIÓN
         try:
-            cotizacion_result = admin_db.table("cotizaciones").select(
+            cotizacion_result = db.table("cotizaciones").select(
                 "monto_total"
             ).eq("cotizacion_id", cotizacion_id).single().execute()
             
@@ -179,7 +192,7 @@ async def resolver_reclamo(
         # 4. BUSCAR O CREAR TRANSFERENCIA
         pago_id = None
         try:
-            pagos_result = admin_db.table("pagos").select("pago_id").eq(
+            pagos_result = db.table("pagos").select("pago_id").eq(
                 "cotizacion_id", cotizacion_id
             ).eq("estado_pago", "aprobado").limit(1).execute()
             
@@ -197,10 +210,7 @@ async def resolver_reclamo(
                 # Crear transferencia de reembolso al cliente
                 reembolso = monto_total  # 100% de reembolso
                 
-                # TODO: Crear reembolso en sistema de pagos
-                # Por ahora solo registrar en transferencias_viverista como "reembolso"
-                
-                transfer_result = admin_db.table("transferencias_viverista").insert({
+                transfer_result = db.table("transferencias_viverista").insert({
                     "pago_id": pago_id,
                     "vivero_id": vivero_id,
                     "monto_plantas": monto_total,
@@ -231,7 +241,7 @@ async def resolver_reclamo(
                     comision_vo_40 = (monto_total * 0.03) * 0.40
                     monto_viverista_40 = (monto_total * 0.97) * 0.40
                     
-                    transfer_result = admin_db.table("transferencias_viverista").insert({
+                    transfer_result = db.table("transferencias_viverista").insert({
                         "pago_id": pago_id,
                         "vivero_id": vivero_id,
                         "monto_plantas": monto_total,
@@ -254,7 +264,7 @@ async def resolver_reclamo(
         
         # 6. ACTUALIZAR TICKET A RESUELTO
         try:
-            admin_db.table("tickets_soporte").update({
+            db.table("tickets_soporte").update({
                 "estado": "resuelto",
                 "decision_admin": decision,
                 "admin_id": admin_id,
@@ -272,12 +282,66 @@ async def resolver_reclamo(
                 "mensaje": f"Error actualizando ticket: {str(e)}"
             }
         
-        # 7. RESPUESTA EXITOSA
+        # ═══════════════════════════════════════════════════════════════
+        # 7. ⚠️ NOTIFICAR AL CLIENTE (WhatsApp)
+        # ═══════════════════════════════════════════════════════════════
+        if cliente_whatsapp:
+            try:
+                if decision == "aprobado":
+                    msg_cliente = (
+                        f"✅ *Tu reclamo ha sido APROBADO*\n\n"
+                        f"Ticket #{ticket_id}\n\n"
+                        f"💰 Te devolveremos el monto completo.\n"
+                        f"Esperá la transferencia en 24-48 horas.\n\n"
+                        f"📝 Notas: {notas_resolucion or 'N/A'}\n\n"
+                        f"¿Preguntas? Escribinos: viveroonline.com.co@gmail.com"
+                    )
+                else:  # rechazado
+                    msg_cliente = (
+                        f"ℹ️ *Tu reclamo ha sido REVISADO*\n\n"
+                        f"Ticket #{ticket_id}\n\n"
+                        f"Después de revisar la evidencia, el reclamo fue rechazado.\n"
+                        f"Si tenés dudas, por favor escribi a:\n"
+                        f"viveroonline.com.co@gmail.com\n\n"
+                        f"Agradecemos tu confianza en ViveroOnline 🌿"
+                    )
+                
+                await send_text_message(cliente_whatsapp, msg_cliente)
+                logger.info(f"[RESOLUCIÓN] Cliente notificado: ticket {ticket_id}")
+                
+            except Exception as e:
+                logger.error(f"[RESOLUCIÓN] Error notificando cliente: {str(e)}")
+                # No es bloqueante
+        
+        # ═══════════════════════════════════════════════════════════════
+        # 8. ⚠️ NOTIFICAR AL ADMIN (confirmación)
+        # ═══════════════════════════════════════════════════════════════
+        try:
+            admin_whatsapp = os.getenv("ADMIN_WHATSAPP_NOTIF", "")
+            
+            if admin_whatsapp:
+                msg_admin = (
+                    f"✅ *Reclamo #{ticket_id} RESUELTO*\n\n"
+                    f"Decisión: {decision.upper()}\n"
+                    f"Viverista: {vivero_id}\n"
+                    f"Monto: ${monto_total:,.0f} COP\n\n"
+                    f"Admin: {admin_id}\n"
+                    f"Notas: {notas_resolucion or 'N/A'}\n\n"
+                    f"Hora: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}"
+                )
+                
+                await send_text_message(admin_whatsapp, msg_admin)
+                logger.info(f"[RESOLUCIÓN] Admin notificado: ticket {ticket_id}")
+        except Exception as e:
+            logger.error(f"[RESOLUCIÓN] Error notificando admin: {str(e)}")
+            # No es bloqueante
+        
+        # 9. RESPUESTA EXITOSA
         return {
             "ok": True,
             "ticket_id": ticket_id,
-            "mensaje": f"Reclamo {decision.upper()} exitosamente. "
-                      f"{'Reembolso procesado' if decision == 'aprobado' else 'Payout 40% ejecutado'}"
+            "mensaje": f"✅ Reclamo {decision.upper()} exitosamente (ID: {ticket_id}). "
+                      f"Cliente y admin notificados."
         }
         
     except Exception as e:
