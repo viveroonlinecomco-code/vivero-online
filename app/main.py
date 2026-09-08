@@ -1,12 +1,15 @@
 """Aplicación FastAPI principal - ViveroOnline.com.co"""
+import logging
 from collections import defaultdict
 from pathlib import Path
 from time import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from app.config import get_settings
 from app.routes import auth as auth_routes
@@ -34,8 +37,62 @@ from app.services.google_ads_middleware import GoogleAdsMiddleware
 from app.routes import onboarding as onboarding_routes
 from app.routes.webhooks_meta import router as webhooks_router
 
+# ═══════════════════════════════════════════════════════════════
+# IMPORTS NUEVOS - feat/payouts-60-40
+# ═══════════════════════════════════════════════════════════════
+from app.routes import epayco_webhook as epayco_webhook_routes
+from app.routes import whatsapp_despacho_trigger as despacho_routes
+from app.routes import whatsapp_entrega_trigger as entrega_routes
+from app.routes import tickets_reclamo as tickets_reclamo_routes
+from app.routes import tickets_resolucion as tickets_resolucion_routes
+
+from app.routes.garantia_cron import ejecutar_garantia_cron
+
+logger = logging.getLogger(__name__)
+
 settings = get_settings()
 STATIC_DIR = Path(__file__).parent / "static"
+
+# ═══════════════════════════════════════════════════════════════
+# SCHEDULER PARA CRON - feat/payouts-60-40
+# ═══════════════════════════════════════════════════════════════
+_scheduler = AsyncIOScheduler()
+
+async def startup_scheduler():
+    """Inicia scheduler al arrancar FastAPI"""
+    logger.info("📅 Iniciando scheduler CRON...")
+    
+    _scheduler.add_job(
+        ejecutar_garantia_cron,
+        "interval",
+        hours=1,
+        id="garantia_cron_24h",
+        name="Verificación de garantía 24h y Payout 40%",
+        max_instances=1,
+        misfire_grace_time=60,
+    )
+    
+    _scheduler.start()
+    logger.info("✅ Scheduler iniciado")
+
+async def shutdown_scheduler():
+    """Detiene scheduler al apagar FastAPI"""
+    logger.info("📅 Deteniendo scheduler...")
+    _scheduler.shutdown()
+    logger.info("✅ Scheduler detenido")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Gestiona startup y shutdown del app"""
+    # Startup
+    await startup_scheduler()
+    yield
+    # Shutdown
+    await shutdown_scheduler()
+
+# ═══════════════════════════════════════════════════════════════
+# CREACIÓN DE APP
+# ═══════════════════════════════════════════════════════════════
 
 app = FastAPI(
     title="ViveroOnline API",
@@ -44,6 +101,7 @@ app = FastAPI(
     docs_url="/api/docs" if not settings.is_production else None,
     redoc_url=None,
     openapi_url="/api/openapi.json" if not settings.is_production else None,
+    lifespan=lifespan,  # ← NUEVO: lifecycle management para scheduler
 )
 
 if STATIC_DIR.exists():
@@ -153,6 +211,18 @@ app.include_router(pedidos_router)
 app.include_router(checkout_guest_router)
 app.include_router(onboarding_routes.router)
 app.include_router(webhooks_router)
+
+# ═══════════════════════════════════════════════════════════════
+# ROUTERS NUEVOS - feat/payouts-60-40
+# ═══════════════════════════════════════════════════════════════
+app.include_router(epayco_webhook_routes.router)
+app.include_router(despacho_routes.router)
+app.include_router(entrega_routes.router)
+app.include_router(tickets_reclamo_routes.router)
+app.include_router(tickets_resolucion_routes.router)
+
+logger.info("✅ Routers registrados: epayco_webhook, despacho, entrega, tickets_reclamo, tickets_resolucion")
+
 # HTML pages (deben ir al final para no capturar /api/*)
 app.include_router(pages_routes.router)
 
