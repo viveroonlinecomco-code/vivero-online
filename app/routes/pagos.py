@@ -27,8 +27,6 @@ from app.services.epayco import (
 from app.services.supabase import admin
 from app.services.precios import calcular_precios_pedido
 from app.services.config_global import get_config
-from app.routes import epayco_webhook
-# Webhook de ePayco para confirmaciones (NUEVO - feat/payouts-60-40)
 
 logger = logging.getLogger(__name__)
 
