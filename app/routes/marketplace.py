@@ -181,7 +181,7 @@ async def listar_marketplace_guest(
                 "planta_id": r["planta_id"],
                 "nombre_comun": r["nombre_comun"],
                 "nombre_cientifico": r.get("nombre_cientifico"),
-                "imagen_referencia_url": r.get("imagen_referencia_url"),
+                "foto_ia_url": r.get("foto_ia_url"),
                 "precio_comprador": precios_map.get(inv_id, 0),
                 "stock": r["stock"],
                 "altura_cm": r["altura_cm"],
@@ -192,7 +192,7 @@ async def listar_marketplace_guest(
     
     query = db.table("inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
-        "stock, imagen_referencia_url, vivero_id, logistics_tier, "
+        "stock, foto_ia_url, vivero_id, logistics_tier, "
         "plantas(nombre_comun, nombre_cientifico), "
         "viveros(nombre_vivero, ciudad)"
     ).eq("estado_planta", "disponible").in_(
@@ -218,7 +218,7 @@ async def listar_marketplace_guest(
             "planta_id": r["planta_id"],
             "nombre_comun": planta.get("nombre_comun", "Sin nombre"),
             "nombre_cientifico": planta.get("nombre_cientifico"),
-            "imagen_referencia_url": r.get("imagen_referencia_url"),
+            "foto_ia_url": r.get("foto_ia_url"),
             "precio_comprador": precios_map.get(inv_id, 0),
             "stock": r.get("stock") or 0,
             "altura_cm": r.get("altura_cm") or 0,
@@ -234,7 +234,7 @@ async def detalle_item_guest(inventario_id: int):
     db = admin()
     resp = db.table("inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
-        "stock, estado_planta, imagen_referencia_url, notas, "
+        "stock, estado_planta, foto_ia_url, notas, "
         "logistics_tier, "
         "plantas(nombre_comun, nombre_cientifico, familia_botanica, "
         "requerimientos_ia, clima_ideal), "
@@ -261,7 +261,7 @@ async def detalle_item_guest(inventario_id: int):
             "familia_botanica": planta.get("familia_botanica"),
             "requerimientos_ia": planta.get("requerimientos_ia"),
             "clima_ideal": planta.get("clima_ideal"),
-            "imagen_referencia_url": item.get("imagen_referencia_url"),
+            "foto_ia_url": item.get("foto_ia_url"),
             "notas": item.get("notas"),
             "altura_cm": item.get("altura_cm"),
             "stock": item.get("stock"),
@@ -315,7 +315,7 @@ async def listar_marketplace(
                 "planta_id": r["planta_id"],
                 "nombre_comun": r["nombre_comun"],
                 "nombre_cientifico": r.get("nombre_cientifico"),
-                "imagen_referencia_url": r.get("imagen_referencia_url"),
+                "foto_ia_url": r.get("foto_ia_url"),
                 "precio_mayorista": precio_base,
                 "precio_comprador": precios_map.get(inv_id, 0),
                 "stock": r["stock"],
@@ -328,7 +328,7 @@ async def listar_marketplace(
     
     query = db.table("inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
-        "stock, imagen_referencia_url, vivero_id, "
+        "stock, foto_ia_url, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico), "
         "viveros(nombre_vivero, ciudad)"
     ).eq("estado_planta", "disponible").gte("stock", cantidad_min).gte("altura_cm", altura_min)
@@ -353,7 +353,7 @@ async def listar_marketplace(
             "planta_id": r["planta_id"],
             "nombre_comun": planta.get("nombre_comun", "Sin nombre"),
             "nombre_cientifico": planta.get("nombre_cientifico"),
-            "imagen_referencia_url": r.get("imagen_referencia_url"),
+            "foto_ia_url": r.get("foto_ia_url"),
             "precio_mayorista": precio_base,
             "precio_comprador": precios_map.get(inv_id, 0),
             "stock": r.get("stock") or 0,
@@ -380,7 +380,7 @@ async def detalle_item(
         tiene_suscripcion = bool(sus.data)
     resp = db.table("inventario").select(
         "inventario_id, planta_id, altura_cm, precio_mayorista, "
-        "stock, estado_planta, imagen_referencia_url, notas, vivero_id, "
+        "stock, estado_planta, foto_ia_url, notas, vivero_id, "
         "plantas(nombre_comun, nombre_cientifico, familia_botanica, requerimientos_ia, clima_ideal), "
         "viveros(nombre_vivero, ciudad, departamento, historia, foto_url, fotos_galeria, latitud, longitud, direccion)"
     ).eq("inventario_id", inventario_id).limit(1).execute()
@@ -471,7 +471,7 @@ def _enriquecer_items(db, items_raw: list[dict]) -> list[dict]:
     inv_map: dict[int, dict] = {}
     if inventario_ids:
         inv_resp = db.table("inventario").select(
-            "inventario_id, imagen_referencia_url, stock, estado_planta, categoria_producto, "
+            "inventario_id, foto_ia_url, stock, estado_planta, categoria_producto, "
             "plantas(nombre_comun, nombre_cientifico, categoria_producto), "
             "viveros(vivero_id, nombre_vivero, ciudad)"
         ).in_("inventario_id", inventario_ids).execute()
@@ -496,7 +496,7 @@ def _enriquecer_items(db, items_raw: list[dict]) -> list[dict]:
             **it,
             "nombre_comun": planta.get("nombre_comun"),
             "nombre_cientifico": planta.get("nombre_cientifico"),
-            "imagen_referencia_url": inv.get("imagen_referencia_url"),
+            "foto_ia_url": inv.get("foto_ia_url"),
             "stock_disponible": inv.get("stock"),
             "vivero_id": (vivero or {}).get("vivero_id"),
             "nombre_vivero": vivero.get("nombre_vivero"),
