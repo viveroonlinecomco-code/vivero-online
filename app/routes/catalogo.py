@@ -5,10 +5,13 @@
 - POST   /api/catalogo/guardar               → confirma y guarda en inventario
 - PATCH  /api/catalogo/inventario/{id}       → actualiza stock / precio / estado / nombre
 - DELETE /api/catalogo/inventario/{id}       → elimina item del inventario
+
+FIX 11 sept 2026: Usar UPSERT RPC para evitar duplicate key constraint
 """
 from __future__ import annotations
 import io
 import uuid
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -25,7 +28,7 @@ from app.schemas.catalog import (
 )
 from app.services.supabase import admin
 
-
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/catalogo", tags=["catalogo"])
 
 
@@ -36,9 +39,6 @@ async def listar_catalogo(user: UserContext = Depends(require_viverista)):
     """Lista el inventario del viverista actual.
 
     FIX 5 ago 2026: incluir logistics_tier y tier_manual en la respuesta.
-    Antes: el frontend recibía siempre 'M' como default porque el SELECT
-    no incluía esos campos. Ahora se devuelve dict flexible para no requerir
-    cambios en schemas/catalog.py.
     """
     if not user.vivero_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un vivero")
@@ -66,9 +66,8 @@ async def listar_catalogo(user: UserContext = Depends(require_viverista)):
             "altura_cm":         r.get("altura_cm") or 0,
             "unidad_medida":     r.get("unidad_medida") or "unidad",
             "estado_planta":     r.get("estado_planta") or "disponible",
-            # ── Fase editor de tier (5 ago 2026) ──
-            "logistics_tier":    r.get("logistics_tier"),  # tier efectivo (auto o manual)
-            "tier_manual":       r.get("tier_manual"),      # override manual (si existe)
+            "logistics_tier":    r.get("logistics_tier"),
+            "tier_manual":       r.get("tier_manual"),
         })
 
     return {"ok": True, "items": items, "total": len(items)}
@@ -150,28 +149,50 @@ async def identificar_planta(
     )
 
 
-# ─────────────────── GUARDAR EN INVENTARIO ───────────────────
+# ─────────────────── GUARDAR EN INVENTARIO (FIXED 11 sept 2026) ───────────────────
 
 @router.post("/guardar")
 async def guardar_inventario(
     req: GuardarInventarioRequest,
     user: UserContext = Depends(require_viverista),
 ):
-    """Crea planta si no existe + crea item de inventario."""
+    """Crea planta si no existe + crea item de inventario.
+    
+    FIX 11 sept 2026: Usar UPSERT RPC para evitar duplicate key constraint.
+    Antes: INSERT directo fallaba si otra solicitud concurrente insertaba la misma especie.
+    Ahora: ON CONFLICT en BD → atomicidad garantizada.
+    """
     if not user.vivero_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un vivero")
 
     db = admin()
 
     planta_id = req.planta_id
+    
+    # ─── Obtener o crear planta usando UPSERT RPC (atomic) ────
     if not planta_id:
-        planta_resp = db.table("plantas").insert({
-            "nombre_comun": req.nombre_comun,
-            "nombre_cientifico": req.nombre_cientifico,
-            "activa": True,
-        }).execute()
-        planta_id = planta_resp.data[0]["planta_id"]
+        try:
+            # Llamar función UPSERT en Supabase
+            upsert_result = db.rpc("upsert_plant", {
+                "p_nombre_comun": req.nombre_comun,
+                "p_nombre_cientifico": req.nombre_cientifico,
+            }).execute()
+            
+            if not upsert_result.data or len(upsert_result.data) == 0:
+                raise HTTPException(500, detail="Error al procesar planta")
+            
+            planta_id = upsert_result.data[0]
+            logger.info(f"Planta upserted: {req.nombre_cientifico} → planta_id={planta_id}")
+            
+        except Exception as e:
+            error_msg = str(e).lower()
+            logger.error(f"upsert_plant RPC error: {error_msg}")
+            raise HTTPException(
+                500,
+                detail=f"Error al procesar planta: {str(e)[:100]}"
+            )
 
+    # ─── Crear inventario ────
     try:
         inv_resp = db.table("inventario").insert({
             "vivero_id": user.vivero_id,
@@ -187,6 +208,9 @@ async def guardar_inventario(
             "origen_carga": "ia_viverista",
             "notas": req.notas,
         }).execute()
+        
+        logger.info(f"Inventario creado: vivero={user.vivero_id}, planta={planta_id}, inventario_id={inv_resp.data[0]['inventario_id']}")
+        
     except Exception as e:
         msg = str(e).lower()
         if (
@@ -206,6 +230,7 @@ async def guardar_inventario(
                     f"con el botón ✏️ desde 'Mi Inventario'."
                 ),
             )
+        logger.error(f"inventario INSERT error: {str(e)[:200]}")
         raise HTTPException(500, detail=f"Error al guardar el inventario: {str(e)[:200]}")
 
     return {
@@ -228,9 +253,6 @@ class ActualizarInventarioRequest(BaseModel):
     precio_detal: Optional[float] = Field(default=None, ge=0)
     estado_planta: Optional[str] = Field(default=None)
     notas: Optional[str] = Field(default=None, max_length=1000)
-    # ── Fase editor de tier (5 ago 2026) ──
-    # tier_manual acepta: "S", "M", "L", "XL", "" (vacío = restaurar automático)
-    # o None (no lo modifica).
     tier_manual: Optional[str] = Field(default=None)
 
 
@@ -240,13 +262,7 @@ async def actualizar_inventario(
     req: ActualizarInventarioRequest,
     user: UserContext = Depends(require_viverista),
 ):
-    """Actualiza campos de un item del inventario.
-
-    El nombre_comun vive en la tabla `plantas`, no en `inventario` — se
-    actualiza por separado. Cada item de inventario tiene su propio
-    planta_id (no se comparte entre viveros), así que renombrar es seguro
-    y no afecta el catálogo de otros viveros.
-    """
+    """Actualiza campos de un item del inventario."""
     if not user.vivero_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un vivero")
 
@@ -294,15 +310,9 @@ async def actualizar_inventario(
     if req.notas is not None:
         payload["notas"] = req.notas.strip() or None
 
-    # ── Fase editor de tier (5 ago 2026) ──
-    # tier_manual: valida y setea override manual. El trigger auto_set_logistics_tier
-    # de la BD sincroniza logistics_tier automáticamente al UPDATE.
-    #   - "S", "M", "L", "XL" → override manual
-    #   - "" (string vacío) → restaurar automático (limpia el override)
-    #   - None → no lo tocamos (comportamiento anterior)
     if req.tier_manual is not None:
         if req.tier_manual == "":
-            payload["tier_manual"] = None  # limpia override → trigger recalcula por altura
+            payload["tier_manual"] = None
         elif req.tier_manual in ("S", "M", "L", "XL"):
             payload["tier_manual"] = req.tier_manual
         else:
