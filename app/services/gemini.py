@@ -2,6 +2,10 @@
 - Vision: identificar planta desde imagen (modelo: gemini-2.5-flash)
 - Embeddings: generar vectores 768-dim para pgvector (text-embedding-004)
 - Chat: respuestas conversacionales para los agentes
+
+FIX 11 sept 2026: Mejorar exception handling para errores de conexión.
+Antes: RuntimeError en timeout/quota → FastAPI devuelve HTML 500 → JSON corrupto frontend
+Ahora: Todos los errores devuelven PlantaIdentificada válida → JSON siempre correcto
 """
 from __future__ import annotations
 import base64
@@ -113,12 +117,9 @@ class GeminiService:
     def identify_plant(self, image_bytes: bytes, mime_type: str = "image/jpeg") -> PlantaIdentificada:
         """Identifica la planta usando Gemini Vision. Retorna PlantaIdentificada.
 
-        AJUSTE (18 jun): agrega filtro de doble capa para rechazar flores de
-        corte, cultivos agrícolas y plantas artificiales:
-        1. El IDENTIFY_PROMPT ya le indica a Gemini que retorne confianza=0.0
-           para esas categorías.
-        2. _es_planta_rechazada() valida el resultado en Python como respaldo
-           por si el modelo ignoró la instrucción del prompt.
+        FIX 11 sept 2026: Mejorar exception handling.
+        Antes: RuntimeError en timeout/quota re-lanzaba → FastAPI 500 HTML
+        Ahora: Todos los errores devuelven PlantaIdentificada válida con confianza=0.0
         """
         if not image_bytes or len(image_bytes) < 100:
             logger.warning("identify_plant: imagen vacía o muy pequeña")
@@ -144,17 +145,43 @@ class GeminiService:
             error_msg = str(e)
             logger.error(f"Gemini Vision error: {error_msg[:200]}")
 
-            if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
-                raise RuntimeError("cuota_agotada")
-
-            if "400" in error_msg or "INVALID_ARGUMENT" in error_msg:
+            # ─── FIX: Capturar TODOS los errores de conexión ────
+            # Timeout, rate limit, overload → devolver fallback válido
+            if any(x in error_msg for x in [
+                "429", "RESOURCE_EXHAUSTED", "DEADLINE_EXCEEDED",
+                "timeout", "503", "REQUEST_TIMEOUT", "UNAVAILABLE",
+                "Connection", "connection", "500", "SERVICE_UNAVAILABLE"
+            ]):
+                logger.warning(f"Gemini temporarily unavailable: {error_msg[:100]}")
                 return PlantaIdentificada(
                     nombre_comun="No identificada",
                     confianza=0.0,
-                    advertencias="Formato de imagen no compatible",
+                    advertencias=(
+                        "El servicio de identificación está temporalmente no disponible. "
+                        "Por favor, intenta de nuevo en 1 minuto. "
+                        "Si el problema persiste, contacta con soporte."
+                    ),
                 )
 
-            raise RuntimeError(f"gemini_error:{error_msg[:100]}")
+            # Error de formato de imagen
+            if "400" in error_msg or "INVALID_ARGUMENT" in error_msg:
+                logger.warning(f"Invalid image format: {error_msg[:100]}")
+                return PlantaIdentificada(
+                    nombre_comun="No identificada",
+                    confianza=0.0,
+                    advertencias="Formato de imagen no compatible. Intenta con otro archivo.",
+                )
+
+            # Error inesperado → fallback genérico
+            logger.exception("Unexpected Gemini error")
+            return PlantaIdentificada(
+                nombre_comun="No identificada",
+                confianza=0.0,
+                advertencias=(
+                    "Error procesando la imagen. "
+                    "Por favor, intenta con otra foto o contacta con soporte."
+                ),
+            )
 
         try:
             data = json.loads(response.text)
@@ -179,7 +206,7 @@ class GeminiService:
             return PlantaIdentificada(
                 nombre_comun="No identificada",
                 confianza=0.0,
-                advertencias=f"Error parseo IA: {e}",
+                advertencias=f"Error procesando respuesta. Intenta de nuevo.",
             )
 
     # ─────────────────── EMBEDDINGS ───────────────────
