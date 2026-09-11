@@ -194,20 +194,20 @@ async def guardar_inventario(
 
     # ─── Crear inventario ────
     try:
-        inv_resp = db.table("inventario").insert({
-            "vivero_id": user.vivero_id,
-            "planta_id": planta_id,
-            "altura_cm": req.altura_cm,
-            "precio_mayorista": req.precio_mayorista,
-            "precio_detal": req.precio_detal,
-            "stock": req.stock,
-            "unidad_medida": req.unidad_medida,
-            "foto_ia_url": req.foto_url,
-            "confianza_yolo": req.confianza_yolo,
-            "estado_planta": "disponible",
-            "origen_carga": "ia_viverista",
-            "notas": req.notas,
-        }).execute()
+       inv_resp = db.table("inventario").insert({
+    "vivero_id": user.vivero_id,
+    "planta_id": planta_id,
+    "altura_cm": req.altura_cm,
+    "precio_mayorista": req.precio_mayorista,
+    "precio_detal": req.precio_detal,
+    "stock": req.stock,
+    "unidad_medida": req.unidad_medida,
+    "foto_ia_url": req.foto_url,
+    "confianza_yolo": req.confianza_yolo,  # ✅ Ahora soportado
+    "estado_planta": "disponible",
+    "origen_carga": "ia_viverista",
+    "notas": req.notas,
+}).execute()
         
         logger.info(f"Inventario creado: vivero={user.vivero_id}, planta={planta_id}, inventario_id={inv_resp.data[0]['inventario_id']}")
         
