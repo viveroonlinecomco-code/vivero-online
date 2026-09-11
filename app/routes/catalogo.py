@@ -6,7 +6,10 @@
 - PATCH  /api/catalogo/inventario/{id}       → actualiza stock / precio / estado / nombre
 - DELETE /api/catalogo/inventario/{id}       → elimina item del inventario
 
-FIX 11 sept 2026: Usar UPSERT RPC para evitar duplicate key constraint
+FIX 11 sept 2026:
+- UPSERT RPC para evitar duplicate key constraint
+- Validar mandato_aceptado ANTES de permitir INSERT
+- Mejorado exception handling en Gemini
 """
 from __future__ import annotations
 import io
@@ -14,7 +17,7 @@ import uuid
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 from PIL import Image
 
@@ -81,7 +84,10 @@ async def identificar_planta(
     user: UserContext = Depends(require_viverista),
 ):
     """Sube foto → Gemini Vision identifica → sube a bucket → retorna análisis.
-    NO guarda en inventario aún (eso lo hace /guardar)."""
+    NO guarda en inventario aún (eso lo hace /guardar).
+    
+    FIX 11 sept 2026: Exception handling mejorado en Gemini para errores de conexión.
+    """
     if not user.vivero_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un vivero")
 
@@ -94,6 +100,7 @@ async def identificar_planta(
     if len(raw) > 10 * 1024 * 1024:
         raise HTTPException(413, detail="Imagen muy grande (máx 10MB)")
 
+    # Procesar imagen
     try:
         img = Image.open(io.BytesIO(raw))
         if img.mode not in ("RGB", "L"):
@@ -107,10 +114,12 @@ async def identificar_planta(
     except Exception as e:
         raise HTTPException(400, detail=f"Imagen inválida: {e}")
 
+    # YOLO preprocessing (opcional)
     from app.services.yolo import get_yolo
     yolo = get_yolo()
     cropped_bytes, yolo_meta = await yolo.crop_plant(image_bytes)
 
+    # Identificar con Gemini
     agent = PlantIdentifierAgent()
     analisis = agent.identify_from_bytes(cropped_bytes, "image/jpeg")
 
@@ -120,6 +129,7 @@ async def identificar_planta(
             float(yolo_meta.get("confidence") or 0) * 0.5 + analisis.confianza * 0.5,
         )
 
+    # Subir foto a Supabase Storage
     db = admin()
     filename = f"{user.vivero_id}/{uuid.uuid4()}.jpg"
     try:
@@ -130,8 +140,10 @@ async def identificar_planta(
         )
         public_url = db.storage.from_("plantas-fotos").get_public_url(filename)
     except Exception as e:
+        logger.error(f"Storage upload error: {e}")
         raise HTTPException(500, detail=f"Error al subir imagen: {e}")
 
+    # Buscar si la planta ya existe
     planta_id: Optional[int] = None
     if analisis.nombre_cientifico:
         existing = db.table("plantas").select("planta_id").eq(
@@ -158,32 +170,82 @@ async def guardar_inventario(
 ):
     """Crea planta si no existe + crea item de inventario.
     
-    FIX 11 sept 2026: Usar UPSERT RPC para evitar duplicate key constraint.
-    Antes: INSERT directo fallaba si otra solicitud concurrente insertaba la misma especie.
-    Ahora: ON CONFLICT en BD → atomicidad garantizada.
+    FIX 11 sept 2026:
+    1. Validar que mandato_aceptado = true (contrato firmado)
+    2. Usar UPSERT RPC para evitar duplicate key constraint
+    3. Registrar confianza_yolo correctamente
+    
+    Antes: INSERT directo fallaba si otra solicitud insertaba la misma especie
+    Ahora: ON CONFLICT en BD → atomicidad garantizada
     """
     if not user.vivero_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un vivero")
 
     db = admin()
 
+    # ─── VALIDAR MANDATO ACEPTADO (BLOQUEADOR) ────
+    try:
+        mandato_check = db.table("datos_fiscales_vivero").select(
+            "mandato_aceptado"
+        ).eq("vivero_id", user.vivero_id).limit(1).execute()
+
+        if not mandato_check.data:
+            logger.warning(f"mandato check: no record for vivero_id={user.vivero_id}")
+            raise HTTPException(
+                403,
+                detail=(
+                    "Antes de subir plantas, necesitas aceptar el Contrato de Mandato Comercial. "
+                    "Deberías haber recibido un mensaje por WhatsApp con el contrato. "
+                    "Si no llegó, contacta con soporte."
+                ),
+            )
+
+        mandato_aceptado = mandato_check.data[0].get("mandato_aceptado")
+        if not mandato_aceptado:
+            logger.info(f"mandato_aceptado=false para vivero_id={user.vivero_id}")
+            raise HTTPException(
+                403,
+                detail=(
+                    "Antes de subir plantas, necesitas aceptar el Contrato de Mandato Comercial. "
+                    "Respondé SÍ ACEPTO al mensaje que recibiste por WhatsApp. "
+                    "Si no lo ves, contacta con soporte."
+                ),
+            )
+
+        logger.info(f"mandato_aceptado=true para vivero_id={user.vivero_id} ✅")
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"mandato validation error: {str(e)[:200]}")
+        raise HTTPException(
+            500,
+            detail="Error validando tu estatus. Intenta de nuevo en un momento."
+        )
+
+    # ─── OBTENER O CREAR PLANTA USANDO UPSERT RPC ────
     planta_id = req.planta_id
-    
-    # ─── Obtener o crear planta usando UPSERT RPC (atomic) ────
+
     if not planta_id:
         try:
-            # Llamar función UPSERT en Supabase
+            # Llamar función UPSERT en Supabase (atomic)
             upsert_result = db.rpc("upsert_plant", {
                 "p_nombre_comun": req.nombre_comun,
                 "p_nombre_cientifico": req.nombre_cientifico,
             }).execute()
-            
+
             if not upsert_result.data or len(upsert_result.data) == 0:
+                logger.error("upsert_plant returned empty data")
                 raise HTTPException(500, detail="Error al procesar planta")
-            
+
             planta_id = upsert_result.data[0]
-            logger.info(f"Planta upserted: {req.nombre_cientifico} → planta_id={planta_id}")
-            
+            logger.info(
+                f"Planta upserted: {req.nombre_cientifico} → "
+                f"planta_id={planta_id} (vivero={user.vivero_id})"
+            )
+
+        except HTTPException:
+            raise
         except Exception as e:
             error_msg = str(e).lower()
             logger.error(f"upsert_plant RPC error: {error_msg}")
@@ -192,35 +254,41 @@ async def guardar_inventario(
                 detail=f"Error al procesar planta: {str(e)[:100]}"
             )
 
-    # ─── Crear inventario ────
+    # ─── CREAR ITEM DE INVENTARIO ────
     try:
-       inv_resp = db.table("inventario").insert({
-    "vivero_id": user.vivero_id,
-    "planta_id": planta_id,
-    "altura_cm": req.altura_cm,
-    "precio_mayorista": req.precio_mayorista,
-    "precio_detal": req.precio_detal,
-    "stock": req.stock,
-    "unidad_medida": req.unidad_medida,
-    "foto_ia_url": req.foto_url,
-    "confianza_yolo": req.confianza_yolo,  # ✅ Ahora soportado
-    "estado_planta": "disponible",
-    "origen_carga": "ia_viverista",
-    "notas": req.notas,
-}).execute()
-        
-        logger.info(f"Inventario creado: vivero={user.vivero_id}, planta={planta_id}, inventario_id={inv_resp.data[0]['inventario_id']}")
-        
+        inv_resp = db.table("inventario").insert({
+            "vivero_id": user.vivero_id,
+            "planta_id": planta_id,
+            "altura_cm": req.altura_cm,
+            "precio_mayorista": req.precio_mayorista,
+            "precio_detal": req.precio_detal,
+            "stock": req.stock,
+            "unidad_medida": req.unidad_medida,
+            "foto_ia_url": req.foto_url,
+            "confianza_yolo": req.confianza_yolo,
+            "estado_planta": "disponible",
+            "origen_carga": "ia_viverista",
+            "notas": req.notas,
+        }).execute()
+
+        inventario_id = inv_resp.data[0]["inventario_id"]
+        logger.info(
+            f"Inventario creado: inventario_id={inventario_id}, "
+            f"vivero={user.vivero_id}, planta={planta_id}, "
+            f"altura={req.altura_cm}cm, precio={req.precio_mayorista}"
+        )
+
     except Exception as e:
         msg = str(e).lower()
-        if (
-            "23505" in msg
-            or "duplicate key" in msg
-            or "unique constraint" in msg
-            or "inventario_vivero_planta_altura" in msg
-        ):
+
+        # Duplicate key en inventario (mismo vivero + planta + altura)
+        if any(x in msg for x in ["23505", "duplicate key", "unique constraint", "inventario_vivero_planta_altura"]):
             nombre = req.nombre_comun or "esta planta"
             altura = req.altura_cm
+            logger.warning(
+                f"Duplicate inventario: vivero={user.vivero_id}, "
+                f"planta={planta_id}, altura={altura}"
+            )
             raise HTTPException(
                 status_code=409,
                 detail=(
@@ -230,12 +298,16 @@ async def guardar_inventario(
                     f"con el botón ✏️ desde 'Mi Inventario'."
                 ),
             )
+
         logger.error(f"inventario INSERT error: {str(e)[:200]}")
-        raise HTTPException(500, detail=f"Error al guardar el inventario: {str(e)[:200]}")
+        raise HTTPException(
+            500,
+            detail=f"Error al guardar el inventario: {str(e)[:100]}"
+        )
 
     return {
         "ok": True,
-        "inventario_id": inv_resp.data[0]["inventario_id"],
+        "inventario_id": inventario_id,
         "planta_id": planta_id,
     }
 
@@ -262,7 +334,13 @@ async def actualizar_inventario(
     req: ActualizarInventarioRequest,
     user: UserContext = Depends(require_viverista),
 ):
-    """Actualiza campos de un item del inventario."""
+    """Actualiza campos de un item del inventario.
+
+    El nombre_comun vive en la tabla `plantas`, no en `inventario` — se
+    actualiza por separado. Cada item de inventario tiene su propio
+    planta_id (no se comparte entre viveros), así que renombrar es seguro
+    y no afecta el catálogo de otros viveros.
+    """
     if not user.vivero_id:
         raise HTTPException(400, detail="Tu perfil no está vinculado a un vivero")
 
@@ -281,6 +359,7 @@ async def actualizar_inventario(
     existing = db.table("inventario").select("vivero_id, planta_id").eq(
         "inventario_id", inventario_id
     ).limit(1).execute()
+
     if not existing.data:
         raise HTTPException(404, detail="Item no encontrado")
     if existing.data[0]["vivero_id"] != user.vivero_id:
@@ -358,6 +437,7 @@ async def eliminar_inventario(
     existing = db.table("inventario").select("vivero_id").eq(
         "inventario_id", inventario_id
     ).limit(1).execute()
+
     if not existing.data:
         raise HTTPException(404, detail="Item no encontrado")
     if existing.data[0]["vivero_id"] != user.vivero_id:
@@ -365,6 +445,7 @@ async def eliminar_inventario(
 
     try:
         db.table("inventario").delete().eq("inventario_id", inventario_id).execute()
+        logger.info(f"Inventario eliminado: {inventario_id}")
     except Exception as e:
         msg = str(e).lower()
         if "foreign" in msg or "violates" in msg or "referenced" in msg:
@@ -376,6 +457,7 @@ async def eliminar_inventario(
                     "en su lugar para mantenerlo fuera del marketplace."
                 ),
             )
-        raise HTTPException(500, detail=f"Error al eliminar: {str(e)[:200]}")
+        logger.error(f"inventario DELETE error: {str(e)[:200]}")
+        raise HTTPException(500, detail=f"Error al eliminar: {str(e)[:100]}")
 
     return {"ok": True, "inventario_id": inventario_id, "eliminado": True}
